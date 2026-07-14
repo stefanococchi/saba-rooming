@@ -1,0 +1,1452 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Saba Rooming</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
+<style>
+:root {
+  --primary: #795548;
+  --primary-light: #a1887f;
+  --primary-dark: #4e342e;
+  --surface: #fffbf5;
+  --surface-card: #ffffff;
+  --surface-variant: #f5efe7;
+  --on-surface: #1c1b1f;
+  --on-surface-variant: #49454f;
+  --outline: #cac4bd;
+  --outline-variant: #e7e0d9;
+  --error: #ba1a1a;
+  --success: #2e7d32;
+  --info: #0277bd;
+  --radius: 16px;
+  --radius-sm: 12px;
+  --shadow-sm: 0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.06);
+  --shadow-md: 0 4px 12px rgba(0,0,0,.1);
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', system-ui, sans-serif;
+  background: var(--surface);
+  color: var(--on-surface);
+  min-height: 100vh;
+}
+
+/* ── Top Bar ──────────────────────────────────────────────────────────── */
+.topbar {
+  background: var(--primary);
+  color: white;
+  padding: 16px 24px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  box-shadow: var(--shadow-md);
+}
+.topbar h1 { font-size: 20px; font-weight: 600; }
+.topbar .spacer { flex: 1; }
+.topbar .badge {
+  background: rgba(255,255,255,.2);
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+/* ── Layout ───────────────────────────────────────────────────────────── */
+.container { max-width: 100%; margin: 0; padding: 16px; }
+
+.grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  margin-bottom: 24px;
+}
+
+@media (max-width: 900px) {
+  .grid-2 { grid-template-columns: 1fr; }
+}
+
+/* ── Cards ────────────────────────────────────────────────────────────── */
+.card {
+  background: var(--surface-card);
+  border-radius: var(--radius);
+  border: 1px solid var(--outline-variant);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+.card-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--outline-variant);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--primary-dark);
+}
+.card-header .material-icons-round { font-size: 22px; color: var(--primary); }
+.card-body { padding: 20px; }
+
+/* ── Buttons ──────────────────────────────────────────────────────────── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 20px;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all .15s;
+}
+.btn .material-icons-round { font-size: 18px; }
+.btn-primary {
+  background: var(--primary);
+  color: white;
+}
+.btn-primary:hover { background: var(--primary-dark); }
+.btn-outline {
+  background: transparent;
+  color: var(--primary);
+  border: 1px solid var(--primary-light);
+}
+.btn-outline:hover { background: var(--surface-variant); }
+.btn-danger {
+  background: transparent;
+  color: var(--error);
+  border: 1px solid #f5c6cb;
+}
+.btn-danger:hover { background: #fef2f2; }
+.btn-success {
+  background: var(--success);
+  color: white;
+}
+.btn-sm { padding: 6px 12px; font-size: 13px; }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+
+.btn-group { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* ── Table ────────────────────────────────────────────────────────────── */
+.table-wrap { overflow-x: auto; }
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+th {
+  background: var(--surface-variant);
+  padding: 6px 8px;
+  text-align: left;
+  font-weight: 600;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: .3px;
+  color: var(--on-surface-variant);
+  position: sticky;
+  top: 0;
+  white-space: nowrap;
+}
+td {
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--outline-variant);
+  vertical-align: middle;
+  white-space: nowrap;
+}
+tr:hover td { background: var(--surface-variant); }
+td.editable {
+  cursor: pointer;
+  position: relative;
+}
+td.editable:hover { background: #f0e8dd; }
+td.editable::after {
+  content: 'edit';
+  font-family: 'Material Icons Round';
+  font-size: 14px;
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--primary-light);
+  opacity: 0;
+  transition: opacity .15s;
+}
+td.editable:hover::after { opacity: 1; }
+td.bool-cell { text-align: center; cursor: pointer; font-size: 12px; font-weight: 600; }
+td.bool-cell::after { display: none !important; }
+
+.source-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+.source-xlsx { background: #e8f5e9; color: #2e7d32; }
+.source-email { background: #e3f2fd; color: #1565c0; }
+.source-manual { background: #fff3e0; color: #e65100; }
+
+.action-btns { display: flex; gap: 4px; }
+.icon-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 8px;
+  color: var(--on-surface-variant);
+  transition: all .15s;
+  display: flex;
+  align-items: center;
+}
+.icon-btn:hover { background: var(--surface-variant); }
+.icon-btn.delete:hover { color: var(--error); background: #fef2f2; }
+
+/* ── Forms / Inputs ──────────────────────────────────────────────────── */
+input[type="text"], input[type="file"], textarea, select {
+  font-family: inherit;
+  font-size: 14px;
+  padding: 10px 14px;
+  border: 1px solid var(--outline);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--on-surface);
+  width: 100%;
+  transition: border-color .15s;
+}
+input:focus, textarea:focus, select:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(121,85,72,.15);
+}
+textarea { resize: vertical; min-height: 120px; }
+
+.form-group { margin-bottom: 14px; }
+.form-group label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  color: var(--on-surface-variant);
+  margin-bottom: 6px;
+}
+
+/* ── Email Parser ─────────────────────────────────────────────────────── */
+.parsed-results {
+  margin-top: 16px;
+  padding: 16px;
+  background: var(--surface-variant);
+  border-radius: var(--radius-sm);
+}
+.parsed-guest {
+  background: var(--surface-card);
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius-sm);
+  padding: 14px;
+  margin-bottom: 10px;
+}
+.parsed-guest:last-child { margin-bottom: 0; }
+.parsed-guest .name { font-weight: 600; font-size: 15px; }
+.parsed-guest .detail { font-size: 13px; color: var(--on-surface-variant); margin-top: 4px; }
+.parsed-guest .action-tag {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.action-add { background: #e8f5e9; color: #2e7d32; }
+.action-update { background: #e3f2fd; color: #1565c0; }
+
+/* ── Search ───────────────────────────────────────────────────────────── */
+.search-bar {
+  margin-bottom: 16px;
+  position: relative;
+}
+.search-bar input { padding-left: 40px; }
+.search-bar .material-icons-round {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--on-surface-variant);
+  font-size: 20px;
+}
+
+/* ── Snackbar ─────────────────────────────────────────────────────────── */
+.snackbar {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%) translateY(100px);
+  background: #323232;
+  color: white;
+  padding: 14px 24px;
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  box-shadow: var(--shadow-md);
+  transition: transform .3s ease;
+  z-index: 1000;
+}
+.snackbar.show { transform: translateX(-50%) translateY(0); }
+
+/* ── Inline edit ──────────────────────────────────────────────────────── */
+.inline-input {
+  border: 1px solid var(--primary);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 14px;
+  font-family: inherit;
+  width: 100%;
+  background: white;
+}
+
+/* ── Loading ──────────────────────────────────────────────────────────── */
+.spinner {
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--outline);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spin .6s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Modal ────────────────────────────────────────────────────────────── */
+.modal-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.4);
+  z-index: 200;
+  align-items: center;
+  justify-content: center;
+}
+.modal-overlay.active { display: flex; }
+.modal {
+  background: var(--surface-card);
+  border-radius: var(--radius);
+  padding: 24px;
+  width: 90%;
+  max-width: 500px;
+  box-shadow: var(--shadow-md);
+}
+.modal.modal-lg { max-width: 900px; max-height: 90vh; overflow-y: auto; }
+.modal h3 { margin-bottom: 16px; color: var(--primary-dark); }
+.modal .btn-group { margin-top: 20px; justify-content: flex-end; }
+
+/* ── Import Preview ──────────────────────────────────────────────────── */
+.mapping-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 12px; border-bottom: 1px solid var(--outline-variant);
+}
+.mapping-row:last-child { border-bottom: none; }
+.mapping-header { font-weight: 600; font-size: 13px; min-width: 150px; }
+.mapping-arrow { color: var(--on-surface-variant); font-size: 18px; }
+.mapping-select select {
+  padding: 6px 10px; border-radius: 8px;
+  border: 1px solid var(--outline); font-family: inherit; font-size: 13px;
+}
+.confidence-badge {
+  font-size: 11px; padding: 2px 8px; border-radius: 8px; font-weight: 600;
+}
+.conf-alta { background: #e8f5e9; color: #2e7d32; }
+.conf-media { background: #fff3e0; color: #e65100; }
+.conf-bassa { background: #fce4ec; color: #c62828; }
+.preview-table { font-size: 12px; margin-top: 12px; }
+.preview-table th { font-size: 11px; padding: 6px 8px; }
+.preview-table td { padding: 6px 8px; font-size: 12px; }
+/* ── Stanze ───────────────────────────────────────────────────────────── */
+.stanze-summary {
+  display: flex; gap: 20px; margin-bottom: 16px; padding: 12px;
+  background: var(--surface-variant); border-radius: var(--radius-sm);
+  font-size: 14px; font-weight: 500;
+}
+.stanze-summary strong { color: var(--primary-dark); }
+.stanza-card {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 12px; border-bottom: 1px solid var(--outline-variant);
+  font-size: 13px;
+}
+.stanza-card:last-child { border-bottom: none; }
+.stanza-num {
+  background: var(--primary); color: white; border-radius: 50%;
+  width: 26px; height: 26px; display: flex; align-items: center;
+  justify-content: center; font-size: 11px; font-weight: 700; flex-shrink: 0;
+}
+.stanza-shared { background: var(--info); }
+.stanza-ospiti { flex: 1; }
+.stanza-ospiti .nome { font-weight: 600; }
+.stanza-ospiti .sub { font-size: 11px; color: var(--on-surface-variant); }
+.stanza-tipo { font-size: 11px; color: var(--on-surface-variant); text-align: right; }
+
+/* ── Voli ─────────────────────────────────────────────────────────────── */
+.volo-group {
+  border: 1px solid var(--outline-variant); border-radius: var(--radius-sm);
+  margin-bottom: 10px; overflow: hidden;
+}
+.volo-group:last-child { margin-bottom: 0; }
+.volo-header {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 14px; background: var(--surface-variant);
+  font-weight: 600; font-size: 13px; cursor: pointer;
+}
+.volo-header:hover { background: #e7e0d9; }
+.volo-code { font-family: monospace; font-size: 14px; color: var(--primary-dark); }
+.volo-count {
+  background: var(--primary); color: white; border-radius: 10px;
+  padding: 1px 8px; font-size: 11px; font-weight: 700;
+}
+.volo-passengers { padding: 0; }
+.volo-pax {
+  display: flex; align-items: center; gap: 10px;
+  padding: 6px 14px 6px 40px; border-top: 1px solid var(--outline-variant);
+  font-size: 12px;
+}
+.volo-pax .nome { font-weight: 500; flex: 1; }
+.volo-pax .sede { color: var(--on-surface-variant); font-size: 11px; }
+
+/* ── Camere ───────────────────────────────────────────────────────────── */
+.contratto-row {
+  display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 1fr 1fr;
+  gap: 8px; padding: 8px 12px; align-items: center;
+  border-bottom: 1px solid var(--outline-variant); font-size: 12px;
+}
+.contratto-row.header {
+  font-weight: 700; font-size: 11px; text-transform: uppercase;
+  letter-spacing: .3px; color: var(--on-surface-variant);
+  background: var(--surface-variant);
+}
+.contratto-row .tipo { font-weight: 600; }
+.bar-container { height: 16px; background: #eee; border-radius: 4px; overflow: hidden; position: relative; }
+.bar-fill { height: 100%; border-radius: 4px; transition: width .3s; }
+.bar-ok { background: var(--success); }
+.bar-warn { background: #f57c00; }
+.bar-full { background: var(--error); }
+.non-assegnato-card {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 12px; border-bottom: 1px solid var(--outline-variant);
+  font-size: 12px;
+}
+.non-assegnato-card:last-child { border-bottom: none; }
+.non-assegnato-card .nome { font-weight: 600; flex: 1; }
+.non-assegnato-card select {
+  padding: 4px 8px; border-radius: 6px; border: 1px solid var(--outline);
+  font-family: inherit; font-size: 11px;
+}
+
+.llm-note { font-size: 13px; color: var(--on-surface-variant); font-style: italic;
+  margin-bottom: 12px; padding: 10px; background: var(--surface-variant); border-radius: 8px; }
+
+/* ── Empty state ──────────────────────────────────────────────────────── */
+.empty-state {
+  text-align: center;
+  padding: 48px 24px;
+  color: var(--on-surface-variant);
+}
+.empty-state .material-icons-round { font-size: 48px; color: var(--outline); margin-bottom: 12px; }
+.empty-state p { font-size: 14px; }
+</style>
+</head>
+<body>
+
+<!-- Top Bar -->
+<div class="topbar">
+  <span class="material-icons-round">hotel</span>
+  <h1>Saba Rooming</h1>
+  <div class="spacer"></div>
+  <span class="badge" id="countBadge">{{ guests|length }} ospiti</span>
+</div>
+
+<div class="container">
+
+  <!-- Action Buttons Row -->
+  <div class="grid-2">
+
+    <!-- Import / Export Card -->
+    <div class="card">
+      <div class="card-header">
+        <span class="material-icons-round">swap_vert</span>
+        Import / Export
+      </div>
+      <div class="card-body">
+        <div class="btn-group" style="margin-bottom:14px">
+          <label class="btn btn-outline" style="cursor:pointer">
+            <span class="material-icons-round">upload_file</span>
+            Importa XLSX
+            <input type="file" accept=".xlsx,.xls" id="importFile" hidden>
+          </label>
+          <a class="btn btn-outline" href="/api/export">
+            <span class="material-icons-round">download</span>
+            Esporta XLSX
+          </a>
+          <button class="btn btn-outline" onclick="openAddModal()">
+            <span class="material-icons-round">person_add</span>
+            Aggiungi
+          </button>
+        </div>
+        <div class="btn-group" style="margin-bottom:14px">
+          <button class="btn btn-outline" onclick="showStanze(8)">
+            <span class="material-icons-round">bed</span>
+            Stanze 8
+          </button>
+          <button class="btn btn-outline" onclick="showStanze(9)">
+            <span class="material-icons-round">bed</span>
+            Stanze 9
+          </button>
+          <button class="btn btn-outline" onclick="showStanze(10)">
+            <span class="material-icons-round">bed</span>
+            Stanze 10
+          </button>
+          <button class="btn btn-outline" onclick="showVoli('andata')">
+            <span class="material-icons-round">flight_land</span>
+            Voli Andata
+          </button>
+          <button class="btn btn-outline" onclick="showVoli('ritorno')">
+            <span class="material-icons-round">flight_takeoff</span>
+            Voli Ritorno
+          </button>
+          <button class="btn btn-outline" onclick="showCamere(8)">
+            <span class="material-icons-round">meeting_room</span>
+            Camere 8
+          </button>
+          <button class="btn btn-outline" onclick="showCamere(9)">
+            <span class="material-icons-round">meeting_room</span>
+            Camere 9
+          </button>
+        </div>
+        <div class="btn-group">
+          <button class="btn btn-danger btn-sm" onclick="deleteAll()">
+            <span class="material-icons-round">delete_sweep</span>
+            Svuota lista
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Email Parser Card -->
+    <div class="card">
+      <div class="card-header">
+        <span class="material-icons-round">smart_toy</span>
+        Incolla Email
+      </div>
+      <div class="card-body">
+        <textarea id="emailText" placeholder="Incolla qui il testo dell'email con i dati di volo e camera..."></textarea>
+        <div style="margin-top:10px; display:flex; align-items:center; gap:10px">
+          <button class="btn btn-primary" onclick="parseEmail()" id="parseBtn">
+            <span class="material-icons-round">auto_fix_high</span>
+            Analizza
+          </button>
+          <span id="parseCost" style="font-size:12px; color:var(--on-surface-variant)"></span>
+        </div>
+        <div id="parseResults"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main Table Card -->
+  <div class="card">
+    <div class="card-header">
+      <span class="material-icons-round">list</span>
+      Lista Ospiti
+      <div class="spacer" style="flex:1"></div>
+    </div>
+    <div class="card-body" style="padding:0">
+      <div class="search-bar" style="padding:16px 20px 0">
+        <span class="material-icons-round">search</span>
+        <input type="text" id="searchInput" placeholder="Cerca per nome, cognome, volo..." oninput="filterTable()">
+      </div>
+      <div class="table-wrap">
+        {% if guests %}
+        <table id="guestTable">
+          <thead>
+            <tr>
+              <th>Cognome</th>
+              <th>Nome</th>
+              <th>Email</th>
+              <th>Telefono</th>
+              <th>Sede</th>
+              <th>8</th><th>9</th><th>10</th><th>11</th>
+              <th>Volo And.</th>
+              <th>Volo Rit.</th>
+              <th>Aer. Part.</th>
+              <th>Aer. Arr.</th>
+              <th>Bus And.</th>
+              <th>Bus Rit.</th>
+              <th>P.Linate</th>
+              <th>P.Hotel</th>
+              <th>Camera Rich.</th>
+              <th>Camera Ass.</th>
+              <th>Divide con</th>
+              <th>Restr. Alim.</th>
+              <th>Note Form</th>
+              <th>Note</th>
+              <th>Fonte</th>
+              <th style="width:60px"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for g in guests %}
+            <tr data-id="{{ g.id }}">
+              <td class="editable" data-field="cognome">{{ g.cognome }}</td>
+              <td class="editable" data-field="nome">{{ g.nome }}</td>
+              <td class="editable" data-field="email">{{ g.email or '' }}</td>
+              <td class="editable" data-field="telefono">{{ g.telefono or '' }}</td>
+              <td class="editable" data-field="sede_lavoro">{{ g.sede_lavoro or '' }}</td>
+              <td class="editable bool-cell" data-field="presenza_8">{{ 'Sì' if g.presenza_8 else 'No' }}</td>
+              <td class="editable bool-cell" data-field="presenza_9">{{ 'Sì' if g.presenza_9 else 'No' }}</td>
+              <td class="editable bool-cell" data-field="presenza_10">{{ 'Sì' if g.presenza_10 else 'No' }}</td>
+              <td class="editable bool-cell" data-field="presenza_11">{{ 'Sì' if g.presenza_11 else 'No' }}</td>
+              <td class="editable" data-field="volo_arrivo">{{ g.volo_arrivo or '' }}</td>
+              <td class="editable" data-field="volo_partenza">{{ g.volo_partenza or '' }}</td>
+              <td class="editable" data-field="aeroporto_partenza">{{ g.aeroporto_partenza or '' }}</td>
+              <td class="editable" data-field="aeroporto_arrivo">{{ g.aeroporto_arrivo or '' }}</td>
+              <td class="editable" data-field="pickup_bus_andata">{{ g.pickup_bus_andata or '' }}</td>
+              <td class="editable" data-field="pickup_bus_ritorno">{{ g.pickup_bus_ritorno or '' }}</td>
+              <td class="editable bool-cell" data-field="parcheggio_linate">{{ 'Sì' if g.parcheggio_linate else 'No' }}</td>
+              <td class="editable bool-cell" data-field="parcheggio_hotel">{{ 'Sì' if g.parcheggio_hotel else 'No' }}</td>
+              <td class="editable" data-field="tipo_camera">{{ g.tipo_camera or '' }}</td>
+              <td class="editable" data-field="camera_assegnata">{{ g.camera_assegnata or '' }}</td>
+              <td class="editable" data-field="divide_stanza_con">{{ g.divide_stanza_con or '' }}</td>
+              <td class="editable" data-field="restrizioni_alimentari">{{ g.restrizioni_alimentari or '' }}</td>
+              <td class="editable" data-field="note_form">{{ g.note_form or '' }}</td>
+              <td class="editable" data-field="note">{{ g.note or '' }}</td>
+              <td><span class="source-badge source-{{ g.source }}">{{ g.source }}</span></td>
+              <td>
+                <div class="action-btns">
+                  <button class="icon-btn delete" onclick="deleteGuest({{ g.id }})" title="Elimina">
+                    <span class="material-icons-round" style="font-size:18px">delete</span>
+                  </button>
+                </div>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <div class="empty-state">
+          <span class="material-icons-round">groups</span>
+          <p>Nessun ospite. Importa un XLSX o aggiungi manualmente.</p>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Camere Modal -->
+<div class="modal-overlay" id="camereModal">
+  <div class="modal modal-lg">
+    <h3 id="camereTitle">
+      <span class="material-icons-round" style="vertical-align:middle;margin-right:6px">meeting_room</span>
+      Assegnazione Camere
+    </h3>
+    <div id="camereContent"></div>
+    <div class="btn-group">
+      <button class="btn btn-outline" onclick="document.getElementById('camereModal').classList.remove('active')">Chiudi</button>
+    </div>
+  </div>
+</div>
+
+<!-- Voli Modal -->
+<div class="modal-overlay" id="voliModal">
+  <div class="modal modal-lg">
+    <h3 id="voliTitle">
+      <span class="material-icons-round" style="vertical-align:middle;margin-right:6px">flight</span>
+      Voli
+    </h3>
+    <div id="voliContent"></div>
+    <div class="btn-group">
+      <button class="btn btn-outline" onclick="document.getElementById('voliModal').classList.remove('active')">Chiudi</button>
+    </div>
+  </div>
+</div>
+
+<!-- Stanze Modal -->
+<div class="modal-overlay" id="stanzeModal">
+  <div class="modal modal-lg">
+    <h3 id="stanzeTitle">
+      <span class="material-icons-round" style="vertical-align:middle;margin-right:6px">bed</span>
+      Stanze
+    </h3>
+    <div id="stanzeContent"></div>
+    <div class="btn-group">
+      <button class="btn btn-outline" onclick="document.getElementById('stanzeModal').classList.remove('active')">Chiudi</button>
+    </div>
+  </div>
+</div>
+
+<!-- Import Preview Modal -->
+<div class="modal-overlay" id="importModal">
+  <div class="modal modal-lg">
+    <h3>
+      <span class="material-icons-round" style="vertical-align:middle;margin-right:6px">auto_fix_high</span>
+      Import XLSX — Mapping AI
+    </h3>
+    <div id="importPreviewContent">
+      <div style="text-align:center;padding:24px">
+        <span class="spinner"></span>
+        <p style="margin-top:10px;color:var(--on-surface-variant)">Claude sta analizzando il file...</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Add Guest Modal -->
+<div class="modal-overlay" id="addModal">
+  <div class="modal modal-lg">
+    <h3><span class="material-icons-round" style="vertical-align:middle;margin-right:6px">person_add</span>Nuovo Ospite</h3>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 16px">
+      <div class="form-group"><label>Cognome *</label><input type="text" id="addCognome"></div>
+      <div class="form-group"><label>Nome</label><input type="text" id="addNome"></div>
+      <div class="form-group"><label>Email</label><input type="text" id="addEmail"></div>
+      <div class="form-group"><label>Telefono</label><input type="text" id="addTelefono"></div>
+      <div class="form-group"><label>Sede Lavoro</label><input type="text" id="addSede"></div>
+      <div class="form-group"><label>Tipo Camera</label><input type="text" id="addCamera"></div>
+      <div class="form-group"><label>Volo Andata</label><input type="text" id="addArrivo"></div>
+      <div class="form-group"><label>Volo Ritorno</label><input type="text" id="addPartenza"></div>
+      <div class="form-group"><label>Aeroporto Partenza</label><input type="text" id="addAerPartenza"></div>
+      <div class="form-group"><label>Aeroporto Arrivo</label><input type="text" id="addAerArrivo"></div>
+      <div class="form-group"><label>Pickup Bus Andata</label><input type="text" id="addBusAndata"></div>
+      <div class="form-group"><label>Pickup Bus Ritorno</label><input type="text" id="addBusRitorno"></div>
+      <div class="form-group"><label>Divide stanza con</label><input type="text" id="addDivide"></div>
+      <div class="form-group"><label>Restrizioni Alimentari</label><input type="text" id="addRestrizioni"></div>
+      <div class="form-group"><label>Note Form</label><input type="text" id="addNoteForm"></div>
+      <div class="form-group"><label>Note</label><input type="text" id="addNote"></div>
+    </div>
+    <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:14px">
+      <label style="font-size:13px"><input type="checkbox" id="addP8"> 8 Ott</label>
+      <label style="font-size:13px"><input type="checkbox" id="addP9"> 9 Ott</label>
+      <label style="font-size:13px"><input type="checkbox" id="addP10"> 10 Ott</label>
+      <label style="font-size:13px"><input type="checkbox" id="addP11"> 11 Ott</label>
+      <label style="font-size:13px"><input type="checkbox" id="addParchLinate"> Park. Linate</label>
+      <label style="font-size:13px"><input type="checkbox" id="addParchHotel"> Park. Hotel</label>
+    </div>
+    <div class="btn-group">
+      <button class="btn btn-outline" onclick="closeAddModal()">Annulla</button>
+      <button class="btn btn-primary" onclick="saveNewGuest()">Salva</button>
+    </div>
+  </div>
+</div>
+
+<!-- Snackbar -->
+<div class="snackbar" id="snackbar"></div>
+
+<script>
+// ── Snackbar ──────────────────────────────────────────────────────────────
+function showSnack(msg, ms = 3000) {
+  const el = document.getElementById('snackbar');
+  el.textContent = msg;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), ms);
+}
+
+// ── Import XLSX (LLM-guided) ──────────────────────────────────────────────
+document.getElementById('importFile').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  // Apri modale con spinner
+  const modal = document.getElementById('importModal');
+  const content = document.getElementById('importPreviewContent');
+  content.innerHTML = `<div style="text-align:center;padding:24px">
+    <span class="spinner"></span>
+    <p style="margin-top:10px;color:var(--on-surface-variant)">Claude sta analizzando il file...</p>
+  </div>`;
+  modal.classList.add('active');
+
+  const fd = new FormData();
+  fd.append('file', file);
+
+  try {
+    const r = await fetch('/api/import/preview', { method: 'POST', body: fd });
+    const j = await r.json();
+
+    if (!j.ok) {
+      content.innerHTML = `<p style="color:var(--error)">Errore: ${j.error}</p>
+        <div class="btn-group"><button class="btn btn-outline" onclick="closeImportModal()">Chiudi</button></div>`;
+      return;
+    }
+
+    window._importData = j;
+    window._importData.trasformazioni = j.trasformazioni || [];
+    renderImportPreview(j);
+
+  } catch (err) {
+    content.innerHTML = `<p style="color:var(--error)">Errore: ${err.message}</p>
+      <div class="btn-group"><button class="btn btn-outline" onclick="closeImportModal()">Chiudi</button></div>`;
+  }
+  e.target.value = '';
+});
+
+const FIELD_OPTIONS = [
+  { value: 'IGNORA', label: '— Ignora —' },
+  { value: 'cognome', label: 'Cognome' },
+  { value: 'nome', label: 'Nome' },
+  { value: 'nome_completo', label: 'Nome completo' },
+  { value: 'email', label: 'Email' },
+  { value: 'telefono', label: 'Telefono' },
+  { value: 'sede_lavoro', label: 'Sede Lavoro' },
+  { value: 'presenza_8', label: 'Presenza 8 Ott' },
+  { value: 'presenza_9', label: 'Presenza 9 Ott' },
+  { value: 'presenza_10', label: 'Presenza 10 Ott' },
+  { value: 'presenza_11', label: 'Presenza 11 Ott' },
+  { value: 'volo_arrivo', label: 'Volo Andata' },
+  { value: 'volo_partenza', label: 'Volo Ritorno' },
+  { value: 'aeroporto_partenza', label: 'Aeroporto Partenza' },
+  { value: 'aeroporto_arrivo', label: 'Aeroporto Arrivo' },
+  { value: 'pickup_bus_andata', label: 'Pickup Bus Andata' },
+  { value: 'pickup_bus_ritorno', label: 'Pickup Bus Ritorno' },
+  { value: 'parcheggio_linate', label: 'Parcheggio Linate' },
+  { value: 'parcheggio_hotel', label: 'Parcheggio Hotel' },
+  { value: 'tipo_camera', label: 'Tipo Camera' },
+  { value: 'divide_stanza_con', label: 'Divide stanza con' },
+  { value: 'restrizioni_alimentari', label: 'Restrizioni Alimentari' },
+  { value: 'note_form', label: 'Note Form' },
+  { value: 'note', label: 'Note' },
+];
+
+function renderImportPreview(data) {
+  const content = document.getElementById('importPreviewContent');
+  let html = '';
+
+  // Nota del LLM
+  if (data.note_mapping) {
+    html += `<div class="llm-note"><strong>AI:</strong> ${data.note_mapping}</div>`;
+  }
+
+  // Info costo e righe
+  html += `<div style="display:flex;gap:16px;margin-bottom:14px;font-size:13px;color:var(--on-surface-variant)">
+    <span><strong>${data.total_rows}</strong> righe trovate</span>
+    <span>${data.usage.input + data.usage.output} token | €${data.usage.cost_eur.toFixed(4)}</span>
+  </div>`;
+
+  // Mapping
+  html += `<div style="border:1px solid var(--outline-variant);border-radius:var(--radius-sm);overflow:hidden;margin-bottom:16px">`;
+  html += `<div class="mapping-row" style="background:var(--surface-variant);font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.5px">
+    <div class="mapping-header">Colonna Excel</div>
+    <div class="mapping-arrow"></div>
+    <div style="flex:1">Campo DB</div>
+    <div style="width:60px;text-align:center">Sicurezza</div>
+  </div>`;
+
+  data.header.forEach((h, i) => {
+    const m = data.mapping[String(i)] || { campo: 'IGNORA', confidenza: 'bassa' };
+    const confClass = `conf-${m.confidenza || 'bassa'}`;
+
+    html += `<div class="mapping-row">
+      <div class="mapping-header">${h || `(colonna ${i+1})`}</div>
+      <span class="material-icons-round mapping-arrow">arrow_forward</span>
+      <div class="mapping-select" style="flex:1">
+        <select data-col="${i}" onchange="updateMappingSelect(this)">
+          ${FIELD_OPTIONS.map(o =>
+            `<option value="${o.value}" ${o.value === m.campo ? 'selected' : ''}>${o.label}</option>`
+          ).join('')}
+        </select>
+      </div>
+      <div style="width:60px;text-align:center">
+        <span class="confidence-badge ${confClass}">${m.confidenza || '?'}</span>
+      </div>
+    </div>`;
+  });
+  html += `</div>`;
+
+  // Trasformazioni rilevate
+  if (data.trasformazioni && data.trasformazioni.length > 0) {
+    html += `<div style="margin-bottom:14px;padding:10px;background:#e3f2fd;border-radius:8px;font-size:13px">
+      <strong style="color:#1565c0">Trasformazioni AI rilevate:</strong>
+      <ul style="margin:6px 0 0 16px">`;
+    data.trasformazioni.forEach(t => {
+      html += `<li>${t.descrizione}</li>`;
+    });
+    html += `</ul></div>`;
+  }
+
+  // Preview tabella
+  if (data.sample_rows && data.sample_rows.length > 0) {
+    html += `<details open><summary style="cursor:pointer;font-weight:600;font-size:13px;margin-bottom:8px">
+      Anteprima dati (prime ${data.sample_rows.length} righe)</summary>`;
+    html += `<div class="table-wrap"><table class="preview-table"><thead><tr>`;
+    data.header.forEach(h => { html += `<th>${h || '—'}</th>`; });
+    html += `</tr></thead><tbody>`;
+    data.sample_rows.forEach(row => {
+      html += `<tr>`;
+      row.forEach(cell => { html += `<td>${cell || ''}</td>`; });
+      html += `</tr>`;
+    });
+    html += `</tbody></table></div></details>`;
+  }
+
+  // Bottoni
+  html += `<div class="btn-group">
+    <button class="btn btn-outline" onclick="closeImportModal()">Annulla</button>
+    <button class="btn btn-success" onclick="confirmImport()">
+      <span class="material-icons-round">check_circle</span>
+      Importa ${data.total_rows} righe
+    </button>
+  </div>`;
+
+  content.innerHTML = html;
+}
+
+function updateMappingSelect(sel) {
+  const col = sel.dataset.col;
+  if (!window._importData) return;
+  if (!window._importData.mapping[col]) {
+    window._importData.mapping[col] = {};
+  }
+  window._importData.mapping[col].campo = sel.value;
+}
+
+function closeImportModal() {
+  document.getElementById('importModal').classList.remove('active');
+  window._importData = null;
+}
+
+async function confirmImport() {
+  if (!window._importData) return;
+
+  const btn = event.target.closest('button');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Importazione...';
+
+  try {
+    const r = await fetch('/api/import/confirm', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        import_id: window._importData.import_id,
+        mapping: window._importData.mapping,
+        trasformazioni: window._importData.trasformazioni || [],
+      }),
+    });
+    const j = await r.json();
+
+    if (j.ok) {
+      closeImportModal();
+      showSnack(`Importati ${j.added} ospiti (${j.skipped} righe saltate)`);
+      setTimeout(() => location.reload(), 800);
+    } else {
+      showSnack('Errore: ' + j.error, 5000);
+      btn.disabled = false;
+      btn.innerHTML = '<span class="material-icons-round">check_circle</span> Riprova';
+    }
+  } catch (err) {
+    showSnack('Errore: ' + err.message, 5000);
+    btn.disabled = false;
+    btn.innerHTML = '<span class="material-icons-round">check_circle</span> Riprova';
+  }
+}
+
+// ── Add Guest Modal ──────────────────────────────────────────────────────
+function openAddModal() {
+  document.getElementById('addModal').classList.add('active');
+  document.getElementById('addCognome').focus();
+}
+function closeAddModal() {
+  document.getElementById('addModal').classList.remove('active');
+}
+
+// ── Stanze ────────────────────────────────────────────────────────────────
+async function showStanze(giorno) {
+  const modal = document.getElementById('stanzeModal');
+  const content = document.getElementById('stanzeContent');
+  const title = document.getElementById('stanzeTitle');
+
+  title.innerHTML = `<span class="material-icons-round" style="vertical-align:middle;margin-right:6px">bed</span> Stanze ${giorno} Ottobre`;
+  content.innerHTML = '<div style="text-align:center;padding:16px"><span class="spinner"></span></div>';
+  modal.classList.add('active');
+
+  try {
+    const r = await fetch(`/api/stanze/${giorno}`);
+    const j = await r.json();
+
+    if (!j.ok) {
+      content.innerHTML = `<p style="color:var(--error)">Errore: ${j.error}</p>`;
+      return;
+    }
+
+    let html = `<div class="stanze-summary">
+      <div><strong>${j.totale_presenti}</strong> presenti</div>
+      <div><strong>${j.totale_stanze}</strong> stanze</div>
+      <div><strong>${j.totale_presenti - j.totale_stanze}</strong> condivisioni</div>
+    </div>`;
+
+    html += `<div style="border:1px solid var(--outline-variant);border-radius:var(--radius-sm);overflow:hidden;max-height:60vh;overflow-y:auto">`;
+
+    j.stanze.forEach((stanza, i) => {
+      const isShared = stanza.ospiti.length > 1;
+      const numClass = isShared ? 'stanza-num stanza-shared' : 'stanza-num';
+
+      html += `<div class="stanza-card">
+        <div class="${numClass}">${i + 1}</div>
+        <div class="stanza-ospiti">`;
+
+      stanza.ospiti.forEach((o, oi) => {
+        html += `<div class="nome">${o.cognome} ${o.nome}</div>`;
+        if (o.divide_stanza_con) {
+          html += `<div class="sub">con: ${o.divide_stanza_con}</div>`;
+        }
+      });
+
+      html += `</div>
+        <div class="stanza-tipo">${stanza.tipo_camera || ''}</div>
+      </div>`;
+    });
+
+    html += `</div>`;
+    content.innerHTML = html;
+
+  } catch (err) {
+    content.innerHTML = `<p style="color:var(--error)">Errore: ${err.message}</p>`;
+  }
+}
+
+async function saveNewGuest() {
+  const data = {
+    cognome: document.getElementById('addCognome').value,
+    nome: document.getElementById('addNome').value,
+    email: document.getElementById('addEmail').value,
+    telefono: document.getElementById('addTelefono').value,
+    sede_lavoro: document.getElementById('addSede').value,
+    volo_arrivo: document.getElementById('addArrivo').value,
+    volo_partenza: document.getElementById('addPartenza').value,
+    aeroporto_partenza: document.getElementById('addAerPartenza').value,
+    aeroporto_arrivo: document.getElementById('addAerArrivo').value,
+    pickup_bus_andata: document.getElementById('addBusAndata').value,
+    pickup_bus_ritorno: document.getElementById('addBusRitorno').value,
+    aeroporto_partenza: document.getElementById('addAeroportoPartenza').value,
+    aeroporto_arrivo: document.getElementById('addAeroportoArrivo').value,
+    tipo_camera: document.getElementById('addCamera').value,
+    orario_bus_andata: document.getElementById('addBusAndata').value,
+    orario_bus_ritorno: document.getElementById('addBusRitorno').value,
+    presenza_8: document.getElementById('addP8').checked,
+    presenza_9: document.getElementById('addP9').checked,
+    presenza_10: document.getElementById('addP10').checked,
+    presenza_11: document.getElementById('addP11').checked,
+    parcheggio_linate: document.getElementById('addParchLinate').checked,
+    parcheggio_hotel: document.getElementById('addParchHotel').checked,
+    note: document.getElementById('addNote').value,
+  };
+  const r = await fetch('/api/guest', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  const j = await r.json();
+  if (j.ok) {
+    showSnack('Ospite aggiunto');
+    setTimeout(() => location.reload(), 500);
+  } else {
+    showSnack('Errore: ' + j.error, 5000);
+  }
+}
+
+// ── Delete Guest ──────────────────────────────────────────────────────────
+// ── Voli raggruppati ──────────────────────────────────────────────────────
+async function showVoli(tipo) {
+  const modal = document.getElementById('voliModal');
+  const content = document.getElementById('voliContent');
+  const title = document.getElementById('voliTitle');
+  const label = tipo === 'andata' ? 'Andata' : 'Ritorno';
+  const icon = tipo === 'andata' ? 'flight_land' : 'flight_takeoff';
+
+  title.innerHTML = `<span class="material-icons-round" style="vertical-align:middle;margin-right:6px">${icon}</span> Voli ${label}`;
+  content.innerHTML = '<div style="text-align:center;padding:16px"><span class="spinner"></span></div>';
+  modal.classList.add('active');
+
+  try {
+    const r = await fetch(`/api/voli/${tipo}`);
+    const j = await r.json();
+
+    if (!j.ok) {
+      content.innerHTML = `<p style="color:var(--error)">Errore: ${j.error}</p>`;
+      return;
+    }
+
+    let html = `<div class="stanze-summary">
+      <div><strong>${j.totale_voli}</strong> voli</div>
+      <div><strong>${j.totale_con_volo}</strong> passeggeri</div>
+      <div><strong>${j.totale_senza_volo}</strong> senza volo</div>
+    </div>`;
+
+    html += `<div style="max-height:60vh;overflow-y:auto">`;
+
+    j.gruppi.forEach(gruppo => {
+      html += `<div class="volo-group">
+        <div class="volo-header" onclick="this.nextElementSibling.style.display = this.nextElementSibling.style.display === 'none' ? '' : 'none'">
+          <span class="material-icons-round" style="font-size:18px;color:var(--primary)">${icon}</span>
+          <span class="volo-code">${gruppo.volo}</span>
+          <span class="volo-count">${gruppo.totale}</span>
+          <span style="flex:1"></span>
+          <span class="material-icons-round" style="font-size:16px;color:var(--on-surface-variant)">expand_more</span>
+        </div>
+        <div class="volo-passengers">`;
+
+      gruppo.passeggeri.forEach(p => {
+        html += `<div class="volo-pax">
+          <span class="nome">${p.cognome} ${p.nome}</span>
+          ${p.sede_lavoro ? `<span class="sede">${p.sede_lavoro}</span>` : ''}
+          ${p.aeroporto ? `<span class="sede">${p.aeroporto}</span>` : ''}
+        </div>`;
+      });
+
+      html += `</div></div>`;
+    });
+
+    html += `</div>`;
+    content.innerHTML = html;
+
+  } catch (err) {
+    content.innerHTML = `<p style="color:var(--error)">Errore: ${err.message}</p>`;
+  }
+}
+
+// ── Camere ───────────────────────────────────────────────────────────────
+async function showCamere(notte) {
+  window._camereNotte = notte;
+  const modal = document.getElementById('camereModal');
+  const content = document.getElementById('camereContent');
+  document.getElementById('camereTitle').innerHTML =
+    `<span class="material-icons-round" style="vertical-align:middle;margin-right:6px">meeting_room</span> Camere Notte ${notte} Ottobre`;
+  content.innerHTML = '<div style="text-align:center;padding:16px"><span class="spinner"></span></div>';
+  modal.classList.add('active');
+
+  try {
+    const r = await fetch(`/api/camere/${notte}`);
+    const j = await r.json();
+    if (!j.ok) { content.innerHTML = `<p style="color:var(--error)">${j.error}</p>`; return; }
+    renderCamere(j);
+  } catch (err) {
+    content.innerHTML = `<p style="color:var(--error)">${err.message}</p>`;
+  }
+}
+
+function renderCamere(data) {
+  const content = document.getElementById('camereContent');
+  let html = '';
+
+  // Summary
+  html += `<div class="stanze-summary">
+    <div><strong>${data.totale_stanze_necessarie}</strong> stanze necessarie</div>
+    <div style="color:var(--success)"><strong>${data.totale_assegnate}</strong> assegnate</div>
+    <div style="color:${data.totale_non_assegnate > 0 ? 'var(--error)' : 'var(--on-surface-variant)'}"><strong>${data.totale_non_assegnate}</strong> da assegnare</div>
+  </div>`;
+
+  // Bottoni azione
+  html += `<div class="btn-group" style="margin-bottom:14px">
+    <button class="btn btn-success btn-sm" onclick="autoAssegna(${data.notte})">
+      <span class="material-icons-round">auto_awesome</span> Auto-assegna
+    </button>
+    <button class="btn btn-danger btn-sm" onclick="resetAssegnazioni(${data.notte})">
+      <span class="material-icons-round">restart_alt</span> Reset
+    </button>
+  </div>`;
+
+  // Tabella contratti
+  html += `<div style="border:1px solid var(--outline-variant);border-radius:var(--radius-sm);overflow:hidden;margin-bottom:16px">`;
+  html += `<div class="contratto-row header">
+    <div>Tipologia</div><div>Disponibili</div><div>Assegnate</div><div>Libere</div><div>€ Netta</div><div>Occupazione</div>
+  </div>`;
+
+  let totDisp = 0, totAss = 0;
+  data.contratti.forEach(c => {
+    totDisp += c.disponibili;
+    totAss += c.assegnate;
+    const pct = c.disponibili > 0 ? Math.round(c.assegnate / c.disponibili * 100) : 0;
+    const barClass = pct >= 100 ? 'bar-full' : pct >= 80 ? 'bar-warn' : 'bar-ok';
+    html += `<div class="contratto-row">
+      <div class="tipo">${c.tipo}</div>
+      <div>${c.disponibili}</div>
+      <div><strong>${c.assegnate}</strong></div>
+      <div>${c.libere}</div>
+      <div>€${c.tariffa_netta.toFixed(2)}</div>
+      <div><div class="bar-container"><div class="bar-fill ${barClass}" style="width:${Math.min(pct,100)}%"></div></div></div>
+    </div>`;
+  });
+
+  // Totali
+  html += `<div class="contratto-row" style="font-weight:700;background:var(--surface-variant)">
+    <div>TOTALE</div><div>${totDisp}</div><div>${totAss}</div><div>${totDisp - totAss}</div><div></div><div></div>
+  </div>`;
+  html += `</div>`;
+
+  // Non assegnati
+  if (data.non_assegnati.length > 0) {
+    html += `<details open><summary style="cursor:pointer;font-weight:600;font-size:13px;margin-bottom:8px;color:var(--error)">
+      ${data.non_assegnati.length} stanze da assegnare</summary>`;
+    html += `<div style="border:1px solid var(--outline-variant);border-radius:var(--radius-sm);overflow:hidden;max-height:40vh;overflow-y:auto">`;
+
+    const tipiOptions = data.contratti
+      .filter(c => c.libere > 0)
+      .map(c => `<option value="${c.tipo}">${c.tipo} (${c.libere} libere)</option>`)
+      .join('');
+
+    data.non_assegnati.forEach(stanza => {
+      const nomi = stanza.ospiti.map(o => `${o.cognome} ${o.nome}`).join(', ');
+      const firstId = stanza.ospiti[0].id;
+      const richiesta = stanza.ospiti[0].tipo_camera;
+      html += `<div class="non-assegnato-card">
+        <span class="nome">${nomi}</span>
+        ${richiesta ? `<span style="font-size:10px;color:var(--info)">rich: ${richiesta}</span>` : ''}
+        <select onchange="assegnaCamera(${firstId}, this.value)">
+          <option value="">— Assegna —</option>
+          ${tipiOptions}
+        </select>
+      </div>`;
+    });
+    html += `</div></details>`;
+  }
+
+  content.innerHTML = html;
+}
+
+async function autoAssegna(notte) {
+  if (!confirm('Assegnare automaticamente le camere non ancora assegnate? (dal tipo più economico)')) return;
+  try {
+    const r = await fetch(`/api/camere/auto-assegna/${notte}`, { method: 'POST' });
+    const j = await r.json();
+    if (j.ok) {
+      showSnack(j.messaggio);
+      showCamere(notte);
+    } else {
+      showSnack('Errore: ' + j.error, 5000);
+    }
+  } catch (err) { showSnack('Errore: ' + err.message, 5000); }
+}
+
+async function resetAssegnazioni(notte) {
+  if (!confirm('Rimuovere TUTTE le assegnazioni per la notte ' + notte + '?')) return;
+  try {
+    const r = await fetch(`/api/camere/reset/${notte}`, { method: 'POST' });
+    const j = await r.json();
+    if (j.ok) { showSnack('Assegnazioni rimosse'); showCamere(notte); }
+  } catch (err) { showSnack('Errore: ' + err.message, 5000); }
+}
+
+async function assegnaCamera(guestId, tipo) {
+  if (!tipo) return;
+  try {
+    const r = await fetch('/api/camere/assegna', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ guest_id: guestId, tipo_camera: tipo }),
+    });
+    const j = await r.json();
+    if (j.ok) {
+      showSnack(`Assegnata a ${j.assegnati.length} ospiti`);
+      showCamere(window._camereNotte);
+    } else {
+      showSnack('Errore: ' + j.error, 5000);
+    }
+  } catch (err) { showSnack('Errore: ' + err.message, 5000); }
+}
+
+async function deleteGuest(id) {
+  if (!confirm('Eliminare questo ospite?')) return;
+  const r = await fetch(`/api/guest/${id}`, { method: 'DELETE' });
+  const j = await r.json();
+  if (j.ok) {
+    document.querySelector(`tr[data-id="${id}"]`).remove();
+    showSnack('Eliminato');
+    updateCount();
+  }
+}
+
+async function deleteAll() {
+  if (!confirm('Svuotare TUTTA la lista? Azione irreversibile.')) return;
+  if (!confirm('Sei sicuro? Tutti i dati verranno persi.')) return;
+  const r = await fetch('/api/guests', { method: 'DELETE' });
+  const j = await r.json();
+  if (j.ok) {
+    showSnack('Lista svuotata');
+    setTimeout(() => location.reload(), 500);
+  }
+}
+
+// ── Inline Edit ──────────────────────────────────────────────────────────
+const BOOL_FIELDS = ['presenza_8','presenza_9','presenza_10','presenza_11','parcheggio_linate','parcheggio_hotel'];
+
+document.querySelectorAll('td.editable').forEach(td => {
+  const field = td.dataset.field;
+  const isBool = BOOL_FIELDS.includes(field);
+
+  if (isBool) {
+    // Click singolo per toggle booleano
+    td.addEventListener('click', async () => {
+      const gid = td.closest('tr').dataset.id;
+      const current = td.textContent.trim() === 'Sì';
+      const newVal = !current;
+      td.textContent = newVal ? 'Sì' : 'No';
+      await fetch(`/api/guest/${gid}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ [field]: newVal }),
+      });
+      showSnack('Salvato');
+    });
+  } else {
+    // Doppio click per edit testo
+    td.addEventListener('dblclick', () => {
+      if (td.querySelector('input')) return;
+      const original = td.textContent.trim();
+      const gid = td.closest('tr').dataset.id;
+
+      const input = document.createElement('input');
+      input.className = 'inline-input';
+      input.value = original;
+      td.textContent = '';
+      td.appendChild(input);
+      input.focus();
+      input.select();
+
+      const save = async () => {
+        const val = input.value.trim();
+        td.textContent = val;
+        if (val !== original) {
+          await fetch(`/api/guest/${gid}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ [field]: val }),
+          });
+          showSnack('Salvato');
+        }
+      };
+
+      input.addEventListener('blur', save);
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') input.blur();
+        if (e.key === 'Escape') { td.textContent = original; }
+      });
+    });
+  }
+});
+
+// ── Search ────────────────────────────────────────────────────────────────
+function filterTable() {
+  const q = document.getElementById('searchInput').value.toLowerCase();
+  document.querySelectorAll('#guestTable tbody tr').forEach(tr => {
+    tr.style.display = tr.textContent.toLowerCase().includes(q) ? '' : 'none';
+  });
+}
+
+// ── Count ─────────────────────────────────────────────────────────────────
+function updateCount() {
+  const n = document.querySelectorAll('#guestTable tbody tr').length;
+  document.getElementById('countBadge').textContent = `${n} ospiti`;
+}
+
+// ── Email Parser ──────────────────────────────────────────────────────────
+async function parseEmail() {
+  const text = document.getElementById('emailText').value.trim();
+  if (!text) return showSnack('Incolla del testo prima');
+
+  const btn = document.getElementById('parseBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Analisi...';
+
+  try {
+    const r = await fetch('/api/parse-email', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text }),
+    });
+    const j = await r.json();
+
+    if (!j.ok) {
+      showSnack('Errore: ' + j.error, 5000);
+      return;
+    }
+
+    const parsed = j.parsed;
+    const cost = j.usage;
+    document.getElementById('parseCost').textContent =
+      `${cost.input + cost.output} token | ${cost.cost_eur.toFixed(4)}`;
+
+    let html = `<div class="parsed-results">`;
+    html += `<div style="margin-bottom:12px;font-size:13px;color:var(--on-surface-variant)">
+      <strong>Riepilogo:</strong> ${parsed.summary || ''}</div>`;
+
+    if (!parsed.guests || parsed.guests.length === 0) {
+      html += `<p>Nessun ospite trovato nel testo.</p>`;
+    } else {
+      parsed.guests.forEach((g, i) => {
+        const actionClass = g.azione === 'update' ? 'action-update' : 'action-add';
+        const actionLabel = g.azione === 'update' ? 'AGGIORNA' : 'NUOVO';
+        html += `
+        <div class="parsed-guest" data-index="${i}">
+          <div style="display:flex;align-items:center;gap:8px">
+            <input type="checkbox" checked class="parsed-check" data-index="${i}">
+            <span class="name">${g.cognome || ''} ${g.nome || ''}</span>
+            <span class="action-tag ${actionClass}">${actionLabel}</span>
+            ${g.match_nome ? `<span style="font-size:12px;color:var(--info)">match: ${g.match_nome}</span>` : ''}
+          </div>
+          <div class="detail">
+            ${g.volo_arrivo ? `Arrivo: ${g.volo_arrivo}` : ''}
+            ${g.volo_partenza ? ` | Partenza: ${g.volo_partenza}` : ''}
+            ${g.tipo_camera ? ` | Camera: ${g.tipo_camera}` : ''}
+          </div>
+          ${g.nota ? `<div class="detail" style="font-style:italic">${g.nota}</div>` : ''}
+        </div>`;
+      });
+
+      html += `<div style="margin-top:14px">
+        <button class="btn btn-success" onclick="applyParsed()">
+          <span class="material-icons-round">check_circle</span>
+          Applica selezionati
+        </button>
+      </div>`;
+    }
+    html += `</div>`;
+    document.getElementById('parseResults').innerHTML = html;
+
+    // Salva dati parsed per apply
+    window._parsedGuests = parsed.guests;
+
+  } catch (err) {
+    showSnack('Errore: ' + err.message, 5000);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<span class="material-icons-round">auto_fix_high</span> Analizza';
+  }
+}
+
+async function applyParsed() {
+  if (!window._parsedGuests) return;
+
+  const selected = [];
+  document.querySelectorAll('.parsed-check').forEach(cb => {
+    if (cb.checked) selected.push(window._parsedGuests[cb.dataset.index]);
+  });
+
+  if (selected.length === 0) return showSnack('Nessun ospite selezionato');
+
+  const r = await fetch('/api/apply-parsed', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ guests: selected }),
+  });
+  const j = await r.json();
+
+  if (j.ok) {
+    const added = j.results.filter(r => r.action === 'added').length;
+    const updated = j.results.filter(r => r.action === 'updated').length;
+    showSnack(`${added} aggiunti, ${updated} aggiornati`);
+    setTimeout(() => location.reload(), 800);
+  } else {
+    showSnack('Errore: ' + j.error, 5000);
+  }
+}
+</script>
+</body>
+</html>

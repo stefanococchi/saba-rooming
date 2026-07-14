@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep -r \"def \" /mnt/c/Users/ACER/PycharmProjects/nexus-rooming/routes/*.py)",
+      "Bash(psql:*)",
+      "Bash(\"/mnt/c/Program Files/PostgreSQL/18/bin/psql.exe\" -U postgres -c \"SELECT datname FROM pg_database WHERE datname = 'saba_rooming'\" 2>&1)",
+      "Bash(python3:*)",
+      "Bash(python3 -c \":*)"
+    ]
+  }
+}
