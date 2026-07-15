@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from models import db, Guest, RoomContract
+from models import db, Guest, RoomContract, EmailLog
 
 
 def _parse_bool(val):
@@ -1006,6 +1006,15 @@ Per "azione": "update", valorizza "match_id" con l'ID dell'ospite corrispondente
         """Applica le azioni estratte dal parsing email."""
         data = request.get_json()
         guests_data = data.get('guests', [])
+        original_text = (data.get('original_text') or '').strip()
+        summary = (data.get('summary') or '').strip()
+
+        # Salva il messaggio originale nel log
+        email_log = None
+        if original_text:
+            email_log = EmailLog(testo=original_text, summary=summary or None)
+            db.session.add(email_log)
+            db.session.flush()
 
         results = []
         for gd in guests_data:
@@ -1038,10 +1047,13 @@ Per "azione": "update", valorizza "match_id" con l'ID dell'ospite corrispondente
                     if gd.get(f) is not None:
                         setattr(g, f, _parse_bool(gd[f]))
                 g.updated_at = datetime.utcnow()
+                if email_log:
+                    g.email_log_id = email_log.id
                 results.append({'cognome': cognome, 'ok': True, 'action': 'updated', 'id': g.id})
             else:
                 kwargs = dict(cognome=cognome, nome=nome, source='email',
-                              note=gd.get('nota'))
+                              note=gd.get('nota'),
+                              email_log_id=email_log.id if email_log else None)
                 for f in str_fields:
                     kwargs[f] = gd.get(f)
                 for f in bool_fields:
@@ -1053,6 +1065,14 @@ Per "azione": "update", valorizza "match_id" con l'ID dell'ospite corrispondente
 
         db.session.commit()
         return jsonify(ok=True, results=results)
+
+    # ── EMAIL LOG ─────────────────────────────────────────────────────────
+
+    @app.get('/api/email-log/<int:log_id>')
+    def get_email_log(log_id):
+        log = EmailLog.query.get_or_404(log_id)
+        return jsonify(id=log.id, testo=log.testo, summary=log.summary,
+                       created_at=log.created_at.isoformat())
 
     # ── DELETE ALL ───────────────────────────────────────────────────────────
 

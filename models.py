@@ -32,12 +32,22 @@ class Guest(db.Model):
     note_form             = db.Column(db.Text)
     note                  = db.Column(db.Text)
     source                = db.Column(db.String(20), default='manual')  # manual, xlsx, email
+    email_log_id          = db.Column(db.Integer, db.ForeignKey('email_logs.id'))
     created_at            = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at            = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     @property
     def nome_completo(self):
         return f'{self.cognome} {self.nome}'.strip()
+
+
+class EmailLog(db.Model):
+    __tablename__ = 'email_logs'
+
+    id         = db.Column(db.Integer, primary_key=True)
+    testo      = db.Column(db.Text, nullable=False)
+    summary    = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 
 class RoomContract(db.Model):

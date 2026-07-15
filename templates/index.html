@@ -614,6 +614,11 @@ textarea { resize: vertical; min-height: 120px; }
               <td><span class="source-badge source-{{ g.source }}">{{ g.source }}</span></td>
               <td>
                 <div class="action-btns">
+                  {% if g.email_log_id %}
+                  <button class="icon-btn" onclick="showEmailLog({{ g.email_log_id }})" title="Messaggio originale" style="color:var(--info)">
+                    <span class="material-icons-round" style="font-size:18px">mail</span>
+                  </button>
+                  {% endif %}
                   <button class="icon-btn delete" onclick="deleteGuest({{ g.id }})" title="Elimina">
                     <span class="material-icons-round" style="font-size:18px">delete</span>
                   </button>
@@ -630,6 +635,22 @@ textarea { resize: vertical; min-height: 120px; }
         </div>
         {% endif %}
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- Email Log Modal -->
+<div class="modal-overlay" id="emailLogModal" onclick="if(event.target===this)this.classList.remove('active')">
+  <div class="modal" style="max-width:700px">
+    <h3 style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+      <span class="material-icons-round" style="color:var(--primary)">mail</span>
+      Messaggio originale
+    </h3>
+    <div id="emailLogDate" style="font-size:12px;color:var(--on-surface-variant);margin-bottom:8px"></div>
+    <div id="emailLogSummary" style="font-size:13px;font-style:italic;color:var(--on-surface-variant);margin-bottom:12px"></div>
+    <pre id="emailLogText" style="background:var(--surface-variant);padding:16px;border-radius:var(--radius-sm);font-size:13px;white-space:pre-wrap;word-wrap:break-word;max-height:400px;overflow-y:auto"></pre>
+    <div class="btn-group" style="margin-top:14px">
+      <button class="btn btn-outline" onclick="document.getElementById('emailLogModal').classList.remove('active')">Chiudi</button>
     </div>
   </div>
 </div>
@@ -1450,12 +1471,26 @@ async function parseEmail() {
 
     // Salva dati parsed per apply
     window._parsedGuests = parsed.guests;
+    window._parsedSummary = parsed.summary || '';
 
   } catch (err) {
     showSnack('Errore: ' + err.message, 5000);
   } finally {
     btn.disabled = false;
     btn.innerHTML = '<span class="material-icons-round">auto_fix_high</span> Analizza';
+  }
+}
+
+async function showEmailLog(logId) {
+  try {
+    const r = await fetch(`/api/email-log/${logId}`);
+    const j = await r.json();
+    document.getElementById('emailLogText').textContent = j.testo;
+    document.getElementById('emailLogDate').textContent = `Ricevuto: ${new Date(j.created_at).toLocaleString('it-IT')}`;
+    document.getElementById('emailLogSummary').textContent = j.summary || '';
+    document.getElementById('emailLogModal').classList.add('active');
+  } catch (err) {
+    showSnack('Errore caricamento messaggio', 3000);
   }
 }
 
@@ -1472,7 +1507,11 @@ async function applyParsed() {
   const r = await fetch('/api/apply-parsed', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ guests: selected }),
+    body: JSON.stringify({
+      guests: selected,
+      original_text: document.getElementById('emailText').value,
+      summary: window._parsedSummary || ''
+    }),
   });
   const j = await r.json();
 
