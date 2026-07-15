@@ -174,6 +174,9 @@ td {
   border-bottom: 1px solid var(--outline-variant);
   vertical-align: middle;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 0;
 }
 tr:hover td { background: var(--surface-variant); }
 td.editable {
@@ -787,12 +790,31 @@ textarea { resize: vertical; min-height: 120px; }
 <div class="snackbar" id="snackbar"></div>
 
 <script>
-// ── Column Resize ────────────────────────────────────────────────────────
+// ── Column Resize (con persistenza in localStorage) ─────────────────────
 (function() {
+  const STORAGE_KEY = 'guestTableColWidths';
   const table = document.getElementById('guestTable');
   if (!table) return;
-  const ths = table.querySelectorAll('thead th');
-  ths.forEach(th => {
+  table.style.tableLayout = 'fixed';
+
+  const ths = Array.from(table.querySelectorAll('thead th'));
+
+  // Ripristina larghezze salvate
+  const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+  ths.forEach((th, i) => {
+    if (saved[i]) {
+      th.style.width = saved[i];
+      th.style.minWidth = saved[i];
+    }
+  });
+
+  function saveWidths() {
+    const widths = {};
+    ths.forEach((th, i) => { widths[i] = th.style.width; });
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(widths));
+  }
+
+  ths.forEach((th, i) => {
     const resizer = document.createElement('div');
     resizer.className = 'col-resizer';
     th.appendChild(resizer);
@@ -803,19 +825,20 @@ textarea { resize: vertical; min-height: 120px; }
       startW = th.offsetWidth;
       resizer.classList.add('resizing');
       const onMove = ev => {
-        th.style.width = Math.max(30, startW + ev.pageX - startX) + 'px';
-        th.style.minWidth = th.style.width;
+        const w = Math.max(30, startW + ev.pageX - startX) + 'px';
+        th.style.width = w;
+        th.style.minWidth = w;
       };
       const onUp = () => {
         resizer.classList.remove('resizing');
         document.removeEventListener('mousemove', onMove);
         document.removeEventListener('mouseup', onUp);
+        saveWidths();
       };
       document.addEventListener('mousemove', onMove);
       document.addEventListener('mouseup', onUp);
     });
   });
-  table.style.tableLayout = 'fixed';
 })();
 
 // ── Snackbar ──────────────────────────────────────────────────────────────
