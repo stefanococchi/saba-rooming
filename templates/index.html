@@ -154,6 +154,20 @@ th {
   position: sticky;
   top: 0;
   white-space: nowrap;
+  overflow: hidden;
+}
+th .col-resizer {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 5px;
+  cursor: col-resize;
+  background: transparent;
+}
+th .col-resizer:hover,
+th .col-resizer.resizing {
+  background: var(--primary-light);
 }
 td {
   padding: 5px 8px;
@@ -773,6 +787,37 @@ textarea { resize: vertical; min-height: 120px; }
 <div class="snackbar" id="snackbar"></div>
 
 <script>
+// ── Column Resize ────────────────────────────────────────────────────────
+(function() {
+  const table = document.getElementById('guestTable');
+  if (!table) return;
+  const ths = table.querySelectorAll('thead th');
+  ths.forEach(th => {
+    const resizer = document.createElement('div');
+    resizer.className = 'col-resizer';
+    th.appendChild(resizer);
+    let startX, startW;
+    resizer.addEventListener('mousedown', e => {
+      e.preventDefault();
+      startX = e.pageX;
+      startW = th.offsetWidth;
+      resizer.classList.add('resizing');
+      const onMove = ev => {
+        th.style.width = Math.max(30, startW + ev.pageX - startX) + 'px';
+        th.style.minWidth = th.style.width;
+      };
+      const onUp = () => {
+        resizer.classList.remove('resizing');
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+      };
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    });
+  });
+  table.style.tableLayout = 'fixed';
+})();
+
 // ── Snackbar ──────────────────────────────────────────────────────────────
 function showSnack(msg, ms = 3000) {
   const el = document.getElementById('snackbar');
