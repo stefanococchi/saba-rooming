@@ -470,72 +470,63 @@ textarea { resize: vertical; min-height: 120px; }
 
 <div class="container">
 
-  <!-- Action Buttons Row -->
-  <div class="grid-2">
-
-    <!-- Import / Export Card -->
-    <div class="card">
-      <div class="card-header">
-        <span class="material-icons-round">swap_vert</span>
-        Import / Export
-      </div>
-      <div class="card-body">
-        <div class="btn-group" style="margin-bottom:14px">
-          <label class="btn btn-outline" style="cursor:pointer">
-            <span class="material-icons-round">upload_file</span>
-            Importa XLSX
-            <input type="file" accept=".xlsx,.xls" id="importFile" hidden>
-          </label>
-          <a class="btn btn-outline" href="/api/export">
-            <span class="material-icons-round">download</span>
-            Esporta XLSX
-          </a>
-          <button class="btn btn-outline" onclick="openAddModal()">
-            <span class="material-icons-round">person_add</span>
-            Aggiungi
-          </button>
-        </div>
-        <div class="btn-group" style="margin-bottom:14px">
-          <button class="btn btn-outline" onclick="showStanze(8)">
-            <span class="material-icons-round">bed</span>
-            Stanze 8
-          </button>
-          <button class="btn btn-outline" onclick="showStanze(9)">
-            <span class="material-icons-round">bed</span>
-            Stanze 9
-          </button>
-          <button class="btn btn-outline" onclick="showStanze(10)">
-            <span class="material-icons-round">bed</span>
-            Stanze 10
-          </button>
-          <button class="btn btn-outline" onclick="showVoli('andata')">
-            <span class="material-icons-round">flight_land</span>
-            Voli Andata
-          </button>
-          <button class="btn btn-outline" onclick="showVoli('ritorno')">
-            <span class="material-icons-round">flight_takeoff</span>
-            Voli Ritorno
-          </button>
-          <button class="btn btn-outline" onclick="showCamere(8)">
-            <span class="material-icons-round">meeting_room</span>
-            Camere 8
-          </button>
-          <button class="btn btn-outline" onclick="showCamere(9)">
-            <span class="material-icons-round">meeting_room</span>
-            Camere 9
-          </button>
-        </div>
-        <div class="btn-group">
-          <button class="btn btn-danger btn-sm" onclick="deleteAll()">
-            <span class="material-icons-round">delete_sweep</span>
-            Svuota lista
-          </button>
-        </div>
-      </div>
+  <!-- Toolbar compatta -->
+  <div class="card" style="margin-bottom:16px">
+    <div class="card-body" style="padding:12px 20px;display:flex;flex-wrap:wrap;align-items:center;gap:8px">
+      <label class="btn btn-outline btn-sm" style="cursor:pointer">
+        <span class="material-icons-round">upload_file</span>
+        Importa XLSX
+        <input type="file" accept=".xlsx,.xls" id="importFile" hidden>
+      </label>
+      <a class="btn btn-outline btn-sm" href="/api/export">
+        <span class="material-icons-round">download</span>
+        Esporta XLSX
+      </a>
+      <button class="btn btn-outline btn-sm" onclick="openAddModal()">
+        <span class="material-icons-round">person_add</span>
+        Aggiungi
+      </button>
+      <span style="width:1px;height:24px;background:var(--outline-variant);margin:0 4px"></span>
+      <button class="btn btn-outline btn-sm" onclick="showStanze(8)">
+        <span class="material-icons-round">bed</span>
+        Stanze 8
+      </button>
+      <button class="btn btn-outline btn-sm" onclick="showStanze(9)">
+        <span class="material-icons-round">bed</span>
+        Stanze 9
+      </button>
+      <button class="btn btn-outline btn-sm" onclick="showStanze(10)">
+        <span class="material-icons-round">bed</span>
+        Stanze 10
+      </button>
+      <span style="width:1px;height:24px;background:var(--outline-variant);margin:0 4px"></span>
+      <button class="btn btn-outline btn-sm" onclick="showVoli('andata')">
+        <span class="material-icons-round">flight_land</span>
+        Voli Andata
+      </button>
+      <button class="btn btn-outline btn-sm" onclick="showVoli('ritorno')">
+        <span class="material-icons-round">flight_takeoff</span>
+        Voli Ritorno
+      </button>
+      <span style="width:1px;height:24px;background:var(--outline-variant);margin:0 4px"></span>
+      <button class="btn btn-outline btn-sm" onclick="showCamere(8)">
+        <span class="material-icons-round">meeting_room</span>
+        Camere 8
+      </button>
+      <button class="btn btn-outline btn-sm" onclick="showCamere(9)">
+        <span class="material-icons-round">meeting_room</span>
+        Camere 9
+      </button>
+      <span style="flex:1"></span>
+      <button class="btn btn-danger btn-sm" onclick="deleteAll()">
+        <span class="material-icons-round">delete_sweep</span>
+        Svuota lista
+      </button>
     </div>
+  </div>
 
-    <!-- Email Parser Card -->
-    <div class="card">
+  <!-- Email Parser Card -->
+  <div class="card" style="margin-bottom:16px">
       <div class="card-header">
         <span class="material-icons-round">smart_toy</span>
         Incolla Email
@@ -552,7 +543,6 @@ textarea { resize: vertical; min-height: 120px; }
         <div id="parseResults"></div>
       </div>
     </div>
-  </div>
 
   <!-- Main Table Card -->
   <div class="card">
