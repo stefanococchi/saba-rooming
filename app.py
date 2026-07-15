@@ -978,6 +978,21 @@ Per "azione": "update", valorizza "match_id" con l'ID dell'ospite corrispondente
                         g['match_id'] = match.id
                         g['match_nome'] = match.nome_completo
 
+            # Per ogni update, includi i dati attuali per confronto
+            compare_fields = ('cognome', 'nome', 'email', 'telefono', 'sede_lavoro',
+                              'volo_arrivo', 'volo_partenza',
+                              'aeroporto_partenza', 'aeroporto_arrivo',
+                              'pickup_bus_andata', 'pickup_bus_ritorno',
+                              'divide_stanza_con', 'restrizioni_alimentari',
+                              'tipo_camera', 'note_form',
+                              'presenza_8', 'presenza_9', 'presenza_10', 'presenza_11',
+                              'parcheggio_linate', 'parcheggio_hotel')
+            for g in parsed.get('guests', []):
+                if g.get('azione') == 'update' and g.get('match_id'):
+                    existing = Guest.query.get(g['match_id'])
+                    if existing:
+                        g['current_data'] = {f: getattr(existing, f) for f in compare_fields}
+
             return jsonify(ok=True, parsed=parsed,
                            usage={'input': inp, 'output': out, 'cost_eur': round(cost * 0.92, 4)})
 

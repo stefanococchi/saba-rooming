@@ -1380,9 +1380,57 @@ async function parseEmail() {
     if (!parsed.guests || parsed.guests.length === 0) {
       html += `<p>Nessun ospite trovato nel testo.</p>`;
     } else {
+      const fieldLabels = {
+        cognome: 'Cognome', nome: 'Nome', email: 'Email', telefono: 'Telefono',
+        sede_lavoro: 'Sede', volo_arrivo: 'Volo arrivo', volo_partenza: 'Volo partenza',
+        aeroporto_partenza: 'Aeroporto part.', aeroporto_arrivo: 'Aeroporto arr.',
+        pickup_bus_andata: 'Bus andata', pickup_bus_ritorno: 'Bus ritorno',
+        divide_stanza_con: 'Divide con', restrizioni_alimentari: 'Restrizioni',
+        tipo_camera: 'Tipo camera', note_form: 'Note',
+        presenza_8: 'Pres. 8', presenza_9: 'Pres. 9', presenza_10: 'Pres. 10', presenza_11: 'Pres. 11',
+        parcheggio_linate: 'Parch. Linate', parcheggio_hotel: 'Parch. Hotel'
+      };
+      function fmtVal(v) {
+        if (v === null || v === undefined || v === '') return '—';
+        if (v === true) return 'Sì';
+        if (v === false) return 'No';
+        return String(v);
+      }
+
       parsed.guests.forEach((g, i) => {
         const actionClass = g.azione === 'update' ? 'action-update' : 'action-add';
         const actionLabel = g.azione === 'update' ? 'AGGIORNA' : 'NUOVO';
+
+        let diffHtml = '';
+        if (g.azione === 'update' && g.current_data) {
+          let hasRealChange = false;
+          let diffRows = '';
+          for (const [field, label] of Object.entries(fieldLabels)) {
+            const proposed = g[field];
+            if (proposed === null || proposed === undefined) continue;
+            const current = g.current_data[field];
+            const curStr = fmtVal(current);
+            const newStr = fmtVal(proposed);
+            const same = curStr === newStr;
+            if (!same) hasRealChange = true;
+            diffRows += `<div style="display:flex;gap:6px;font-size:12px;padding:2px 0;${same ? 'color:#999' : ''}">
+              <span style="min-width:100px;font-weight:500">${label}:</span>
+              ${same
+                ? `<span>✓ ${curStr} (invariato)</span>`
+                : `<span style="text-decoration:line-through;color:#c62828">${curStr}</span>
+                   <span style="color:#333">→</span>
+                   <span style="color:#2e7d32;font-weight:600">${newStr}</span>`
+              }
+            </div>`;
+          }
+          if (!hasRealChange) {
+            diffHtml = `<div style="margin-top:6px;padding:6px 10px;background:#e8f5e9;border-radius:6px;font-size:12px;color:#2e7d32">
+              ✓ Nessuna modifica necessaria — i dati sono già aggiornati</div>`;
+          } else {
+            diffHtml = `<div style="margin-top:6px;padding:6px 10px;background:#f5f5f5;border-radius:6px">${diffRows}</div>`;
+          }
+        }
+
         html += `
         <div class="parsed-guest" data-index="${i}">
           <div style="display:flex;align-items:center;gap:8px">
@@ -1391,11 +1439,11 @@ async function parseEmail() {
             <span class="action-tag ${actionClass}">${actionLabel}</span>
             ${g.match_nome ? `<span style="font-size:12px;color:var(--info)">match: ${g.match_nome}</span>` : ''}
           </div>
-          <div class="detail">
+          ${diffHtml || `<div class="detail">
             ${g.volo_arrivo ? `Arrivo: ${g.volo_arrivo}` : ''}
             ${g.volo_partenza ? ` | Partenza: ${g.volo_partenza}` : ''}
             ${g.tipo_camera ? ` | Camera: ${g.tipo_camera}` : ''}
-          </div>
+          </div>`}
           ${g.nota ? `<div class="detail" style="font-style:italic">${g.nota}</div>` : ''}
         </div>`;
       });
