@@ -1068,6 +1068,18 @@ Per "azione": "update", valorizza "match_id" con l'ID dell'ospite corrispondente
 
     # ── EMAIL LOG ─────────────────────────────────────────────────────────
 
+    @app.get('/api/email-logs')
+    def list_email_logs():
+        logs = EmailLog.query.order_by(EmailLog.created_at.desc()).all()
+        return jsonify([{
+            'id': l.id,
+            'summary': l.summary,
+            'testo': l.testo,
+            'created_at': l.created_at.isoformat(),
+            'guests': [{'id': g.id, 'nome_completo': g.nome_completo}
+                        for g in Guest.query.filter_by(email_log_id=l.id).all()]
+        } for l in logs])
+
     @app.get('/api/email-log/<int:log_id>')
     def get_email_log(log_id):
         log = EmailLog.query.get_or_404(log_id)

@@ -517,6 +517,11 @@ textarea { resize: vertical; min-height: 120px; }
         <span class="material-icons-round">meeting_room</span>
         Camere 9
       </button>
+      <span style="width:1px;height:24px;background:var(--outline-variant);margin:0 4px"></span>
+      <button class="btn btn-outline btn-sm" onclick="showEmailLogs()">
+        <span class="material-icons-round">history</span>
+        Storico Email
+      </button>
       <span style="flex:1"></span>
       <button class="btn btn-danger btn-sm" onclick="deleteAll()">
         <span class="material-icons-round">delete_sweep</span>
@@ -635,6 +640,20 @@ textarea { resize: vertical; min-height: 120px; }
         </div>
         {% endif %}
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- Storico Email Modal -->
+<div class="modal-overlay" id="emailLogsModal" onclick="if(event.target===this)this.classList.remove('active')">
+  <div class="modal" style="max-width:800px;max-height:85vh;display:flex;flex-direction:column">
+    <h3 style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+      <span class="material-icons-round" style="color:var(--primary)">history</span>
+      Storico Email Analizzate
+    </h3>
+    <div id="emailLogsList" style="flex:1;overflow-y:auto"></div>
+    <div class="btn-group" style="margin-top:14px">
+      <button class="btn btn-outline" onclick="document.getElementById('emailLogsModal').classList.remove('active')">Chiudi</button>
     </div>
   </div>
 </div>
@@ -1478,6 +1497,42 @@ async function parseEmail() {
   } finally {
     btn.disabled = false;
     btn.innerHTML = '<span class="material-icons-round">auto_fix_high</span> Analizza';
+  }
+}
+
+async function showEmailLogs() {
+  try {
+    const r = await fetch('/api/email-logs');
+    const logs = await r.json();
+    const container = document.getElementById('emailLogsList');
+    if (logs.length === 0) {
+      container.innerHTML = '<p style="color:var(--on-surface-variant);padding:20px;text-align:center">Nessuna email analizzata.</p>';
+    } else {
+      container.innerHTML = logs.map(l => {
+        const date = new Date(l.created_at).toLocaleString('it-IT');
+        const guestList = l.guests.length
+          ? l.guests.map(g => g.nome_completo).join(', ')
+          : '<em>nessun ospite collegato</em>';
+        return `
+        <div style="border:1px solid var(--outline-variant);border-radius:var(--radius-sm);padding:14px;margin-bottom:10px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+            <span style="font-size:12px;color:var(--on-surface-variant)">${date}</span>
+            <button class="btn btn-outline btn-sm" onclick="showEmailLog(${l.id})">
+              <span class="material-icons-round" style="font-size:16px">visibility</span>
+              Vedi testo
+            </button>
+          </div>
+          ${l.summary ? `<div style="font-size:13px;font-weight:500;margin-bottom:6px">${l.summary}</div>` : ''}
+          <div style="font-size:12px;color:var(--on-surface-variant)">
+            <span class="material-icons-round" style="font-size:14px;vertical-align:middle">people</span>
+            ${guestList}
+          </div>
+        </div>`;
+      }).join('');
+    }
+    document.getElementById('emailLogsModal').classList.add('active');
+  } catch (err) {
+    showSnack('Errore caricamento storico', 3000);
   }
 }
 
