@@ -993,7 +993,12 @@ Per "azione": "update", valorizza "match_id" con l'ID dell'ospite corrispondente
                     if existing:
                         g['current_data'] = {f: getattr(existing, f) for f in compare_fields}
 
-            return jsonify(ok=True, parsed=parsed,
+            # Salva il messaggio originale nel log (anche se non verrà applicato)
+            email_log = EmailLog(testo=text, summary=parsed.get('summary'))
+            db.session.add(email_log)
+            db.session.commit()
+
+            return jsonify(ok=True, parsed=parsed, email_log_id=email_log.id,
                            usage={'input': inp, 'output': out, 'cost_eur': round(cost * 0.92, 4)})
 
         except json.JSONDecodeError:
@@ -1006,15 +1011,7 @@ Per "azione": "update", valorizza "match_id" con l'ID dell'ospite corrispondente
         """Applica le azioni estratte dal parsing email."""
         data = request.get_json()
         guests_data = data.get('guests', [])
-        original_text = (data.get('original_text') or '').strip()
-        summary = (data.get('summary') or '').strip()
-
-        # Salva il messaggio originale nel log
-        email_log = None
-        if original_text:
-            email_log = EmailLog(testo=original_text, summary=summary or None)
-            db.session.add(email_log)
-            db.session.flush()
+        email_log_id = data.get('email_log_id')
 
         results = []
         for gd in guests_data:
@@ -1047,13 +1044,13 @@ Per "azione": "update", valorizza "match_id" con l'ID dell'ospite corrispondente
                     if gd.get(f) is not None:
                         setattr(g, f, _parse_bool(gd[f]))
                 g.updated_at = datetime.utcnow()
-                if email_log:
-                    g.email_log_id = email_log.id
+                if email_log_id:
+                    g.email_log_id = email_log_id
                 results.append({'cognome': cognome, 'ok': True, 'action': 'updated', 'id': g.id})
             else:
                 kwargs = dict(cognome=cognome, nome=nome, source='email',
                               note=gd.get('nota'),
-                              email_log_id=email_log.id if email_log else None)
+                              email_log_id=email_log_id)
                 for f in str_fields:
                     kwargs[f] = gd.get(f)
                 for f in bool_fields:

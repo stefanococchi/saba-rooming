@@ -1491,6 +1491,7 @@ async function parseEmail() {
     // Salva dati parsed per apply
     window._parsedGuests = parsed.guests;
     window._parsedSummary = parsed.summary || '';
+    window._emailLogId = j.email_log_id;
 
   } catch (err) {
     showSnack('Errore: ' + err.message, 5000);
@@ -1564,8 +1565,7 @@ async function applyParsed() {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       guests: selected,
-      original_text: document.getElementById('emailText').value,
-      summary: window._parsedSummary || ''
+      email_log_id: window._emailLogId || null
     }),
   });
   const j = await r.json();
