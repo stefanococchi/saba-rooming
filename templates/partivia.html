@@ -531,7 +531,6 @@ textarea { resize:vertical; min-height:120px; }
             <th>Total</th>
             <th>Dates</th>
             <th>Option Deadline</th>
-            <th>Status</th>
             <th>Address</th>
             <th>Website URL</th>
             <th>Photo</th>
@@ -548,10 +547,6 @@ textarea { resize:vertical; min-height:120px; }
             <td class="editable" data-field="total_estimate">{{ q.total_estimate or '' }}</td>
             <td class="editable" data-field="dates_proposed">{{ q.dates_proposed or '' }}</td>
             <td class="editable" data-field="validity_date" style="font-weight:600;color:var(--warning)">{{ q.validity_date or '' }}</td>
-            <td>
-              <span class="status-badge status-{{ q.quote_status.replace(' ','_') }}"
-                    onclick="cycleStatus(this,{{ q.id }})">{{ q.quote_status.replace('_',' ') }}</span>
-            </td>
             <td class="editable" data-field="address">{{ q.address or '' }}</td>
             <td class="editable" data-field="website_url" style="max-width:150px;overflow:hidden;text-overflow:ellipsis">{{ q.website_url or '' }}</td>
             <td class="img-cell" data-id="{{ q.id }}" style="min-width:80px;text-align:center">
