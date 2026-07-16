@@ -532,6 +532,7 @@ textarea { resize:vertical; min-height:120px; }
             <th>Dates</th>
             <th>Option Deadline</th>
             <th>Status</th>
+            <th>Address</th>
             <th>Website URL</th>
             <th>Photo</th>
             <th></th>
@@ -551,6 +552,7 @@ textarea { resize:vertical; min-height:120px; }
               <span class="status-badge status-{{ q.quote_status.replace(' ','_') }}"
                     onclick="cycleStatus(this,{{ q.id }})">{{ q.quote_status.replace('_',' ') }}</span>
             </td>
+            <td class="editable" data-field="address">{{ q.address or '' }}</td>
             <td class="editable" data-field="website_url" style="max-width:150px;overflow:hidden;text-overflow:ellipsis">{{ q.website_url or '' }}</td>
             <td class="img-cell" data-id="{{ q.id }}" style="min-width:80px;text-align:center">
               {% if q.image_url %}
@@ -601,6 +603,7 @@ textarea { resize:vertical; min-height:120px; }
       <div class="form-group"><label>Available Rooms</label><input type="text" id="addRooms"></div>
       <div class="form-group"><label>Estimated Total</label><input type="text" id="addTotal" placeholder="e.g. € 45,000"></div>
       <div class="form-group"><label>Option Deadline</label><input type="text" id="addDeadline" value="July 20, 2026"></div>
+      <div class="form-group"><label>Address</label><input type="text" id="addAddress" placeholder="Street address"></div>
       <div class="form-group"><label>Hotel Website URL</label><input type="text" id="addWebsite" placeholder="https://..."></div>
       <div class="form-group">
         <label>Photo</label>
@@ -641,6 +644,7 @@ const HOTELS_DATA = {
     hotel: {{ h.best.hotel_name|tojson }},
     city: {{ h.best.city|tojson }},
     stars: {{ h.best.stars or 'null' }},
+    address: {{ (h.best.address or '')|tojson }},
     image: {{ (h.best.image_url or '')|tojson }},
     website: {{ (h.best.website_url or '')|tojson }},
     best_id: {{ h.best.id }},
@@ -828,7 +832,8 @@ function openHotelDetail(hotelKey) {
     ? `<a href="${hotel.website}" target="_blank" style="color:var(--primary);text-decoration:underline;font-size:15px;font-weight:600">${hotel.hotel}</a>`
     : `<span style="font-size:15px;font-weight:600">${hotel.hotel}</span>`;
   h += `<div style="margin-bottom:4px">${hotelTitle}</div>`;
-  h += `<div style="font-size:13px;color:var(--on-surface-variant);margin-bottom:8px">${hotel.city} ${hotel.stars ? '\u2605'.repeat(hotel.stars) : ''}</div>`;
+  h += `<div style="font-size:13px;color:var(--on-surface-variant);margin-bottom:4px">${hotel.city} ${hotel.stars ? '\u2605'.repeat(hotel.stars) : ''}</div>`;
+  if (hotel.address) h += `<div style="font-size:12px;color:var(--on-surface-variant);margin-bottom:8px"><span class="material-icons-round" style="font-size:14px;vertical-align:middle">location_on</span> ${hotel.address}</div>`;
   if (hotel.versions.length > 1) {
     h += `<div style="font-size:12px;color:var(--primary);font-weight:600;margin-bottom:4px">${hotel.versions.length} emails/versions processed</div>`;
   }
@@ -1033,6 +1038,7 @@ async function addQuote() {
     rooms_available: document.getElementById('addRooms').value.trim()||null,
     total_estimate: document.getElementById('addTotal').value.trim()||null,
     validity_date: document.getElementById('addDeadline').value.trim()||null,
+    address: document.getElementById('addAddress').value.trim()||null,
     website_url: document.getElementById('addWebsite').value.trim()||null,
     image_url: document.getElementById('addImage').value.trim()||null,
     notes: document.getElementById('addNotes').value.trim()||null,

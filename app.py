@@ -1302,6 +1302,7 @@ For each quote, extract:
 - stars (integer 1-5 or null)
 - contact_name, contact_email (hotel contact)
 - website_url (hotel website URL if mentioned, or null)
+- address (hotel street address if mentioned, or null)
 - dates_proposed (proposed dates, e.g. "10-13 October 2026" — MANDATORY, always extract available dates/periods mentioned in the email)
 - rooms_available (available rooms)
 - min_rooms_required (minimum rooms required)
@@ -1434,7 +1435,7 @@ Reply ONLY with valid JSON (no markdown):
                               'min_rooms_required', 'cancellation_policy',
                               'payment_terms', 'validity_date', 'commission',
                               'total_estimate', 'notes', 'raw_summary',
-                              'website_url'):
+                              'website_url', 'address'):
                     if qd.get(field) is not None:
                         setattr(q, field, qd[field])
                 if qd.get('included_services'):
@@ -1490,6 +1491,7 @@ Reply ONLY with valid JSON (no markdown):
                     notes=qd.get('notes'),
                     raw_summary=qd.get('raw_summary'),
                     website_url=qd.get('website_url'),
+                    address=qd.get('address'),
                     source='email',
                     email_log_id=email_log_id,
                 )
@@ -1807,7 +1809,7 @@ Notes: {q.notes or 'N/A'}"""
                       'payment_terms', 'validity_date', 'commission',
                       'total_estimate', 'included_services', 'notes',
                       'raw_summary', 'quote_status', 'image_url',
-                      'website_url'):
+                      'website_url', 'address'):
             if field in data:
                 val = data[field]
                 if field == 'stars' and val is not None:
@@ -2118,6 +2120,7 @@ Notes: {q.notes or 'N/A'}"""
             validity_date=data.get('validity_date'),
             image_url=data.get('image_url'),
             website_url=data.get('website_url'),
+            address=data.get('address'),
             notes=data.get('notes'),
             source='manual',
         )
