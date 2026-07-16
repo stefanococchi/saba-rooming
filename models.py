@@ -59,3 +59,76 @@ class RoomContract(db.Model):
     tariffa_netta  = db.Column(db.Float)
     tariffa_lorda  = db.Column(db.Float)
     notte          = db.Column(db.Integer, nullable=False)  # 8, 9, 10, 11
+
+
+# ── Partivia: preventivi hotel ──────────────────────────────────────
+
+
+class PartiviaQuote(db.Model):
+    __tablename__ = 'partivia_quotes'
+
+    id                  = db.Column(db.Integer, primary_key=True)
+    hotel_name          = db.Column(db.String(200), nullable=False)
+    city                = db.Column(db.String(100), nullable=False)
+    stars               = db.Column(db.Integer)
+    contact_name        = db.Column(db.String(200))
+    contact_email       = db.Column(db.String(200))
+    dates_proposed      = db.Column(db.Text)
+    rooms_available     = db.Column(db.Text)
+    min_rooms_required  = db.Column(db.Text)
+    cancellation_policy = db.Column(db.Text)
+    payment_terms       = db.Column(db.Text)
+    validity_date       = db.Column(db.Text)
+    commission          = db.Column(db.Text)
+    total_estimate      = db.Column(db.Text)
+    included_services   = db.Column(db.Text)       # comma-separated
+    notes               = db.Column(db.Text)
+    raw_summary         = db.Column(db.Text)
+    quote_status        = db.Column(db.String(100), default='da_valutare')
+    source              = db.Column(db.String(20), default='email')
+    email_log_id        = db.Column(db.Integer, db.ForeignKey('email_logs.id'))
+    created_at          = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at          = db.Column(db.DateTime, default=datetime.utcnow,
+                                    onupdate=datetime.utcnow)
+
+    room_rates    = db.relationship('PartiviaRoomRate', backref='quote',
+                                    cascade='all, delete-orphan', lazy='joined')
+    meeting_rooms = db.relationship('PartiviaMeetingRoom', backref='quote',
+                                    cascade='all, delete-orphan', lazy='joined')
+    fb_options    = db.relationship('PartiviaFBOption', backref='quote',
+                                    cascade='all, delete-orphan', lazy='joined')
+
+
+class PartiviaRoomRate(db.Model):
+    __tablename__ = 'partivia_room_rates'
+
+    id                 = db.Column(db.Integer, primary_key=True)
+    quote_id           = db.Column(db.Integer,
+                                   db.ForeignKey('partivia_quotes.id'), nullable=False)
+    room_type          = db.Column(db.Text, nullable=False)
+    rate_per_night     = db.Column(db.Text)
+    breakfast_included = db.Column(db.Text)
+    notes              = db.Column(db.Text)
+
+
+class PartiviaMeetingRoom(db.Model):
+    __tablename__ = 'partivia_meeting_rooms'
+
+    id       = db.Column(db.Integer, primary_key=True)
+    quote_id = db.Column(db.Integer,
+                         db.ForeignKey('partivia_quotes.id'), nullable=False)
+    name     = db.Column(db.Text, nullable=False)
+    capacity = db.Column(db.Text)
+    rate     = db.Column(db.Text)
+    notes    = db.Column(db.Text)
+
+
+class PartiviaFBOption(db.Model):
+    __tablename__ = 'partivia_fb_options'
+
+    id               = db.Column(db.Integer, primary_key=True)
+    quote_id         = db.Column(db.Integer,
+                                 db.ForeignKey('partivia_quotes.id'), nullable=False)
+    meal_type        = db.Column(db.Text, nullable=False)
+    price_per_person = db.Column(db.Text)
+    menu_description = db.Column(db.Text)

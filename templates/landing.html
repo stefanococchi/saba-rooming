@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Saba Portal</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: 'Inter', system-ui, sans-serif;
+  background: #f5f0eb;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+.header {
+  text-align: center;
+  margin-bottom: 48px;
+}
+.header h1 {
+  font-size: 32px;
+  font-weight: 700;
+  color: #3e2723;
+  margin-bottom: 8px;
+}
+.header p {
+  font-size: 15px;
+  color: #795548;
+}
+.cards {
+  display: flex;
+  gap: 32px;
+  flex-wrap: wrap;
+  justify-content: center;
+  padding: 0 24px;
+}
+.portal-card {
+  background: #fff;
+  border-radius: 16px;
+  padding: 48px 40px;
+  width: 320px;
+  text-align: center;
+  text-decoration: none;
+  color: inherit;
+  box-shadow: 0 2px 12px rgba(0,0,0,.08);
+  transition: transform .2s, box-shadow .2s;
+  cursor: pointer;
+}
+.portal-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 32px rgba(0,0,0,.12);
+}
+.portal-card .icon {
+  width: 72px;
+  height: 72px;
+  border-radius: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 20px;
+}
+.portal-card .icon .material-icons-round {
+  font-size: 36px;
+  color: #fff;
+}
+.card-rooming .icon { background: #795548; }
+.card-partivia .icon { background: #2F5496; }
+.portal-card h2 {
+  font-size: 20px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+.card-rooming h2 { color: #795548; }
+.card-partivia h2 { color: #2F5496; }
+.portal-card p {
+  font-size: 14px;
+  color: #666;
+  line-height: 1.5;
+}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Saba Portal</h1>
+  <p>Scegli la sezione</p>
+</div>
+
+<div class="cards">
+  <a href="/rooming" class="portal-card card-rooming">
+    <div class="icon">
+      <span class="material-icons-round">hotel</span>
+    </div>
+    <h2>Rooming</h2>
+    <p>Gestione ospiti, voli, camere e trasporti per l'evento</p>
+  </a>
+
+  <a href="/partivia" class="portal-card card-partivia">
+    <div class="icon">
+      <span class="material-icons-round">apartment</span>
+    </div>
+    <h2>Partivia Spagna</h2>
+    <p>Preventivi hotel, confronto tariffe, sale meeting e F&B</p>
+  </a>
+</div>
+
+</body>
+</html>

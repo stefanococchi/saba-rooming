@@ -1,0 +1,1091 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Saba Partivia</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
+<style>
+:root {
+  --primary: #2F5496;
+  --primary-light: #5b7fc2;
+  --primary-dark: #1a3a6b;
+  --surface: #f5f7fb;
+  --surface-card: #ffffff;
+  --surface-variant: #e8ecf4;
+  --on-surface: #1c1b1f;
+  --on-surface-variant: #49454f;
+  --outline: #bcc4d0;
+  --outline-variant: #dfe3eb;
+  --error: #ba1a1a;
+  --success: #2e7d32;
+  --info: #0277bd;
+  --warning: #e65100;
+  --radius: 16px;
+  --radius-sm: 12px;
+  --shadow-sm: 0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.06);
+  --shadow-md: 0 4px 12px rgba(0,0,0,.1);
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', system-ui, sans-serif;
+  background: var(--surface);
+  color: var(--on-surface);
+  min-height: 100vh;
+}
+
+/* ── Top Bar ──────────────────────────────────────────────────────────── */
+.topbar {
+  background: var(--primary);
+  color: white;
+  padding: 16px 24px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  box-shadow: var(--shadow-md);
+}
+.topbar h1 { font-size: 20px; font-weight: 600; }
+.topbar .spacer { flex: 1; }
+.topbar .badge {
+  background: rgba(255,255,255,.2);
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 500;
+}
+.topbar a {
+  color: rgba(255,255,255,.8);
+  text-decoration: none;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  transition: color .15s;
+}
+.topbar a:hover { color: #fff; }
+
+/* ── Layout ───────────────────────────────────────────────────────────── */
+.container { max-width: 100%; padding: 16px; }
+
+/* ── Cards ────────────────────────────────────────────────────────────── */
+.card {
+  background: var(--surface-card);
+  border-radius: var(--radius);
+  border: 1px solid var(--outline-variant);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+  margin-bottom: 16px;
+}
+.card-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--outline-variant);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--primary-dark);
+}
+.card-header .material-icons-round { font-size: 22px; color: var(--primary); }
+.card-body { padding: 20px; }
+
+/* ── Buttons ──────────────────────────────────────────────────────────── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 20px;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all .15s;
+}
+.btn .material-icons-round { font-size: 18px; }
+.btn-primary { background: var(--primary); color: white; }
+.btn-primary:hover { background: var(--primary-dark); }
+.btn-outline { background: transparent; color: var(--primary); border: 1px solid var(--primary-light); }
+.btn-outline:hover { background: var(--surface-variant); }
+.btn-danger { background: transparent; color: var(--error); border: 1px solid #f5c6cb; }
+.btn-danger:hover { background: #fef2f2; }
+.btn-success { background: var(--success); color: white; }
+.btn-sm { padding: 6px 12px; font-size: 13px; }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+.btn-group { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* ── Toolbar ──────────────────────────────────────────────────────────── */
+.toolbar {
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* ── Table ────────────────────────────────────────────────────────────── */
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 12px; }
+th {
+  background: var(--surface-variant);
+  padding: 8px 10px;
+  text-align: left;
+  font-weight: 600;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: .3px;
+  color: var(--on-surface-variant);
+  position: sticky;
+  top: 0;
+  white-space: nowrap;
+}
+td {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--outline-variant);
+  vertical-align: middle;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px;
+}
+tr:hover td { background: var(--surface-variant); }
+td.editable { cursor: pointer; position: relative; }
+td.editable:hover { background: #e0e8f5; }
+td.editable::after {
+  content: 'edit';
+  font-family: 'Material Icons Round';
+  font-size: 14px;
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--primary-light);
+  opacity: 0;
+  transition: opacity .15s;
+}
+td.editable:hover::after { opacity: 1; }
+
+.action-btns { display: flex; gap: 4px; }
+.icon-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 8px;
+  color: var(--on-surface-variant);
+  transition: all .15s;
+  display: flex;
+  align-items: center;
+}
+.icon-btn:hover { background: var(--surface-variant); }
+.icon-btn.delete:hover { color: var(--error); background: #fef2f2; }
+
+/* ── Status badges ───────────────────────────────────────────────────── */
+.status-badge {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.status-da_valutare { background: #fff3e0; color: #e65100; }
+.status-in_trattativa { background: #e3f2fd; color: #1565c0; }
+.status-confermato { background: #e8f5e9; color: #2e7d32; }
+.status-rifiutato { background: #fce4ec; color: #c62828; }
+.status-scaduto { background: #f5f5f5; color: #757575; }
+
+.source-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+.source-email { background: #e3f2fd; color: #1565c0; }
+.source-manual { background: #fff3e0; color: #e65100; }
+
+/* ── Stars ────────────────────────────────────────────────────────────── */
+.stars { color: #f9a825; font-size: 14px; letter-spacing: -2px; }
+
+/* ── Forms / Inputs ──────────────────────────────────────────────────── */
+input[type="text"], textarea, select {
+  font-family: inherit;
+  font-size: 14px;
+  padding: 10px 14px;
+  border: 1px solid var(--outline);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--on-surface);
+  width: 100%;
+  transition: border-color .15s;
+}
+input:focus, textarea:focus, select:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(47,84,150,.15);
+}
+textarea { resize: vertical; min-height: 120px; }
+
+.form-group { margin-bottom: 14px; }
+.form-group label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  color: var(--on-surface-variant);
+  margin-bottom: 6px;
+}
+
+.inline-input {
+  font-family: inherit;
+  font-size: 12px;
+  padding: 2px 4px;
+  border: 1px solid var(--primary);
+  border-radius: 4px;
+  width: 100%;
+  background: #fff;
+}
+
+/* ── Email Parser ─────────────────────────────────────────────────────── */
+.parsed-results {
+  margin-top: 16px;
+  padding: 16px;
+  background: var(--surface-variant);
+  border-radius: var(--radius-sm);
+}
+.parsed-quote {
+  background: var(--surface-card);
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius-sm);
+  padding: 14px;
+  margin-bottom: 10px;
+}
+.parsed-quote:last-child { margin-bottom: 0; }
+.parsed-quote .hotel-name { font-weight: 600; font-size: 15px; }
+.parsed-quote .detail { font-size: 13px; color: var(--on-surface-variant); margin-top: 4px; }
+.parsed-quote .detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 6px;
+  margin-top: 8px;
+  font-size: 12px;
+}
+.parsed-quote .detail-grid .label { font-weight: 600; color: var(--on-surface-variant); }
+.action-tag {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.action-add { background: #e8f5e9; color: #2e7d32; }
+.action-update { background: #e3f2fd; color: #1565c0; }
+
+/* ── Search ───────────────────────────────────────────────────────────── */
+.search-bar {
+  margin-bottom: 12px;
+  position: relative;
+}
+.search-bar input { padding-left: 40px; }
+.search-bar .material-icons-round {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--on-surface-variant);
+  font-size: 20px;
+}
+
+/* ── Detail row ──────────────────────────────────────────────────────── */
+.detail-row td {
+  background: var(--surface-variant) !important;
+  padding: 12px 16px;
+  white-space: normal;
+  max-width: none;
+}
+.detail-content {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+}
+.detail-section h4 {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  color: var(--primary);
+  margin-bottom: 8px;
+}
+.detail-section table {
+  font-size: 12px;
+  margin-bottom: 0;
+}
+.detail-section td, .detail-section th {
+  padding: 4px 8px;
+  background: var(--surface-card);
+}
+
+/* ── Empty state ─────────────────────────────────────────────────────── */
+.empty-state {
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--on-surface-variant);
+}
+.empty-state .material-icons-round { font-size: 48px; margin-bottom: 12px; opacity: .5; }
+.empty-state p { font-size: 14px; }
+
+/* ── Snackbar ────────────────────────────────────────────────────────── */
+.snackbar {
+  position: fixed;
+  bottom: -60px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #333;
+  color: #fff;
+  padding: 12px 24px;
+  border-radius: 8px;
+  font-size: 14px;
+  z-index: 200;
+  transition: bottom .3s;
+  box-shadow: var(--shadow-md);
+}
+.snackbar.show { bottom: 24px; }
+
+/* ── Spinner ─────────────────────────────────────────────────────────── */
+.spinner {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255,255,255,.3);
+  border-radius: 50%;
+  border-top-color: #fff;
+  animation: spin .6s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Modal ────────────────────────────────────────────────────────────── */
+.modal-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.5);
+  z-index: 150;
+  align-items: center;
+  justify-content: center;
+}
+.modal-overlay.open { display: flex; }
+.modal {
+  background: var(--surface-card);
+  border-radius: var(--radius);
+  width: 90%;
+  max-width: 500px;
+  max-height: 80vh;
+  overflow-y: auto;
+  box-shadow: 0 24px 48px rgba(0,0,0,.2);
+}
+.modal-header {
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--outline-variant);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-weight: 600;
+  font-size: 16px;
+}
+.modal-body { padding: 24px; }
+.modal-footer {
+  padding: 16px 24px;
+  border-top: 1px solid var(--outline-variant);
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* ── Stats row ───────────────────────────────────────────────────────── */
+.stats-row {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+.stat-box {
+  background: var(--surface-card);
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius-sm);
+  padding: 12px 20px;
+  text-align: center;
+  min-width: 100px;
+}
+.stat-box .num { font-size: 24px; font-weight: 700; color: var(--primary); }
+.stat-box .label { font-size: 11px; color: var(--on-surface-variant); text-transform: uppercase; }
+
+/* ── Filter bar ──────────────────────────────────────────────────────── */
+.filter-bar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+  padding: 0 16px;
+}
+.filter-chip {
+  padding: 4px 12px;
+  border-radius: 16px;
+  border: 1px solid var(--outline);
+  font-size: 12px;
+  cursor: pointer;
+  background: transparent;
+  transition: all .15s;
+}
+.filter-chip.active {
+  background: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
+}
+.filter-chip:hover:not(.active) { background: var(--surface-variant); }
+</style>
+</head>
+<body>
+
+<!-- ── Topbar ─────────────────────────────────────────────────────────── -->
+<div class="topbar">
+  <a href="/" title="Torna al portale">
+    <span class="material-icons-round">arrow_back</span>
+  </a>
+  <span class="material-icons-round">apartment</span>
+  <h1>Partivia Spagna</h1>
+  <div class="spacer"></div>
+  <span class="badge" id="countBadge">{{ quotes|length }} preventivi</span>
+</div>
+
+<!-- ── Container ──────────────────────────────────────────────────────── -->
+<div class="container">
+
+  <!-- Stats -->
+  <div class="stats-row">
+    {% set cities = quotes|map(attribute='city')|list %}
+    <div class="stat-box">
+      <div class="num">{{ quotes|length }}</div>
+      <div class="label">Totale</div>
+    </div>
+    {% for city in cities|unique|sort %}
+    <div class="stat-box">
+      <div class="num">{{ cities|select('equalto', city)|list|length }}</div>
+      <div class="label">{{ city }}</div>
+    </div>
+    {% endfor %}
+    {% set confirmed = quotes|selectattr('quote_status', 'equalto', 'confermato')|list|length %}
+    {% if confirmed > 0 %}
+    <div class="stat-box">
+      <div class="num" style="color:var(--success)">{{ confirmed }}</div>
+      <div class="label">Confermati</div>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- Toolbar -->
+  <div class="toolbar">
+    <a href="/api/partivia/export" class="btn btn-outline btn-sm">
+      <span class="material-icons-round">download</span>
+      Export XLSX
+    </a>
+    <button class="btn btn-outline btn-sm" onclick="openAddModal()">
+      <span class="material-icons-round">add</span>
+      Aggiungi Manuale
+    </button>
+  </div>
+
+  <!-- Email Parser -->
+  <div class="card">
+    <div class="card-header">
+      <span class="material-icons-round">smart_toy</span>
+      Incolla Email Preventivo
+    </div>
+    <div class="card-body">
+      <textarea id="emailText" placeholder="Incolla qui il testo dell'email con il preventivo hotel..."></textarea>
+      <div style="margin-top:10px; display:flex; align-items:center; gap:10px">
+        <button class="btn btn-primary" onclick="parseEmail()" id="parseBtn">
+          <span class="material-icons-round">auto_fix_high</span>
+          Analizza
+        </button>
+        <span id="parseCost" style="font-size:12px; color:var(--on-surface-variant)"></span>
+      </div>
+      <div id="parseResults"></div>
+    </div>
+  </div>
+
+  <!-- Quotes Table -->
+  <div class="card">
+    <div class="card-header">
+      <span class="material-icons-round">list</span>
+      Preventivi Hotel
+    </div>
+    <div class="card-body" style="padding:0">
+      <!-- Search -->
+      <div class="search-bar" style="padding:16px 16px 0">
+        <span class="material-icons-round">search</span>
+        <input type="text" id="searchInput" placeholder="Cerca hotel, città..."
+               oninput="filterTable()">
+      </div>
+      <!-- City/Status filters -->
+      <div class="filter-bar" style="padding-top:8px">
+        <span style="font-size:11px;color:var(--on-surface-variant);font-weight:600">CITTÀ:</span>
+        <button class="filter-chip active" data-filter="city" data-value="all" onclick="setFilter(this)">Tutte</button>
+        {% for city in cities|unique|sort %}
+        <button class="filter-chip" data-filter="city" data-value="{{ city }}" onclick="setFilter(this)">{{ city }}</button>
+        {% endfor %}
+        <span style="margin-left:8px;font-size:11px;color:var(--on-surface-variant);font-weight:600">STATO:</span>
+        <button class="filter-chip active" data-filter="status" data-value="all" onclick="setFilter(this)">Tutti</button>
+        <button class="filter-chip" data-filter="status" data-value="da_valutare" onclick="setFilter(this)">Da valutare</button>
+        <button class="filter-chip" data-filter="status" data-value="in_trattativa" onclick="setFilter(this)">In trattativa</button>
+        <button class="filter-chip" data-filter="status" data-value="confermato" onclick="setFilter(this)">Confermato</button>
+        <button class="filter-chip" data-filter="status" data-value="rifiutato" onclick="setFilter(this)">Rifiutato</button>
+      </div>
+
+      <div class="table-wrap">
+        {% if quotes %}
+        <table id="quotesTable">
+          <thead>
+            <tr>
+              <th></th>
+              <th>Hotel</th>
+              <th>Città</th>
+              <th>Stelle</th>
+              <th>Camere</th>
+              <th>Singola</th>
+              <th>Doppia</th>
+              <th>Sala Meeting</th>
+              <th>Totale</th>
+              <th>Date</th>
+              <th>Validità</th>
+              <th>Stato</th>
+              <th>Fonte</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for q in quotes %}
+            {% set main_mr = q.meeting_rooms[0] if q.meeting_rooms else None %}
+            <tr data-id="{{ q.id }}" data-city="{{ q.city }}" data-status="{{ q.quote_status }}">
+              <td>
+                <button class="icon-btn" onclick="toggleDetail(this, {{ q.id }})" title="Dettaglio">
+                  <span class="material-icons-round" style="font-size:18px">expand_more</span>
+                </button>
+              </td>
+              <td class="editable" data-field="hotel_name">{{ q.hotel_name }}</td>
+              <td class="editable" data-field="city">{{ q.city }}</td>
+              <td class="editable" data-field="stars">
+                <span class="stars">{{ '★' * (q.stars or 0) }}</span>
+              </td>
+              <td class="editable" data-field="rooms_available">{{ q.rooms_available or '' }}</td>
+              <td>{% for rr in q.room_rates if 'singol' in rr.room_type|lower %}{{ rr.rate_per_night or '' }}{% endfor %}</td>
+              <td>{% for rr in q.room_rates if 'doppi' in rr.room_type|lower or 'double' in rr.room_type|lower or 'twin' in rr.room_type|lower %}{{ rr.rate_per_night or '' }}{% endfor %}</td>
+              <td>{{ main_mr.name if main_mr else '' }}{% if main_mr and main_mr.capacity %} ({{ main_mr.capacity }}){% endif %}</td>
+              <td class="editable" data-field="total_estimate">{{ q.total_estimate or '' }}</td>
+              <td class="editable" data-field="dates_proposed">{{ q.dates_proposed or '' }}</td>
+              <td class="editable" data-field="validity_date">{{ q.validity_date or '' }}</td>
+              <td>
+                <span class="status-badge status-{{ q.quote_status }}"
+                      onclick="cycleStatus(this, {{ q.id }})">{{ q.quote_status|replace('_', ' ') }}</span>
+              </td>
+              <td><span class="source-badge source-{{ q.source }}">{{ q.source }}</span></td>
+              <td>
+                <div class="action-btns">
+                  <button class="icon-btn delete" onclick="deleteQuote({{ q.id }})" title="Elimina">
+                    <span class="material-icons-round" style="font-size:18px">delete</span>
+                  </button>
+                </div>
+              </td>
+            </tr>
+            <!-- Detail row (hidden) -->
+            <tr class="detail-row" id="detail-{{ q.id }}" style="display:none">
+              <td colspan="14">
+                <div class="detail-content">
+                  <!-- Contatto -->
+                  <div class="detail-section">
+                    <h4>Contatto</h4>
+                    <p style="font-size:13px">
+                      {{ q.contact_name or '-' }}<br>
+                      <span style="color:var(--on-surface-variant)">{{ q.contact_email or '-' }}</span>
+                    </p>
+                  </div>
+                  <!-- Tariffe Camere -->
+                  <div class="detail-section">
+                    <h4>Tariffe Camere</h4>
+                    {% if q.room_rates %}
+                    <table>
+                      <tr><th>Tipo</th><th>Tariffa/Notte</th><th>Colazione</th><th>Note</th></tr>
+                      {% for rr in q.room_rates %}
+                      <tr>
+                        <td class="editable" data-field="room_type" data-sub="room-rate" data-subid="{{ rr.id }}">{{ rr.room_type }}</td>
+                        <td class="editable" data-field="rate_per_night" data-sub="room-rate" data-subid="{{ rr.id }}">{{ rr.rate_per_night or '' }}</td>
+                        <td class="editable" data-field="breakfast_included" data-sub="room-rate" data-subid="{{ rr.id }}">{{ rr.breakfast_included or '' }}</td>
+                        <td class="editable" data-field="notes" data-sub="room-rate" data-subid="{{ rr.id }}">{{ rr.notes or '' }}</td>
+                      </tr>
+                      {% endfor %}
+                    </table>
+                    {% else %}
+                    <p style="font-size:12px;color:var(--on-surface-variant)">Nessuna tariffa</p>
+                    {% endif %}
+                  </div>
+                  <!-- Sale Meeting -->
+                  <div class="detail-section">
+                    <h4>Sale Meeting</h4>
+                    {% if q.meeting_rooms %}
+                    <table>
+                      <tr><th>Sala</th><th>Capienza</th><th>Costo</th><th>Note</th></tr>
+                      {% for mr in q.meeting_rooms %}
+                      <tr>
+                        <td class="editable" data-field="name" data-sub="meeting-room" data-subid="{{ mr.id }}">{{ mr.name }}</td>
+                        <td class="editable" data-field="capacity" data-sub="meeting-room" data-subid="{{ mr.id }}">{{ mr.capacity or '' }}</td>
+                        <td class="editable" data-field="rate" data-sub="meeting-room" data-subid="{{ mr.id }}">{{ mr.rate or '' }}</td>
+                        <td class="editable" data-field="notes" data-sub="meeting-room" data-subid="{{ mr.id }}">{{ mr.notes or '' }}</td>
+                      </tr>
+                      {% endfor %}
+                    </table>
+                    {% else %}
+                    <p style="font-size:12px;color:var(--on-surface-variant)">Nessuna sala</p>
+                    {% endif %}
+                  </div>
+                  <!-- F&B -->
+                  <div class="detail-section">
+                    <h4>Food & Beverage</h4>
+                    {% if q.fb_options %}
+                    <table>
+                      <tr><th>Tipo</th><th>Prezzo/pax</th><th>Descrizione</th></tr>
+                      {% for fb in q.fb_options %}
+                      <tr>
+                        <td class="editable" data-field="meal_type" data-sub="fb-option" data-subid="{{ fb.id }}">{{ fb.meal_type }}</td>
+                        <td class="editable" data-field="price_per_person" data-sub="fb-option" data-subid="{{ fb.id }}">{{ fb.price_per_person or '' }}</td>
+                        <td class="editable" data-field="menu_description" data-sub="fb-option" data-subid="{{ fb.id }}">{{ fb.menu_description or '' }}</td>
+                      </tr>
+                      {% endfor %}
+                    </table>
+                    {% else %}
+                    <p style="font-size:12px;color:var(--on-surface-variant)">Nessuna opzione F&B</p>
+                    {% endif %}
+                  </div>
+                  <!-- Condizioni -->
+                  <div class="detail-section">
+                    <h4>Condizioni</h4>
+                    <div style="font-size:12px;line-height:1.8">
+                      <strong>Cancellazione:</strong> <span class="editable" data-field="cancellation_policy" data-id="{{ q.id }}" style="display:inline">{{ q.cancellation_policy or '-' }}</span><br>
+                      <strong>Pagamento:</strong> <span class="editable" data-field="payment_terms" data-id="{{ q.id }}" style="display:inline">{{ q.payment_terms or '-' }}</span><br>
+                      <strong>Commissione:</strong> <span class="editable" data-field="commission" data-id="{{ q.id }}" style="display:inline">{{ q.commission or '-' }}</span><br>
+                      <strong>Servizi:</strong> {{ q.included_services or '-' }}
+                    </div>
+                  </div>
+                  <!-- Note / Riassunto -->
+                  <div class="detail-section">
+                    <h4>Riassunto</h4>
+                    <p style="font-size:12px;line-height:1.5">{{ q.raw_summary or '-' }}</p>
+                    {% if q.notes %}
+                    <h4 style="margin-top:8px">Note</h4>
+                    <p style="font-size:12px;line-height:1.5">{{ q.notes }}</p>
+                    {% endif %}
+                  </div>
+                </div>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <div class="empty-state">
+          <span class="material-icons-round">apartment</span>
+          <p>Nessun preventivo. Incolla un'email per iniziare.</p>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Add Manual Modal ──────────────────────────────────────────────── -->
+<div class="modal-overlay" id="addModal">
+  <div class="modal">
+    <div class="modal-header">
+      Aggiungi Preventivo
+      <button class="icon-btn" onclick="closeAddModal()">
+        <span class="material-icons-round">close</span>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label>Hotel</label>
+        <input type="text" id="addHotel">
+      </div>
+      <div class="form-group">
+        <label>Città</label>
+        <select id="addCity">
+          <option value="Barcellona">Barcellona</option>
+          <option value="Madrid">Madrid</option>
+          <option value="Siviglia">Siviglia</option>
+          <option value="Valencia">Valencia</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Stelle</label>
+        <select id="addStars">
+          <option value="">-</option>
+          <option value="3">3</option>
+          <option value="4">4</option>
+          <option value="5">5</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Contatto</label>
+        <input type="text" id="addContact">
+      </div>
+      <div class="form-group">
+        <label>Email contatto</label>
+        <input type="text" id="addContactEmail">
+      </div>
+      <div class="form-group">
+        <label>Date proposte</label>
+        <input type="text" id="addDates" placeholder="es. 10-13 ottobre 2026">
+      </div>
+      <div class="form-group">
+        <label>Camere disponibili</label>
+        <input type="text" id="addRooms">
+      </div>
+      <div class="form-group">
+        <label>Totale stimato</label>
+        <input type="text" id="addTotal" placeholder="es. € 45.000">
+      </div>
+      <div class="form-group">
+        <label>Note</label>
+        <textarea id="addNotes" style="min-height:60px"></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeAddModal()">Annulla</button>
+      <button class="btn btn-primary" onclick="addQuote()">Salva</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Snackbar ───────────────────────────────────────────────────────── -->
+<div class="snackbar" id="snackbar"></div>
+
+<script>
+// ── Snackbar ──────────────────────────────────────────────────────────
+function showSnack(msg, ms=3000) {
+  const el = document.getElementById('snackbar');
+  el.textContent = msg;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), ms);
+}
+
+// ── Email parsing ─────────────────────────────────────────────────────
+async function parseEmail() {
+  const text = document.getElementById('emailText').value.trim();
+  if (!text) return showSnack('Incolla del testo prima');
+
+  const btn = document.getElementById('parseBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Analisi...';
+
+  try {
+    const r = await fetch('/api/partivia/parse-email', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text }),
+    });
+    const j = await r.json();
+    if (!j.ok) { showSnack('Errore: ' + j.error, 5000); return; }
+
+    const parsed = j.parsed;
+    const cost = j.usage;
+    document.getElementById('parseCost').textContent =
+      `${cost.input + cost.output} token | €${cost.cost_eur.toFixed(4)}`;
+
+    let html = '<div class="parsed-results">';
+    html += `<div style="margin-bottom:12px;font-size:13px;color:var(--on-surface-variant)">
+      <strong>Riepilogo:</strong> ${parsed.summary || ''}</div>`;
+
+    if (!parsed.is_quote) {
+      html += `<div style="padding:20px;text-align:center;color:var(--on-surface-variant)">
+        Tipo: <strong>${parsed.message_type}</strong> — nessun preventivo trovato.</div>`;
+    } else {
+      (parsed.quotes || []).forEach((q, i) => {
+        const isUpd = q.is_update;
+        html += `<div class="parsed-quote">
+          <div style="display:flex;align-items:center;gap:8px">
+            <input type="checkbox" class="parsed-check" data-index="${i}" checked>
+            <span class="hotel-name">${q.hotel_name || '?'}</span>
+            <span class="stars">${'★'.repeat(q.stars || 0)}</span>
+            <span class="action-tag ${isUpd ? 'action-update' : 'action-add'}">
+              ${isUpd ? 'AGGIORNA' : 'NUOVO'}
+            </span>
+          </div>
+          <div class="detail">${q.city || ''} — ${q.dates_proposed || ''} — ${q.rooms_available || '?'} camere</div>
+          <div class="detail-grid">`;
+
+        // Room rates
+        if (q.room_rates && q.room_rates.length) {
+          html += '<div><span class="label">Camere:</span><br>';
+          q.room_rates.forEach(rr => {
+            html += `${rr.room_type}: ${rr.rate_per_night || '?'}`;
+            if (rr.breakfast_included) html += ` (col: ${rr.breakfast_included})`;
+            html += '<br>';
+          });
+          html += '</div>';
+        }
+        // Meeting rooms
+        if (q.meeting_rooms && q.meeting_rooms.length) {
+          html += '<div><span class="label">Sale:</span><br>';
+          q.meeting_rooms.forEach(mr => {
+            html += `${mr.name}: ${mr.capacity || '?'} — ${mr.rate || '?'}<br>`;
+          });
+          html += '</div>';
+        }
+        // F&B
+        if (q.fb_options && q.fb_options.length) {
+          html += '<div><span class="label">F&B:</span><br>';
+          q.fb_options.forEach(fb => {
+            html += `${fb.meal_type}: ${fb.price_per_person || '?'}<br>`;
+          });
+          html += '</div>';
+        }
+        // Totale e condizioni
+        html += `<div><span class="label">Totale:</span> ${q.total_estimate || '-'}<br>
+          <span class="label">Cancellazione:</span> ${q.cancellation_policy || '-'}<br>
+          <span class="label">Validità:</span> ${q.validity_date || '-'}</div>`;
+
+        html += '</div>';  // detail-grid
+        if (q.raw_summary) {
+          html += `<div class="detail" style="margin-top:8px;font-style:italic">${q.raw_summary}</div>`;
+        }
+        html += '</div>';  // parsed-quote
+      });
+
+      html += `<div style="margin-top:12px;display:flex;gap:8px">
+        <button class="btn btn-success" onclick="applyParsed()">
+          <span class="material-icons-round">check</span>
+          Applica selezionati
+        </button>
+        <button class="btn btn-outline" onclick="document.getElementById('parseResults').innerHTML=''">
+          Annulla
+        </button>
+      </div>`;
+    }
+
+    html += '</div>';
+    document.getElementById('parseResults').innerHTML = html;
+
+    window._parsedQuotes = parsed.quotes || [];
+    window._emailLogId = j.email_log_id;
+
+  } catch (err) {
+    showSnack('Errore: ' + err.message, 5000);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<span class="material-icons-round">auto_fix_high</span> Analizza';
+  }
+}
+
+async function applyParsed() {
+  if (!window._parsedQuotes) return;
+  const selected = [];
+  document.querySelectorAll('.parsed-check').forEach(cb => {
+    if (cb.checked) selected.push(window._parsedQuotes[cb.dataset.index]);
+  });
+  if (!selected.length) return showSnack('Nessun preventivo selezionato');
+
+  const r = await fetch('/api/partivia/apply', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ quotes: selected, email_log_id: window._emailLogId || null }),
+  });
+  const j = await r.json();
+  if (j.ok) {
+    const added = j.results.filter(r => r.action === 'added').length;
+    const updated = j.results.filter(r => r.action === 'updated').length;
+    showSnack(`${added} aggiunti, ${updated} aggiornati`);
+    setTimeout(() => location.reload(), 800);
+  } else {
+    showSnack('Errore: ' + j.error, 5000);
+  }
+}
+
+// ── Detail toggle ─────────────────────────────────────────────────────
+function toggleDetail(btn, qid) {
+  const row = document.getElementById('detail-' + qid);
+  const icon = btn.querySelector('.material-icons-round');
+  if (row.style.display === 'none') {
+    row.style.display = '';
+    icon.textContent = 'expand_less';
+  } else {
+    row.style.display = 'none';
+    icon.textContent = 'expand_more';
+  }
+}
+
+// ── Status cycling ────────────────────────────────────────────────────
+const STATUSES = ['da_valutare', 'in_trattativa', 'confermato', 'rifiutato', 'scaduto'];
+async function cycleStatus(badge, qid) {
+  const current = badge.textContent.trim().replace(/ /g, '_');
+  const idx = STATUSES.indexOf(current);
+  const next = STATUSES[(idx + 1) % STATUSES.length];
+
+  badge.className = 'status-badge status-' + next;
+  badge.textContent = next.replace(/_/g, ' ');
+
+  // Update parent row data-status
+  const row = badge.closest('tr');
+  if (row) row.dataset.status = next;
+
+  await fetch(`/api/partivia/quote/${qid}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ quote_status: next }),
+  });
+  showSnack('Stato aggiornato');
+}
+
+// ── Inline editing ────────────────────────────────────────────────────
+document.querySelectorAll('td.editable').forEach(td => {
+  td.addEventListener('dblclick', () => {
+    if (td.querySelector('input')) return;
+    const field = td.dataset.field;
+    const sub = td.dataset.sub;
+    const subid = td.dataset.subid;
+    const qid = sub ? null : td.closest('tr').dataset.id;
+    const original = td.textContent.trim();
+
+    const input = document.createElement('input');
+    input.className = 'inline-input';
+    input.value = original === '-' ? '' : original;
+    td.textContent = '';
+    td.appendChild(input);
+    input.focus();
+    input.select();
+
+    const save = async () => {
+      const val = input.value.trim();
+      td.textContent = val || (sub ? '' : original);
+
+      // Stars: update display
+      if (field === 'stars') {
+        const n = parseInt(val) || 0;
+        td.innerHTML = '<span class="stars">' + '★'.repeat(n) + '</span>';
+      }
+
+      if (val !== original) {
+        let url, body = { [field]: val };
+        if (sub) {
+          url = `/api/partivia/${sub}/${subid}`;
+        } else {
+          url = `/api/partivia/quote/${qid}`;
+        }
+        await fetch(url, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        showSnack('Salvato');
+      }
+    };
+
+    input.addEventListener('blur', save);
+    input.addEventListener('keydown', e => {
+      if (e.key === 'Enter') input.blur();
+      if (e.key === 'Escape') { td.textContent = original; }
+    });
+  });
+});
+
+// ── Delete ─────────────────────────────────────────────────────────────
+async function deleteQuote(qid) {
+  if (!confirm('Eliminare questo preventivo?')) return;
+  const r = await fetch(`/api/partivia/quote/${qid}`, { method: 'DELETE' });
+  const j = await r.json();
+  if (j.ok) {
+    showSnack('Eliminato');
+    setTimeout(() => location.reload(), 500);
+  }
+}
+
+// ── Search & filter ───────────────────────────────────────────────────
+let activeFilters = { city: 'all', status: 'all' };
+
+function setFilter(chip) {
+  const filter = chip.dataset.filter;
+  const value = chip.dataset.value;
+  activeFilters[filter] = value;
+
+  // Update chip UI
+  document.querySelectorAll(`.filter-chip[data-filter="${filter}"]`).forEach(c => c.classList.remove('active'));
+  chip.classList.add('active');
+  applyFilters();
+}
+
+function filterTable() { applyFilters(); }
+
+function applyFilters() {
+  const search = (document.getElementById('searchInput').value || '').toLowerCase();
+  const rows = document.querySelectorAll('#quotesTable tbody tr:not(.detail-row)');
+
+  rows.forEach(row => {
+    const city = row.dataset.city || '';
+    const status = row.dataset.status || '';
+    const text = row.textContent.toLowerCase();
+
+    let show = true;
+    if (activeFilters.city !== 'all' && city !== activeFilters.city) show = false;
+    if (activeFilters.status !== 'all' && status !== activeFilters.status) show = false;
+    if (search && !text.includes(search)) show = false;
+
+    row.style.display = show ? '' : 'none';
+    // Hide detail row too
+    const detailRow = document.getElementById('detail-' + row.dataset.id);
+    if (detailRow && !show) detailRow.style.display = 'none';
+  });
+}
+
+// ── Add manual ────────────────────────────────────────────────────────
+function openAddModal() { document.getElementById('addModal').classList.add('open'); }
+function closeAddModal() { document.getElementById('addModal').classList.remove('open'); }
+
+async function addQuote() {
+  const data = {
+    hotel_name: document.getElementById('addHotel').value.trim(),
+    city: document.getElementById('addCity').value,
+    stars: document.getElementById('addStars').value ? parseInt(document.getElementById('addStars').value) : null,
+    contact_name: document.getElementById('addContact').value.trim() || null,
+    contact_email: document.getElementById('addContactEmail').value.trim() || null,
+    dates_proposed: document.getElementById('addDates').value.trim() || null,
+    rooms_available: document.getElementById('addRooms').value.trim() || null,
+    total_estimate: document.getElementById('addTotal').value.trim() || null,
+    notes: document.getElementById('addNotes').value.trim() || null,
+  };
+  if (!data.hotel_name) return showSnack('Inserisci il nome dell\'hotel');
+
+  const r = await fetch('/api/partivia/quote', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  const j = await r.json();
+  if (j.ok) {
+    showSnack('Preventivo aggiunto');
+    setTimeout(() => location.reload(), 500);
+  } else {
+    showSnack('Errore: ' + j.error, 5000);
+  }
+}
+</script>
+
+</body>
+</html>

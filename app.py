@@ -9,7 +9,9 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from models import db, Guest, RoomContract, EmailLog
+from models import (db, Guest, RoomContract, EmailLog,
+                     PartiviaQuote, PartiviaRoomRate,
+                     PartiviaMeetingRoom, PartiviaFBOption)
 
 
 def _parse_bool(val):
@@ -51,9 +53,15 @@ def create_app():
                         tariffa_netta=netta, tariffa_lorda=lorda, notte=notte))
             db.session.commit()
 
-    # ── PAGINA PRINCIPALE ────────────────────────────────────────────────────
+    # ── LANDING PAGE ────────────────────────────────────────────────────────
 
     @app.route('/')
+    def landing():
+        return render_template('landing.html')
+
+    # ── PAGINA ROOMING ──────────────────────────────────────────────────────
+
+    @app.route('/rooming')
     def index():
         guests = Guest.query.order_by(Guest.cognome, Guest.nome).all()
         return render_template('index.html', guests=guests)
@@ -1090,6 +1098,518 @@ Per "azione": "update", valorizza "match_id" con l'ID dell'ospite corrispondente
         Guest.query.delete()
         db.session.commit()
         return jsonify(ok=True)
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # ██  PARTIVIA — Preventivi Hotel                                       ██
+    # ══════════════════════════════════════════════════════════════════════════
+
+    @app.route('/partivia')
+    def partivia():
+        quotes = (PartiviaQuote.query
+                  .order_by(PartiviaQuote.city, PartiviaQuote.hotel_name)
+                  .all())
+        return render_template('partivia.html', quotes=quotes)
+
+    # ── Parse email preventivo ────────────────────────────────────────────
+
+    @app.post('/api/partivia/parse-email')
+    def partivia_parse_email():
+        import anthropic
+
+        data = request.get_json()
+        text = (data.get('text') or '').strip()
+        if not text:
+            return jsonify(ok=False, error='Testo vuoto'), 400
+
+        # Contesto: preventivi già in DB
+        existing = PartiviaQuote.query.order_by(PartiviaQuote.city).all()
+        existing_list = '\n'.join(
+            f'- [id={q.id}] {q.hotel_name} ({q.city}, {q.stars or "?"}★) '
+            f'— stato: {q.quote_status}, date: {q.dates_proposed or "n/a"}'
+            for q in existing
+        ) or '(nessun preventivo ancora registrato)'
+
+        system_prompt = f"""Sei un assistente che estrae dati di preventivi hotel da email.
+L'evento è "N!Partivia" — un viaggio incentive aziendale in Spagna.
+Possibili destinazioni: Barcellona, Madrid, Siviglia, Valencia.
+
+Preventivi già registrati:
+{existing_list}
+
+Analizza l'email e estrai TUTTI i preventivi/offerte hotel presenti.
+Per ogni preventivo, estrai:
+- hotel_name (nome hotel)
+- city (Barcellona, Madrid, Siviglia o Valencia — normalizza sempre in italiano)
+- stars (stelle, intero 1-5 o null)
+- contact_name, contact_email (contatto hotel)
+- dates_proposed (date proposte, es. "10-13 ottobre 2026")
+- rooms_available (camere disponibili)
+- min_rooms_required (minimo camere richieste)
+- room_rates: lista di oggetti con room_type, rate_per_night (con €), breakfast_included (sì/no/non specificato), notes
+- meeting_rooms: lista con name, capacity, rate, notes
+- fb_options: lista con meal_type (colazione/pranzo/cena/coffee break/gala dinner), price_per_person, menu_description
+- cancellation_policy, payment_terms, validity_date, commission
+- total_estimate (stima totale se presente)
+- included_services (lista servizi inclusi come WiFi, parcheggio, etc.)
+- notes (condizioni speciali, upgrade offerti)
+- raw_summary (riassunto del contenuto in 2-3 frasi)
+- is_update: true se aggiorna un preventivo già in lista (con match_id), false se è nuovo
+- match_id: ID del preventivo esistente se è un aggiornamento, null se nuovo
+
+Se il messaggio NON contiene preventivi (es. semplice follow-up), imposta is_quote=false.
+
+Rispondi SOLO con JSON valido (niente markdown):
+{{
+  "quotes": [
+    {{
+      "hotel_name": "Hotel Example",
+      "city": "Barcellona",
+      "stars": 4,
+      "contact_name": "Mario Rossi",
+      "contact_email": "mario@hotel.com",
+      "dates_proposed": "10-13 ottobre 2026",
+      "rooms_available": "80",
+      "min_rooms_required": null,
+      "room_rates": [
+        {{"room_type": "Doppia", "rate_per_night": "€ 180", "breakfast_included": "sì", "notes": null}}
+      ],
+      "meeting_rooms": [
+        {{"name": "Sala Grande", "capacity": "200 pax teatro", "rate": "€ 2.000/giorno", "notes": "AV incluso"}}
+      ],
+      "fb_options": [
+        {{"meal_type": "Cena", "price_per_person": "€ 55/pax", "menu_description": "Menu 3 portate"}}
+      ],
+      "cancellation_policy": "Cancellazione gratuita entro 30gg",
+      "payment_terms": "30% alla conferma",
+      "validity_date": "30/09/2026",
+      "commission": "10%",
+      "total_estimate": "€ 45.000",
+      "included_services": ["WiFi", "Parcheggio", "Palestra"],
+      "notes": "Upgrade camera su richiesta",
+      "raw_summary": "Hotel Example propone 80 camere doppie a €180/notte...",
+      "is_update": false,
+      "match_id": null
+    }}
+  ],
+  "is_quote": true,
+  "message_type": "preventivo",
+  "summary": "Ricevuto preventivo da Hotel Example per Barcellona..."
+}}"""
+
+        api_key = os.environ.get('ANTHROPIC_API_KEY')
+        if not api_key:
+            return jsonify(ok=False, error='ANTHROPIC_API_KEY non configurata'), 500
+
+        client = anthropic.Anthropic(api_key=api_key)
+
+        try:
+            response = client.messages.create(
+                model='claude-haiku-4-5-20251001',
+                max_tokens=4096,
+                system=system_prompt,
+                messages=[{'role': 'user', 'content': text}],
+            )
+            raw = response.content[0].text.strip()
+            if raw.startswith('```'):
+                raw = raw.split('\n', 1)[1] if '\n' in raw else raw[3:]
+                if raw.endswith('```'):
+                    raw = raw[:-3]
+                raw = raw.strip()
+
+            parsed = json.loads(raw)
+
+            # Costo (Haiku 4.5)
+            inp = response.usage.input_tokens
+            out = response.usage.output_tokens
+            cost = (inp * 0.80 + out * 4.00) / 1_000_000
+
+            # Salva log
+            email_log = EmailLog(testo=text, summary=parsed.get('summary'))
+            db.session.add(email_log)
+            db.session.commit()
+
+            return jsonify(ok=True, parsed=parsed, email_log_id=email_log.id,
+                           usage={'input': inp, 'output': out,
+                                  'cost_eur': round(cost * 0.92, 4)})
+
+        except json.JSONDecodeError:
+            return jsonify(ok=False, error=f'Risposta LLM non valida: {raw[:300]}'), 500
+        except Exception as e:
+            return jsonify(ok=False, error=str(e)), 500
+
+    # ── Applica preventivi estratti ───────────────────────────────────────
+
+    @app.post('/api/partivia/apply')
+    def partivia_apply():
+        data = request.get_json()
+        quotes_data = data.get('quotes', [])
+        email_log_id = data.get('email_log_id')
+
+        results = []
+        for qd in quotes_data:
+            is_update = qd.get('is_update', False)
+            match_id = qd.get('match_id')
+
+            if is_update and match_id:
+                q = PartiviaQuote.query.get(match_id)
+                if not q:
+                    results.append({'hotel': qd.get('hotel_name'),
+                                    'ok': False, 'error': 'Non trovato'})
+                    continue
+                # Aggiorna campi top-level
+                for field in ('hotel_name', 'city', 'stars', 'contact_name',
+                              'contact_email', 'dates_proposed', 'rooms_available',
+                              'min_rooms_required', 'cancellation_policy',
+                              'payment_terms', 'validity_date', 'commission',
+                              'total_estimate', 'notes', 'raw_summary'):
+                    if qd.get(field) is not None:
+                        setattr(q, field, qd[field])
+                if qd.get('included_services'):
+                    q.included_services = ', '.join(qd['included_services'])
+                q.updated_at = datetime.utcnow()
+                if email_log_id:
+                    q.email_log_id = email_log_id
+
+                # Sostituisci sotto-tabelle se fornite
+                if qd.get('room_rates'):
+                    PartiviaRoomRate.query.filter_by(quote_id=q.id).delete()
+                    for rr in qd['room_rates']:
+                        db.session.add(PartiviaRoomRate(
+                            quote_id=q.id, room_type=rr.get('room_type', ''),
+                            rate_per_night=rr.get('rate_per_night'),
+                            breakfast_included=rr.get('breakfast_included'),
+                            notes=rr.get('notes')))
+                if qd.get('meeting_rooms'):
+                    PartiviaMeetingRoom.query.filter_by(quote_id=q.id).delete()
+                    for mr in qd['meeting_rooms']:
+                        db.session.add(PartiviaMeetingRoom(
+                            quote_id=q.id, name=mr.get('name', ''),
+                            capacity=mr.get('capacity'),
+                            rate=mr.get('rate'), notes=mr.get('notes')))
+                if qd.get('fb_options'):
+                    PartiviaFBOption.query.filter_by(quote_id=q.id).delete()
+                    for fb in qd['fb_options']:
+                        db.session.add(PartiviaFBOption(
+                            quote_id=q.id, meal_type=fb.get('meal_type', ''),
+                            price_per_person=fb.get('price_per_person'),
+                            menu_description=fb.get('menu_description')))
+
+                db.session.flush()
+                results.append({'hotel': q.hotel_name, 'ok': True,
+                                'action': 'updated', 'id': q.id})
+            else:
+                # Nuovo preventivo
+                q = PartiviaQuote(
+                    hotel_name=qd.get('hotel_name', ''),
+                    city=qd.get('city', ''),
+                    stars=qd.get('stars'),
+                    contact_name=qd.get('contact_name'),
+                    contact_email=qd.get('contact_email'),
+                    dates_proposed=qd.get('dates_proposed'),
+                    rooms_available=qd.get('rooms_available'),
+                    min_rooms_required=qd.get('min_rooms_required'),
+                    cancellation_policy=qd.get('cancellation_policy'),
+                    payment_terms=qd.get('payment_terms'),
+                    validity_date=qd.get('validity_date'),
+                    commission=qd.get('commission'),
+                    total_estimate=qd.get('total_estimate'),
+                    included_services=', '.join(qd.get('included_services', [])),
+                    notes=qd.get('notes'),
+                    raw_summary=qd.get('raw_summary'),
+                    source='email',
+                    email_log_id=email_log_id,
+                )
+                db.session.add(q)
+                db.session.flush()
+
+                for rr in qd.get('room_rates', []):
+                    db.session.add(PartiviaRoomRate(
+                        quote_id=q.id, room_type=rr.get('room_type', ''),
+                        rate_per_night=rr.get('rate_per_night'),
+                        breakfast_included=rr.get('breakfast_included'),
+                        notes=rr.get('notes')))
+                for mr in qd.get('meeting_rooms', []):
+                    db.session.add(PartiviaMeetingRoom(
+                        quote_id=q.id, name=mr.get('name', ''),
+                        capacity=mr.get('capacity'),
+                        rate=mr.get('rate'), notes=mr.get('notes')))
+                for fb in qd.get('fb_options', []):
+                    db.session.add(PartiviaFBOption(
+                        quote_id=q.id, meal_type=fb.get('meal_type', ''),
+                        price_per_person=fb.get('price_per_person'),
+                        menu_description=fb.get('menu_description')))
+
+                db.session.flush()
+                results.append({'hotel': q.hotel_name, 'ok': True,
+                                'action': 'added', 'id': q.id})
+
+        db.session.commit()
+        return jsonify(ok=True, results=results)
+
+    # ── Edit inline quote ─────────────────────────────────────────────────
+
+    @app.put('/api/partivia/quote/<int:qid>')
+    def partivia_update_quote(qid):
+        q = PartiviaQuote.query.get_or_404(qid)
+        data = request.get_json()
+        for field in ('hotel_name', 'city', 'stars', 'contact_name',
+                      'contact_email', 'dates_proposed', 'rooms_available',
+                      'min_rooms_required', 'cancellation_policy',
+                      'payment_terms', 'validity_date', 'commission',
+                      'total_estimate', 'included_services', 'notes',
+                      'raw_summary', 'quote_status'):
+            if field in data:
+                val = data[field]
+                if field == 'stars' and val is not None:
+                    val = int(val) if str(val).strip() else None
+                setattr(q, field, val)
+        q.updated_at = datetime.utcnow()
+        db.session.commit()
+        return jsonify(ok=True)
+
+    @app.delete('/api/partivia/quote/<int:qid>')
+    def partivia_delete_quote(qid):
+        q = PartiviaQuote.query.get_or_404(qid)
+        db.session.delete(q)
+        db.session.commit()
+        return jsonify(ok=True)
+
+    # ── Edit inline sotto-tabelle ─────────────────────────────────────────
+
+    @app.put('/api/partivia/room-rate/<int:rid>')
+    def partivia_update_room_rate(rid):
+        rr = PartiviaRoomRate.query.get_or_404(rid)
+        data = request.get_json()
+        for f in ('room_type', 'rate_per_night', 'breakfast_included', 'notes'):
+            if f in data:
+                setattr(rr, f, data[f])
+        db.session.commit()
+        return jsonify(ok=True)
+
+    @app.put('/api/partivia/meeting-room/<int:mid>')
+    def partivia_update_meeting_room(mid):
+        mr = PartiviaMeetingRoom.query.get_or_404(mid)
+        data = request.get_json()
+        for f in ('name', 'capacity', 'rate', 'notes'):
+            if f in data:
+                setattr(mr, f, data[f])
+        db.session.commit()
+        return jsonify(ok=True)
+
+    @app.put('/api/partivia/fb-option/<int:fid>')
+    def partivia_update_fb_option(fid):
+        fb = PartiviaFBOption.query.get_or_404(fid)
+        data = request.get_json()
+        for f in ('meal_type', 'price_per_person', 'menu_description'):
+            if f in data:
+                setattr(fb, f, data[f])
+        db.session.commit()
+        return jsonify(ok=True)
+
+    # ── Export Excel comparativo ──────────────────────────────────────────
+
+    @app.get('/api/partivia/export')
+    def partivia_export():
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+        from openpyxl.utils import get_column_letter
+
+        quotes = (PartiviaQuote.query
+                  .order_by(PartiviaQuote.city, PartiviaQuote.hotel_name)
+                  .all())
+
+        wb = Workbook()
+        header_font = Font(bold=True, color='FFFFFF', size=11)
+        header_fill = PatternFill('solid', fgColor='2F5496')
+        city_fill = PatternFill('solid', fgColor='D6E4F0')
+        city_font = Font(bold=True, size=12)
+        thin_border = Border(
+            left=Side(style='thin'), right=Side(style='thin'),
+            top=Side(style='thin'), bottom=Side(style='thin'))
+        wrap = Alignment(wrap_text=True, vertical='top')
+
+        # ── Tab 1: Confronto Hotel ──
+        ws = wb.active
+        ws.title = 'Confronto Hotel'
+        headers = [
+            'Città', 'Hotel', 'Stelle', 'Camere',
+            'Singola/notte', 'Doppia/notte', 'Suite/notte',
+            'Sala Meeting', 'Capienza', 'Costo Sala',
+            'Pranzo/pax', 'Cena/pax', 'Coffee Break',
+            'Totale Stimato', 'Cancellazione', 'Validità',
+            'Commissione', 'Servizi Inclusi', 'Contatto', 'Note', 'Stato',
+        ]
+        for col, h in enumerate(headers, 1):
+            cell = ws.cell(row=1, column=col, value=h)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = Alignment(horizontal='center', wrap_text=True)
+            cell.border = thin_border
+
+        for row, q in enumerate(quotes, 2):
+            rates = {r.room_type.lower(): r for r in q.room_rates}
+            single = next((r for k, r in rates.items()
+                           if 'singol' in k), None)
+            double = next((r for k, r in rates.items()
+                           if 'doppi' in k or 'double' in k or 'twin' in k), None)
+            suite = next((r for k, r in rates.items()
+                          if 'suite' in k or 'junior' in k), None)
+            main_mr = q.meeting_rooms[0] if q.meeting_rooms else None
+            fb = {o.meal_type.lower(): o for o in q.fb_options}
+            lunch = next((o for k, o in fb.items()
+                          if 'pranzo' in k or 'lunch' in k), None)
+            dinner = next((o for k, o in fb.items()
+                           if 'cena' in k or 'dinner' in k or 'gala' in k), None)
+            coffee = next((o for k, o in fb.items()
+                           if 'coffee' in k or 'break' in k), None)
+
+            vals = [
+                q.city, q.hotel_name, q.stars, q.rooms_available,
+                single.rate_per_night if single else '',
+                double.rate_per_night if double else '',
+                suite.rate_per_night if suite else '',
+                main_mr.name if main_mr else '',
+                main_mr.capacity if main_mr else '',
+                main_mr.rate if main_mr else '',
+                lunch.price_per_person if lunch else '',
+                dinner.price_per_person if dinner else '',
+                coffee.price_per_person if coffee else '',
+                q.total_estimate or '',
+                q.cancellation_policy or '',
+                q.validity_date or '',
+                q.commission or '',
+                q.included_services or '',
+                f'{q.contact_name or ""} {q.contact_email or ""}'.strip(),
+                q.notes or '',
+                q.quote_status,
+            ]
+            for col, v in enumerate(vals, 1):
+                cell = ws.cell(row=row, column=col, value=v)
+                cell.border = thin_border
+                cell.alignment = wrap
+
+        for col in range(1, len(headers) + 1):
+            ws.column_dimensions[get_column_letter(col)].width = 16
+        ws.column_dimensions['B'].width = 28
+        ws.column_dimensions['R'].width = 30
+        ws.column_dimensions['T'].width = 40
+        ws.freeze_panes = 'C2'
+
+        # ── Tab 2+: Dettaglio per città ──
+        quotes_by_city = {}
+        for q in quotes:
+            quotes_by_city.setdefault(q.city.upper(), []).append(q)
+
+        for city in sorted(quotes_by_city.keys()):
+            cqs = quotes_by_city[city]
+            ws_c = wb.create_sheet(title=city[:31])
+            ws_c.merge_cells('A1:F1')
+            cell = ws_c.cell(row=1, column=1, value=f'Preventivi — {city}')
+            cell.font = Font(bold=True, size=14, color='2F5496')
+
+            r = 3
+            for q in sorted(cqs, key=lambda x: x.hotel_name):
+                ws_c.merge_cells(f'A{r}:F{r}')
+                cell = ws_c.cell(row=r, column=1,
+                                 value=f"{q.hotel_name} {'★' * (q.stars or 0)}")
+                cell.font = city_font
+                cell.fill = city_fill
+                r += 1
+                for label, val in [
+                    ('Contatto', f'{q.contact_name or "-"} ({q.contact_email or "-"})'),
+                    ('Date', q.dates_proposed or '-'),
+                    ('Camere', str(q.rooms_available) if q.rooms_available else '-'),
+                    ('Totale', q.total_estimate or '-'),
+                    ('Stato', q.quote_status),
+                ]:
+                    ws_c.cell(row=r, column=1, value=label).font = Font(bold=True)
+                    ws_c.cell(row=r, column=2, value=val)
+                    r += 1
+                if q.room_rates:
+                    r += 1
+                    ws_c.cell(row=r, column=1,
+                              value='TARIFFE CAMERE').font = Font(bold=True, color='2F5496')
+                    r += 1
+                    for rate in q.room_rates:
+                        ws_c.cell(row=r, column=1, value=rate.room_type)
+                        ws_c.cell(row=r, column=2, value=rate.rate_per_night)
+                        ws_c.cell(row=r, column=3, value=rate.breakfast_included or '')
+                        ws_c.cell(row=r, column=4, value=rate.notes or '')
+                        r += 1
+                if q.meeting_rooms:
+                    r += 1
+                    ws_c.cell(row=r, column=1,
+                              value='SALE MEETING').font = Font(bold=True, color='2F5496')
+                    r += 1
+                    for mr in q.meeting_rooms:
+                        ws_c.cell(row=r, column=1, value=mr.name)
+                        ws_c.cell(row=r, column=2, value=mr.capacity or '')
+                        ws_c.cell(row=r, column=3, value=mr.rate or '')
+                        ws_c.cell(row=r, column=4, value=mr.notes or '')
+                        r += 1
+                if q.fb_options:
+                    r += 1
+                    ws_c.cell(row=r, column=1,
+                              value='FOOD & BEVERAGE').font = Font(bold=True, color='2F5496')
+                    r += 1
+                    for fb in q.fb_options:
+                        ws_c.cell(row=r, column=1, value=fb.meal_type)
+                        ws_c.cell(row=r, column=2, value=fb.price_per_person or '')
+                        ws_c.cell(row=r, column=3, value=fb.menu_description or '')
+                        r += 1
+                r += 1
+                ws_c.cell(row=r, column=1,
+                          value='CONDIZIONI').font = Font(bold=True, color='2F5496')
+                r += 1
+                for label, val in [
+                    ('Cancellazione', q.cancellation_policy or '-'),
+                    ('Pagamento', q.payment_terms or '-'),
+                    ('Validità', q.validity_date or '-'),
+                    ('Commissione', q.commission or '-'),
+                    ('Servizi', q.included_services or '-'),
+                ]:
+                    ws_c.cell(row=r, column=1, value=label).font = Font(bold=True)
+                    ws_c.cell(row=r, column=2, value=val).alignment = wrap
+                    r += 1
+                if q.notes:
+                    ws_c.cell(row=r, column=1, value='Note').font = Font(bold=True)
+                    ws_c.cell(row=r, column=2, value=q.notes).alignment = wrap
+                    r += 1
+                r += 2
+
+            ws_c.column_dimensions['A'].width = 22
+            ws_c.column_dimensions['B'].width = 35
+            ws_c.column_dimensions['C'].width = 20
+            ws_c.column_dimensions['D'].width = 30
+
+        buf = BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+        today = datetime.now().strftime('%Y-%m-%d')
+        return send_file(buf, as_attachment=True,
+                         download_name=f'partivia_confronto_{today}.xlsx',
+                         mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
+    # ── Aggiungi manualmente ──────────────────────────────────────────────
+
+    @app.post('/api/partivia/quote')
+    def partivia_add_quote():
+        data = request.get_json()
+        q = PartiviaQuote(
+            hotel_name=data.get('hotel_name', ''),
+            city=data.get('city', ''),
+            stars=data.get('stars'),
+            contact_name=data.get('contact_name'),
+            contact_email=data.get('contact_email'),
+            dates_proposed=data.get('dates_proposed'),
+            rooms_available=data.get('rooms_available'),
+            total_estimate=data.get('total_estimate'),
+            notes=data.get('notes'),
+            source='manual',
+        )
+        db.session.add(q)
+        db.session.commit()
+        return jsonify(ok=True, id=q.id)
 
     return app
 
