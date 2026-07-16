@@ -1518,9 +1518,16 @@ Reply ONLY with valid JSON (no markdown):
         if not api_key:
             return jsonify(ok=False, error='ANTHROPIC_API_KEY non configurata'), 500
 
-        quotes = PartiviaQuote.query.all()
+        # Support batch processing to avoid Railway timeout
+        data = request.get_json(silent=True) or {}
+        batch_offset = data.get('offset', 0)
+        batch_limit = data.get('limit', 5)  # default 5 at a time
+
+        quotes = PartiviaQuote.query.order_by(PartiviaQuote.id)\
+            .offset(batch_offset).limit(batch_limit).all()
+        total_quotes = PartiviaQuote.query.count()
         if not quotes:
-            return jsonify(ok=False, error='No quotes found')
+            return jsonify(ok=False, error='No quotes found (or offset past end)')
 
         client = anthropic.Anthropic(api_key=api_key)
         results = []
@@ -1705,8 +1712,11 @@ Notes: {q.notes or 'N/A'}"""
             _time.sleep(0.3)  # rate limiting
 
         db.session.commit()
+        next_offset = batch_offset + batch_limit
         return jsonify(ok=True, results=results,
-                       cost_eur=round(total_cost * 0.92, 4))
+                       cost_eur=round(total_cost * 0.92, 4),
+                       processed=len(quotes), total=total_quotes,
+                       next_offset=next_offset if next_offset < total_quotes else None)
 
     # ── Edit inline quote ─────────────────────────────────────────────────
 
