@@ -101,8 +101,10 @@ textarea { resize:vertical; min-height:120px; }
 
 /* ── Comparison tables ──────────────────────── */
 .cmp-table { width:100%; border-collapse:collapse; font-size:12px; }
-.cmp-table th { background:var(--primary); color:#fff; padding:10px 12px; text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.3px; white-space:nowrap; }
-.cmp-table td { padding:8px 12px; border-bottom:1px solid var(--outline-variant); vertical-align:middle; }
+.cmp-table th { background:var(--primary); color:#fff; padding:10px 12px; text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.3px; white-space:nowrap; position:relative; }
+.cmp-table th .col-resizer { position:absolute; right:0; top:0; bottom:0; width:5px; cursor:col-resize; background:transparent; }
+.cmp-table th .col-resizer:hover, .cmp-table th .col-resizer.resizing { background:rgba(255,255,255,.4); }
+.cmp-table td { padding:8px 12px; border-bottom:1px solid var(--outline-variant); vertical-align:middle; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:0; }
 .cmp-table tr:hover td { background:var(--surface-variant); }
 .cmp-table .city-header td { background:var(--surface-variant); font-weight:700; font-size:13px; color:var(--primary-dark); padding:10px 12px; }
 .cmp-table .hotel-name { font-weight:600; white-space:nowrap; }
@@ -1022,6 +1024,54 @@ async function addQuote() {
   if ((await r.json()).ok) { showSnack('Added'); setTimeout(()=>location.reload(),500); }
   else showSnack('Error',5000);
 }
+// ── Column Resize for all cmp-tables (with localStorage persistence) ──
+(function(){
+  document.querySelectorAll('.cmp-table').forEach((table, tIdx) => {
+    const KEY = 'partiviaCmpWidths_' + tIdx;
+    table.style.tableLayout = 'fixed';
+    const ths = Array.from(table.querySelectorAll('thead th'));
+    // Restore saved widths
+    const saved = JSON.parse(localStorage.getItem(KEY) || '{}');
+    ths.forEach((th, i) => {
+      if (saved[i]) { th.style.width = saved[i]; th.style.minWidth = saved[i]; }
+    });
+    function saveWidths() {
+      const w = {};
+      ths.forEach((th, i) => { w[i] = th.style.width; });
+      localStorage.setItem(KEY, JSON.stringify(w));
+    }
+    ths.forEach((th, i) => {
+      const resizer = document.createElement('div');
+      resizer.className = 'col-resizer';
+      th.appendChild(resizer);
+      let startX, startW;
+      resizer.addEventListener('mousedown', e => {
+        e.preventDefault();
+        startX = e.pageX; startW = th.offsetWidth;
+        resizer.classList.add('resizing');
+        const onMove = ev => {
+          const w = Math.max(30, startW + ev.pageX - startX) + 'px';
+          th.style.width = w; th.style.minWidth = w;
+        };
+        const onUp = () => {
+          resizer.classList.remove('resizing');
+          document.removeEventListener('mousemove', onMove);
+          document.removeEventListener('mouseup', onUp);
+          saveWidths();
+        };
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('mouseup', onUp);
+      });
+    });
+  });
+  // Tooltip on hover for truncated cells
+  document.querySelectorAll('.cmp-table td').forEach(td => {
+    td.addEventListener('mouseenter', function() {
+      if (this.offsetWidth < this.scrollWidth) this.title = this.textContent.trim();
+      else this.title = '';
+    });
+  });
+})();
 </script>
 </body>
 </html>
