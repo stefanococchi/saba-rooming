@@ -843,11 +843,11 @@ document.querySelectorAll('.input-table td.editable').forEach(td => {
     input.select();
     const save = async () => {
       const val = input.value.trim();
-      td.textContent = val || original;
+      td.textContent = val;
       if (val !== original) {
         await fetch(`/api/partivia/quote/${qid}`, {
           method:'PUT', headers:{'Content-Type':'application/json'},
-          body: JSON.stringify({[field]:val}),
+          body: JSON.stringify({[field]: val || null}),
         });
         showSnack('Saved');
       }
