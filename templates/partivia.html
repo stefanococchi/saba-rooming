@@ -114,6 +114,12 @@ textarea { resize:vertical; min-height:120px; }
 .cmp-table .long-text { max-width:250px; white-space:normal; font-size:11px; line-height:1.4; }
 .stars { color:#f9a825; letter-spacing:-1px; }
 
+/* ── Image paste/drop ──────────────────────── */
+.img-drop { display:inline-flex; align-items:center; justify-content:center; width:28px; height:28px; border:1px dashed var(--outline-variant); border-radius:4px; cursor:pointer; vertical-align:middle; transition:border-color .15s; }
+.img-drop:hover, .img-drop.drag-over { border-color:var(--primary); background:var(--surface-variant); }
+.img-paste-area { border:2px dashed var(--outline-variant); border-radius:12px; padding:20px; text-align:center; cursor:pointer; transition:border-color .15s; outline:none; }
+.img-paste-area:hover, .img-paste-area:focus, .img-paste-area.drag-over { border-color:var(--primary); background:var(--surface-variant); }
+
 /* ── Filter chips ───────────────────────────── */
 .filter-bar { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:16px; }
 .filter-chip { padding:6px 14px; border-radius:16px; border:1px solid var(--outline); font-size:12px; cursor:pointer; background:transparent; transition:all .15s; font-weight:500; }
@@ -527,7 +533,7 @@ textarea { resize:vertical; min-height:120px; }
             <th>Option Deadline</th>
             <th>Status</th>
             <th>Website URL</th>
-            <th>Photo URL</th>
+            <th>Photo</th>
             <th></th>
           </tr>
         </thead>
@@ -546,7 +552,14 @@ textarea { resize:vertical; min-height:120px; }
                     onclick="cycleStatus(this,{{ q.id }})">{{ q.quote_status.replace('_',' ') }}</span>
             </td>
             <td class="editable" data-field="website_url" style="max-width:150px;overflow:hidden;text-overflow:ellipsis">{{ q.website_url or '' }}</td>
-            <td class="editable" data-field="image_url" style="max-width:150px;overflow:hidden;text-overflow:ellipsis">{{ q.image_url or '' }}</td>
+            <td class="img-cell" data-id="{{ q.id }}" style="min-width:80px;text-align:center">
+              {% if q.image_url %}
+              <img src="{{ q.image_url }}" style="height:40px;border-radius:4px;cursor:pointer" onclick="event.stopPropagation();window.open(this.src)" title="Click to view full size">
+              {% endif %}
+              <div class="img-drop" data-id="{{ q.id }}" title="Paste or drop image here">
+                <span class="material-icons-round" style="font-size:16px;color:var(--on-surface-variant)">add_photo_alternate</span>
+              </div>
+            </td>
             <td>
               <button class="icon-btn delete" onclick="deleteQuote({{ q.id }})">
                 <span class="material-icons-round" style="font-size:18px">delete</span>
@@ -589,7 +602,15 @@ textarea { resize:vertical; min-height:120px; }
       <div class="form-group"><label>Estimated Total</label><input type="text" id="addTotal" placeholder="e.g. € 45,000"></div>
       <div class="form-group"><label>Option Deadline</label><input type="text" id="addDeadline" value="July 20, 2026"></div>
       <div class="form-group"><label>Hotel Website URL</label><input type="text" id="addWebsite" placeholder="https://..."></div>
-      <div class="form-group"><label>Photo URL</label><input type="text" id="addImage" placeholder="https://..."></div>
+      <div class="form-group">
+        <label>Photo</label>
+        <div id="addImageDrop" class="img-paste-area" tabindex="0">
+          <span class="material-icons-round" style="font-size:32px;color:var(--on-surface-variant)">add_photo_alternate</span>
+          <div style="font-size:12px;color:var(--on-surface-variant)">Paste (Ctrl+V) or drop image here</div>
+          <img id="addImagePreview" style="display:none;max-height:120px;border-radius:8px;margin-top:8px">
+        </div>
+        <input type="hidden" id="addImage">
+      </div>
       <div class="form-group"><label>Notes (room/meeting only, in English)</label><textarea id="addNotes" style="min-height:60px" placeholder="Notes about rooms and meeting rooms only..."></textarea></div>
     </div>
     <div class="modal-footer">
@@ -1072,6 +1093,106 @@ async function addQuote() {
     });
   });
 })();
+
+// ── Image paste/drop helpers ─────────────────────────────────────────
+function resizeImage(file, maxW, maxH) {
+  return new Promise(resolve => {
+    const img = new Image();
+    img.onload = () => {
+      let w = img.width, h = img.height;
+      if (w > maxW || h > maxH) {
+        const r = Math.min(maxW / w, maxH / h);
+        w = Math.round(w * r); h = Math.round(h * r);
+      }
+      const c = document.createElement('canvas');
+      c.width = w; c.height = h;
+      c.getContext('2d').drawImage(img, 0, 0, w, h);
+      resolve(c.toDataURL('image/jpeg', 0.8));
+    };
+    img.src = URL.createObjectURL(file);
+  });
+}
+
+async function handleImageForQuote(file, quoteId) {
+  const dataUrl = await resizeImage(file, 600, 400);
+  const r = await fetch(`/api/partivia/quote/${quoteId}`, {
+    method: 'PUT', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({image_url: dataUrl}),
+  });
+  if ((await r.json()).ok) { showSnack('Photo saved'); setTimeout(() => location.reload(), 500); }
+  else showSnack('Error saving photo', 5000);
+}
+
+function extractImageFile(e) {
+  // From paste event
+  if (e.clipboardData) {
+    const items = Array.from(e.clipboardData.items || []);
+    const img = items.find(i => i.type.startsWith('image/'));
+    if (img) return img.getAsFile();
+  }
+  // From drop event
+  if (e.dataTransfer) {
+    const files = Array.from(e.dataTransfer.files || []);
+    return files.find(f => f.type.startsWith('image/'));
+  }
+  return null;
+}
+
+// Inline drop zones in input table
+document.querySelectorAll('.img-drop').forEach(el => {
+  const qid = el.dataset.id;
+  el.addEventListener('click', () => {
+    const inp = document.createElement('input');
+    inp.type = 'file'; inp.accept = 'image/*';
+    inp.onchange = () => { if (inp.files[0]) handleImageForQuote(inp.files[0], qid); };
+    inp.click();
+  });
+  el.addEventListener('dragover', e => { e.preventDefault(); el.classList.add('drag-over'); });
+  el.addEventListener('dragleave', () => el.classList.remove('drag-over'));
+  el.addEventListener('drop', e => {
+    e.preventDefault(); el.classList.remove('drag-over');
+    const file = extractImageFile(e);
+    if (file) handleImageForQuote(file, qid);
+  });
+  // Paste on the table row
+  el.closest('tr').addEventListener('paste', e => {
+    const file = extractImageFile(e);
+    if (file) { e.preventDefault(); handleImageForQuote(file, qid); }
+  });
+});
+
+// Add modal paste area
+const addDrop = document.getElementById('addImageDrop');
+if (addDrop) {
+  const preview = document.getElementById('addImagePreview');
+  const hidden = document.getElementById('addImage');
+
+  async function setAddImage(file) {
+    const dataUrl = await resizeImage(file, 600, 400);
+    hidden.value = dataUrl;
+    preview.src = dataUrl;
+    preview.style.display = 'block';
+    showSnack('Photo added');
+  }
+
+  addDrop.addEventListener('click', () => {
+    const inp = document.createElement('input');
+    inp.type = 'file'; inp.accept = 'image/*';
+    inp.onchange = () => { if (inp.files[0]) setAddImage(inp.files[0]); };
+    inp.click();
+  });
+  addDrop.addEventListener('paste', e => {
+    const file = extractImageFile(e);
+    if (file) { e.preventDefault(); setAddImage(file); }
+  });
+  addDrop.addEventListener('dragover', e => { e.preventDefault(); addDrop.classList.add('drag-over'); });
+  addDrop.addEventListener('dragleave', () => addDrop.classList.remove('drag-over'));
+  addDrop.addEventListener('drop', e => {
+    e.preventDefault(); addDrop.classList.remove('drag-over');
+    const file = extractImageFile(e);
+    if (file) setAddImage(file);
+  });
+}
 </script>
 </body>
 </html>
