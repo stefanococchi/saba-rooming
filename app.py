@@ -1718,6 +1718,28 @@ Notes: {q.notes or 'N/A'}"""
                        processed=len(quotes), total=total_quotes,
                        next_offset=next_offset if next_offset < total_quotes else None)
 
+    # ── Diagnostic: dump room rates ──────────────────────────────────────
+
+    @app.get('/api/partivia/debug-rates')
+    def partivia_debug_rates():
+        quotes = PartiviaQuote.query.order_by(PartiviaQuote.city, PartiviaQuote.hotel_name).all()
+        out = []
+        for q in quotes:
+            out.append({
+                'id': q.id, 'hotel': q.hotel_name, 'city': q.city,
+                'email_log_id': q.email_log_id,
+                'dates_proposed': q.dates_proposed,
+                'raw_summary': q.raw_summary,
+                'room_rates': [
+                    {'room_type': rr.room_type,
+                     'rate_per_night': rr.rate_per_night,
+                     'breakfast': rr.breakfast_included,
+                     'notes': rr.notes}
+                    for rr in q.room_rates
+                ],
+            })
+        return jsonify(out)
+
     # ── Edit inline quote ─────────────────────────────────────────────────
 
     @app.put('/api/partivia/quote/<int:qid>')
