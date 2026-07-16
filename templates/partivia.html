@@ -574,7 +574,14 @@ textarea { resize:vertical; min-height:120px; }
             <td class="editable" data-field="website_url" style="max-width:150px;overflow:hidden;text-overflow:ellipsis">{{ q.website_url or '' }}</td>
             <td class="img-cell" data-id="{{ q.id }}" style="min-width:80px;text-align:center">
               {% if q.image_url %}
-              <img src="{{ q.image_url }}" style="height:40px;border-radius:4px;cursor:pointer" onclick="event.stopPropagation();window.open(this.src)" title="Click to view full size">
+              <div style="position:relative;display:inline-block">
+                <img src="{{ q.image_url }}" style="height:40px;border-radius:4px;cursor:pointer" onclick="event.stopPropagation();window.open(this.src)" title="Click to view full size"
+                     onerror="this.style.display='none';this.nextElementSibling.textContent='broken URL'">
+                <span style="font-size:10px;color:var(--error)"></span>
+              </div>
+              <button class="icon-btn" onclick="removeImage({{ q.id }})" title="Remove photo" style="vertical-align:middle">
+                <span class="material-icons-round" style="font-size:14px;color:var(--error)">close</span>
+              </button>
               {% endif %}
               <div class="img-drop" data-id="{{ q.id }}" title="Paste or drop image here">
                 <span class="material-icons-round" style="font-size:16px;color:var(--on-surface-variant)">add_photo_alternate</span>
@@ -995,6 +1002,14 @@ async function deleteQuote(qid) {
   if (!confirm('Delete this quote?')) return;
   const r = await fetch(`/api/partivia/quote/${qid}`, {method:'DELETE'});
   if ((await r.json()).ok) { showSnack('Deleted'); setTimeout(()=>location.reload(),500); }
+}
+
+async function removeImage(qid) {
+  const r = await fetch(`/api/partivia/quote/${qid}`, {
+    method:'PUT', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({image_url: null}),
+  });
+  if ((await r.json()).ok) { showSnack('Photo removed'); setTimeout(()=>location.reload(),500); }
 }
 
 // ── Inline edit (input tab) ───────────────────
