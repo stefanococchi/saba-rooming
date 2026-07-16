@@ -6,6 +6,8 @@
 <title>Partivia Spain — Dashboard</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
 :root {
   --primary: #2F5496;
@@ -209,6 +211,9 @@ textarea { resize:vertical; min-height:120px; }
   </button>
   <button class="tab-btn" onclick="switchTab('condizioni')">
     <span class="material-icons-round">gavel</span><span class="tab-label">Terms</span>
+  </button>
+  <button class="tab-btn" onclick="switchTab('map')">
+    <span class="material-icons-round">map</span><span class="tab-label">Map</span>
   </button>
   <button class="tab-btn" onclick="switchTab('input')">
     <span class="material-icons-round">add_circle</span><span class="tab-label">Input</span>
@@ -489,7 +494,20 @@ textarea { resize:vertical; min-height:120px; }
 </div>
 
 <!-- ══════════════════════════════════════════════ -->
-<!-- ██  TAB 6: INPUT                            ██ -->
+<!-- ██  TAB 6: MAP                               ██ -->
+<!-- ══════════════════════════════════════════════ -->
+<div class="tab-content" id="tab-map">
+  <div class="card">
+    <div class="card-header">
+      <span class="material-icons-round">map</span>
+      Hotel Locations
+    </div>
+    <div id="hotelMap" style="height:600px;border-radius:0 0 12px 12px"></div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════ -->
+<!-- ██  TAB 7: INPUT                            ██ -->
 <!-- ══════════════════════════════════════════════ -->
 <div class="tab-content" id="tab-input">
 
@@ -531,6 +549,7 @@ textarea { resize:vertical; min-height:120px; }
             <th>Total</th>
             <th>Dates</th>
             <th>Option Deadline</th>
+            <th>Status</th>
             <th>Address</th>
             <th>Website URL</th>
             <th>Photo</th>
@@ -547,6 +566,10 @@ textarea { resize:vertical; min-height:120px; }
             <td class="editable" data-field="total_estimate">{{ q.total_estimate or '' }}</td>
             <td class="editable" data-field="dates_proposed">{{ q.dates_proposed or '' }}</td>
             <td class="editable" data-field="validity_date" style="font-weight:600;color:var(--warning)">{{ q.validity_date or '' }}</td>
+            <td>
+              <span class="status-badge status-{{ q.quote_status.replace(' ','_') }}"
+                    onclick="cycleStatus(this,{{ q.id }})">{{ q.quote_status.replace('_',' ') }}</span>
+            </td>
             <td class="editable" data-field="address">{{ q.address or '' }}</td>
             <td class="editable" data-field="website_url" style="max-width:150px;overflow:hidden;text-overflow:ellipsis">{{ q.website_url or '' }}</td>
             <td class="img-cell" data-id="{{ q.id }}" style="min-width:80px;text-align:center">
@@ -689,11 +712,87 @@ const HOTELS_DATA = {
 
 <script>
 // ── Tab switching ─────────────────────────────
+let mapInitialized = false;
 function switchTab(name) {
   document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
   document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
   document.getElementById('tab-' + name).classList.add('active');
   event.currentTarget.classList.add('active');
+  if (name === 'map' && !mapInitialized) { initMap(); mapInitialized = true; }
+}
+
+function initMap() {
+  const map = L.map('hotelMap').setView([39.8, -1.5], 6);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; OpenStreetMap contributors', maxZoom: 18
+  }).addTo(map);
+
+  const cityColors = {
+    'Barcellona': '#e53935', 'Madrid': '#1e88e5',
+    'Siviglia': '#fb8c00', 'Valencia': '#43a047'
+  };
+
+  const hotels = [
+    {% for q in quotes %}
+    { id:{{q.id}}, name:{{q.hotel_name|tojson}}, city:{{q.city|tojson}}, stars:{{q.stars or 0}},
+      address:{{(q.address or '')|tojson}}, website:{{(q.website_url or '')|tojson}},
+      rates: "{{ q.room_rates|map(attribute='rate_per_night')|select|join(', ') }}" },
+    {% endfor %}
+  ];
+
+  // Geocode coordinates from address (hardcoded for known hotels)
+  const coords = {
+    'Catalonia Ramblas 4*Sup': [41.3856, 2.1701],
+    'Grand Hyatt Barcelona': [41.3873, 2.1284],
+    'Hotel SB Diagonal Zero': [41.4106, 2.2194],
+    'SB Glow Hotel': [41.4035, 2.1915],
+    'Sofitel Barcelona Skipper': [41.3868, 2.1967],
+    'Catalonia Gran Vía Madrid': [40.4201, -3.7024],
+    'Madrid Marriott Auditorium Hotel & Conference Center': [40.4625, -3.5798],
+    'Pestana CR7 Gran Vía': [40.4203, -3.7063],
+    'VP Plaza España Design 5*': [40.4237, -3.7127],
+    'Hotel Inglaterra': [37.3860, -5.9945],
+    'Eurostars Torre Sevilla': [37.3923, -6.0069],
+    'Hotel Las Arenas 5* GL': [39.4746, -0.3263],
+    'The Westin Valencia': [39.4752, -0.3656],
+  };
+
+  const markers = [];
+  hotels.forEach(h => {
+    const ll = coords[h.name];
+    if (!ll) return;
+    const color = cityColors[h.city] || '#757575';
+    const icon = L.divIcon({
+      className: '',
+      html: `<div style="background:${color};color:#fff;padding:4px 8px;border-radius:6px;font-size:11px;font-weight:600;white-space:nowrap;box-shadow:0 2px 6px rgba(0,0,0,.3);border:2px solid #fff">${h.name} ${'★'.repeat(h.stars)}</div>`,
+      iconAnchor: [0, 0]
+    });
+    const popup = `<div style="min-width:200px">
+      <strong>${h.website ? '<a href="'+h.website+'" target="_blank">'+h.name+'</a>' : h.name}</strong>
+      <br><span style="color:#666">${h.city} ${'★'.repeat(h.stars)}</span>
+      ${h.address ? '<br><span style="font-size:12px">📍 '+h.address+'</span>' : ''}
+      ${h.rates ? '<br><span style="font-size:12px;color:#2e7d32">💰 '+h.rates+'</span>' : ''}
+    </div>`;
+    const m = L.marker(ll, {icon}).addTo(map).bindPopup(popup);
+    markers.push(m);
+  });
+
+  if (markers.length) {
+    const group = L.featureGroup(markers);
+    map.fitBounds(group.getBounds().pad(0.1));
+  }
+
+  // City legend
+  const legend = L.control({position: 'bottomright'});
+  legend.onAdd = () => {
+    const div = L.DomUtil.create('div');
+    div.style.cssText = 'background:#fff;padding:10px 14px;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,.2);font-size:12px;line-height:1.8';
+    div.innerHTML = Object.entries(cityColors).map(([city, c]) =>
+      `<div><span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:${c};margin-right:6px;vertical-align:middle"></span>${city}</div>`
+    ).join('');
+    return div;
+  };
+  legend.addTo(map);
 }
 
 // ── Snackbar ──────────────────────────────────
