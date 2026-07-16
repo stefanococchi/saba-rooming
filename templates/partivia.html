@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="it">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Saba Partivia</title>
+<title>Partivia Spain — Dashboard</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
 <style>
@@ -27,706 +27,525 @@
   --shadow-sm: 0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.06);
   --shadow-md: 0 4px 12px rgba(0,0,0,.1);
 }
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family:'Inter',system-ui,sans-serif; background:var(--surface); color:var(--on-surface); min-height:100vh; }
 
-* { margin: 0; padding: 0; box-sizing: border-box; }
+/* ── Topbar ─────────────────────────────────── */
+.topbar { background:var(--primary); color:#fff; padding:14px 24px; display:flex; align-items:center; gap:16px; position:sticky; top:0; z-index:100; box-shadow:var(--shadow-md); }
+.topbar h1 { font-size:20px; font-weight:600; }
+.topbar .spacer { flex:1; }
+.topbar .badge { background:rgba(255,255,255,.2); padding:4px 12px; border-radius:20px; font-size:13px; }
+.topbar a { color:rgba(255,255,255,.8); text-decoration:none; display:flex; align-items:center; gap:4px; transition:color .15s; }
+.topbar a:hover { color:#fff; }
 
-body {
-  font-family: 'Inter', system-ui, sans-serif;
-  background: var(--surface);
-  color: var(--on-surface);
-  min-height: 100vh;
-}
+/* ── Tab bar ────────────────────────────────── */
+.tab-bar { display:flex; background:var(--surface-card); border-bottom:1px solid var(--outline-variant); padding:0 16px; overflow-x:auto; position:sticky; top:56px; z-index:99; }
+.tab-btn { padding:14px 20px; font-size:13px; font-weight:600; color:var(--on-surface-variant); border:none; background:none; cursor:pointer; border-bottom:3px solid transparent; white-space:nowrap; transition:all .15s; display:flex; align-items:center; gap:6px; }
+.tab-btn:hover { color:var(--primary); background:var(--surface-variant); }
+.tab-btn.active { color:var(--primary); border-bottom-color:var(--primary); }
+.tab-btn .material-icons-round { font-size:18px; }
+.tab-content { display:none; padding:16px; }
+.tab-content.active { display:block; }
 
-/* ── Top Bar ──────────────────────────────────────────────────────────── */
-.topbar {
-  background: var(--primary);
-  color: white;
-  padding: 16px 24px;
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  position: sticky;
-  top: 0;
-  z-index: 100;
-  box-shadow: var(--shadow-md);
-}
-.topbar h1 { font-size: 20px; font-weight: 600; }
-.topbar .spacer { flex: 1; }
-.topbar .badge {
-  background: rgba(255,255,255,.2);
-  padding: 4px 12px;
-  border-radius: 20px;
-  font-size: 13px;
-  font-weight: 500;
-}
-.topbar a {
-  color: rgba(255,255,255,.8);
-  text-decoration: none;
-  font-size: 13px;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  transition: color .15s;
-}
-.topbar a:hover { color: #fff; }
+/* ── Generic ────────────────────────────────── */
+.container { max-width:100%; }
+.card { background:var(--surface-card); border-radius:var(--radius); border:1px solid var(--outline-variant); box-shadow:var(--shadow-sm); overflow:hidden; margin-bottom:16px; }
+.card-header { padding:14px 20px; border-bottom:1px solid var(--outline-variant); display:flex; align-items:center; gap:10px; font-weight:600; font-size:15px; color:var(--primary-dark); }
+.card-header .material-icons-round { font-size:20px; color:var(--primary); }
+.card-body { padding:16px 20px; }
+.btn { display:inline-flex; align-items:center; gap:6px; padding:10px 20px; border:none; border-radius:var(--radius-sm); font-family:inherit; font-size:14px; font-weight:500; cursor:pointer; transition:all .15s; }
+.btn .material-icons-round { font-size:18px; }
+.btn-primary { background:var(--primary); color:#fff; }
+.btn-primary:hover { background:var(--primary-dark); }
+.btn-outline { background:transparent; color:var(--primary); border:1px solid var(--primary-light); }
+.btn-outline:hover { background:var(--surface-variant); }
+.btn-success { background:var(--success); color:#fff; }
+.btn-danger { background:transparent; color:var(--error); border:1px solid #f5c6cb; }
+.btn-sm { padding:6px 12px; font-size:13px; }
+.btn:disabled { opacity:.5; cursor:not-allowed; }
+input[type="text"],textarea,select { font-family:inherit; font-size:14px; padding:10px 14px; border:1px solid var(--outline); border-radius:var(--radius-sm); background:var(--surface); color:var(--on-surface); width:100%; transition:border-color .15s; }
+input:focus,textarea:focus,select:focus { outline:none; border-color:var(--primary); box-shadow:0 0 0 3px rgba(47,84,150,.15); }
+textarea { resize:vertical; min-height:120px; }
+.form-group { margin-bottom:14px; }
+.form-group label { display:block; font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:.5px; color:var(--on-surface-variant); margin-bottom:6px; }
+.inline-input { font-family:inherit; font-size:12px; padding:2px 4px; border:1px solid var(--primary); border-radius:4px; width:100%; background:#fff; }
 
-/* ── Layout ───────────────────────────────────────────────────────────── */
-.container { max-width: 100%; padding: 16px; }
+/* ── Stats ──────────────────────────────────── */
+.stats-row { display:flex; gap:12px; flex-wrap:wrap; margin-bottom:16px; }
+.stat-box { background:var(--surface-card); border:1px solid var(--outline-variant); border-radius:var(--radius-sm); padding:12px 20px; text-align:center; min-width:90px; }
+.stat-box .num { font-size:24px; font-weight:700; color:var(--primary); }
+.stat-box .label { font-size:11px; color:var(--on-surface-variant); text-transform:uppercase; }
 
-/* ── Cards ────────────────────────────────────────────────────────────── */
-.card {
-  background: var(--surface-card);
-  border-radius: var(--radius);
-  border: 1px solid var(--outline-variant);
-  box-shadow: var(--shadow-sm);
-  overflow: hidden;
-  margin-bottom: 16px;
-}
-.card-header {
-  padding: 16px 20px;
-  border-bottom: 1px solid var(--outline-variant);
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-weight: 600;
-  font-size: 15px;
-  color: var(--primary-dark);
-}
-.card-header .material-icons-round { font-size: 22px; color: var(--primary); }
-.card-body { padding: 20px; }
+/* ── Hotel cards grid ───────────────────────── */
+.hotel-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(320px,1fr)); gap:16px; margin-bottom:16px; }
+.hotel-card { background:var(--surface-card); border:1px solid var(--outline-variant); border-radius:var(--radius); overflow:hidden; transition:transform .15s,box-shadow .15s; }
+.hotel-card:hover { transform:translateY(-2px); box-shadow:var(--shadow-md); }
+.hotel-img { width:100%; height:180px; object-fit:cover; background:var(--surface-variant); display:flex; align-items:center; justify-content:center; }
+.hotel-img img { width:100%; height:180px; object-fit:cover; }
+.hotel-placeholder { width:100%; height:180px; display:flex; align-items:center; justify-content:center; background:linear-gradient(135deg,var(--primary-light),var(--primary-dark)); color:rgba(255,255,255,.6); font-size:48px; font-weight:700; letter-spacing:4px; }
+.hotel-card-body { padding:16px; }
+.hotel-card-body h3 { font-size:16px; font-weight:600; margin-bottom:4px; }
+.hotel-card-body .city-stars { font-size:13px; color:var(--on-surface-variant); margin-bottom:8px; }
+.hotel-card-body .city-stars .stars { color:#f9a825; }
+.hotel-card-body .price-range { font-size:14px; font-weight:600; color:var(--primary); margin-bottom:4px; }
+.hotel-card-body .total { font-size:12px; color:var(--on-surface-variant); }
+.hotel-card-footer { padding:8px 16px 14px; display:flex; justify-content:space-between; align-items:center; }
 
-/* ── Buttons ──────────────────────────────────────────────────────────── */
-.btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 10px 20px;
-  border: none;
-  border-radius: var(--radius-sm);
-  font-family: inherit;
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all .15s;
-}
-.btn .material-icons-round { font-size: 18px; }
-.btn-primary { background: var(--primary); color: white; }
-.btn-primary:hover { background: var(--primary-dark); }
-.btn-outline { background: transparent; color: var(--primary); border: 1px solid var(--primary-light); }
-.btn-outline:hover { background: var(--surface-variant); }
-.btn-danger { background: transparent; color: var(--error); border: 1px solid #f5c6cb; }
-.btn-danger:hover { background: #fef2f2; }
-.btn-success { background: var(--success); color: white; }
-.btn-sm { padding: 6px 12px; font-size: 13px; }
-.btn:disabled { opacity: .5; cursor: not-allowed; }
-.btn-group { display: flex; gap: 8px; flex-wrap: wrap; }
+/* ── Status ─────────────────────────────────── */
+.status-badge { display:inline-block; padding:3px 10px; border-radius:10px; font-size:11px; font-weight:600; text-transform:uppercase; cursor:pointer; }
+.status-da_valutare { background:#fff3e0; color:#e65100; }
+.status-in_trattativa { background:#e3f2fd; color:#1565c0; }
+.status-confermato { background:#e8f5e9; color:#2e7d32; }
+.status-rifiutato { background:#fce4ec; color:#c62828; }
+.status-scaduto { background:#f5f5f5; color:#757575; }
 
-/* ── Toolbar ──────────────────────────────────────────────────────────── */
-.toolbar {
-  padding: 12px 16px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
+/* ── Comparison tables ──────────────────────── */
+.cmp-table { width:100%; border-collapse:collapse; font-size:12px; }
+.cmp-table th { background:var(--primary); color:#fff; padding:10px 12px; text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.3px; position:sticky; top:112px; z-index:10; white-space:nowrap; }
+.cmp-table td { padding:8px 12px; border-bottom:1px solid var(--outline-variant); vertical-align:middle; }
+.cmp-table tr:hover td { background:var(--surface-variant); }
+.cmp-table .city-header td { background:var(--surface-variant); font-weight:700; font-size:13px; color:var(--primary-dark); padding:10px 12px; }
+.cmp-table .hotel-name { font-weight:600; white-space:nowrap; }
+.cmp-table .rate-cell { text-align:center; font-weight:500; }
+.cmp-table .rate-cell.best { background:#e8f5e9; color:#2e7d32; font-weight:700; }
+.cmp-table .breakfast-yes { color:var(--success); font-size:10px; }
+.cmp-table .long-text { max-width:250px; white-space:normal; font-size:11px; line-height:1.4; }
+.stars { color:#f9a825; letter-spacing:-1px; }
 
-/* ── Table ────────────────────────────────────────────────────────────── */
-.table-wrap { overflow-x: auto; }
-table { width: 100%; border-collapse: collapse; font-size: 12px; }
-th {
-  background: var(--surface-variant);
-  padding: 8px 10px;
-  text-align: left;
-  font-weight: 600;
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: .3px;
-  color: var(--on-surface-variant);
-  position: sticky;
-  top: 0;
-  white-space: nowrap;
-}
-td {
-  padding: 6px 10px;
-  border-bottom: 1px solid var(--outline-variant);
-  vertical-align: middle;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 200px;
-}
-tr:hover td { background: var(--surface-variant); }
-td.editable { cursor: pointer; position: relative; }
-td.editable:hover { background: #e0e8f5; }
-td.editable::after {
-  content: 'edit';
-  font-family: 'Material Icons Round';
-  font-size: 14px;
-  position: absolute;
-  right: 4px;
-  top: 50%;
-  transform: translateY(-50%);
-  color: var(--primary-light);
-  opacity: 0;
-  transition: opacity .15s;
-}
-td.editable:hover::after { opacity: 1; }
+/* ── Filter chips ───────────────────────────── */
+.filter-bar { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:16px; }
+.filter-chip { padding:6px 14px; border-radius:16px; border:1px solid var(--outline); font-size:12px; cursor:pointer; background:transparent; transition:all .15s; font-weight:500; }
+.filter-chip.active { background:var(--primary); color:#fff; border-color:var(--primary); }
+.filter-chip:hover:not(.active) { background:var(--surface-variant); }
 
-.action-btns { display: flex; gap: 4px; }
-.icon-btn {
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: 6px;
-  border-radius: 8px;
-  color: var(--on-surface-variant);
-  transition: all .15s;
-  display: flex;
-  align-items: center;
-}
-.icon-btn:hover { background: var(--surface-variant); }
-.icon-btn.delete:hover { color: var(--error); background: #fef2f2; }
+/* ── Parsed results ─────────────────────────── */
+.parsed-results { margin-top:16px; padding:16px; background:var(--surface-variant); border-radius:var(--radius-sm); }
+.parsed-quote { background:var(--surface-card); border:1px solid var(--outline-variant); border-radius:var(--radius-sm); padding:14px; margin-bottom:10px; }
+.parsed-quote:last-child { margin-bottom:0; }
+.parsed-quote .hotel-name { font-weight:600; font-size:15px; }
+.parsed-quote .detail { font-size:13px; color:var(--on-surface-variant); margin-top:4px; }
+.parsed-quote .detail-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:6px; margin-top:8px; font-size:12px; }
+.parsed-quote .detail-grid .label { font-weight:600; color:var(--on-surface-variant); }
+.action-tag { display:inline-block; padding:2px 8px; border-radius:8px; font-size:11px; font-weight:600; }
+.action-add { background:#e8f5e9; color:#2e7d32; }
+.action-update { background:#e3f2fd; color:#1565c0; }
+.source-badge { display:inline-block; padding:2px 8px; border-radius:10px; font-size:11px; font-weight:600; text-transform:uppercase; }
+.source-email { background:#e3f2fd; color:#1565c0; }
+.source-manual { background:#fff3e0; color:#e65100; }
+.source-import { background:#f3e5f5; color:#7b1fa2; }
 
-/* ── Status badges ───────────────────────────────────────────────────── */
-.status-badge {
-  display: inline-block;
-  padding: 3px 10px;
-  border-radius: 10px;
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  cursor: pointer;
-}
-.status-da_valutare { background: #fff3e0; color: #e65100; }
-.status-in_trattativa { background: #e3f2fd; color: #1565c0; }
-.status-confermato { background: #e8f5e9; color: #2e7d32; }
-.status-rifiutato { background: #fce4ec; color: #c62828; }
-.status-scaduto { background: #f5f5f5; color: #757575; }
+/* ── Snackbar & spinner ─────────────────────── */
+.snackbar { position:fixed; bottom:-60px; left:50%; transform:translateX(-50%); background:#333; color:#fff; padding:12px 24px; border-radius:8px; font-size:14px; z-index:200; transition:bottom .3s; box-shadow:var(--shadow-md); }
+.snackbar.show { bottom:24px; }
+.spinner { display:inline-block; width:16px; height:16px; border:2px solid rgba(255,255,255,.3); border-radius:50%; border-top-color:#fff; animation:spin .6s linear infinite; }
+@keyframes spin { to { transform:rotate(360deg); } }
 
-.source-badge {
-  display: inline-block;
-  padding: 2px 8px;
-  border-radius: 10px;
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-}
-.source-email { background: #e3f2fd; color: #1565c0; }
-.source-manual { background: #fff3e0; color: #e65100; }
+/* ── Modal ──────────────────────────────────── */
+.modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:150; align-items:center; justify-content:center; }
+.modal-overlay.open { display:flex; }
+.modal { background:var(--surface-card); border-radius:var(--radius); width:90%; max-width:500px; max-height:80vh; overflow-y:auto; box-shadow:0 24px 48px rgba(0,0,0,.2); }
+.modal-header { padding:20px 24px; border-bottom:1px solid var(--outline-variant); display:flex; align-items:center; justify-content:space-between; font-weight:600; font-size:16px; }
+.modal-body { padding:24px; }
+.modal-footer { padding:16px 24px; border-top:1px solid var(--outline-variant); display:flex; justify-content:flex-end; gap:8px; }
+.icon-btn { background:none; border:none; cursor:pointer; padding:6px; border-radius:8px; color:var(--on-surface-variant); transition:all .15s; display:flex; align-items:center; }
+.icon-btn:hover { background:var(--surface-variant); }
+.icon-btn.delete:hover { color:var(--error); background:#fef2f2; }
 
-/* ── Stars ────────────────────────────────────────────────────────────── */
-.stars { color: #f9a825; font-size: 14px; letter-spacing: -2px; }
+/* ── Input tab table ────────────────────────── */
+.input-table { width:100%; border-collapse:collapse; font-size:12px; }
+.input-table th { background:var(--surface-variant); padding:8px 10px; text-align:left; font-weight:600; font-size:10px; text-transform:uppercase; color:var(--on-surface-variant); }
+.input-table td { padding:6px 10px; border-bottom:1px solid var(--outline-variant); }
+.input-table td.editable { cursor:pointer; }
+.input-table td.editable:hover { background:#e0e8f5; }
+.input-table tr:hover td { background:var(--surface-variant); }
 
-/* ── Forms / Inputs ──────────────────────────────────────────────────── */
-input[type="text"], textarea, select {
-  font-family: inherit;
-  font-size: 14px;
-  padding: 10px 14px;
-  border: 1px solid var(--outline);
-  border-radius: var(--radius-sm);
-  background: var(--surface);
-  color: var(--on-surface);
-  width: 100%;
-  transition: border-color .15s;
+/* ── Responsive ─────────────────────────────── */
+@media(max-width:700px) {
+  .hotel-grid { grid-template-columns:1fr; }
+  .tab-btn { padding:10px 14px; font-size:12px; }
+  .tab-btn span.tab-label { display:none; }
 }
-input:focus, textarea:focus, select:focus {
-  outline: none;
-  border-color: var(--primary);
-  box-shadow: 0 0 0 3px rgba(47,84,150,.15);
-}
-textarea { resize: vertical; min-height: 120px; }
-
-.form-group { margin-bottom: 14px; }
-.form-group label {
-  display: block;
-  font-size: 12px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: .5px;
-  color: var(--on-surface-variant);
-  margin-bottom: 6px;
-}
-
-.inline-input {
-  font-family: inherit;
-  font-size: 12px;
-  padding: 2px 4px;
-  border: 1px solid var(--primary);
-  border-radius: 4px;
-  width: 100%;
-  background: #fff;
-}
-
-/* ── Email Parser ─────────────────────────────────────────────────────── */
-.parsed-results {
-  margin-top: 16px;
-  padding: 16px;
-  background: var(--surface-variant);
-  border-radius: var(--radius-sm);
-}
-.parsed-quote {
-  background: var(--surface-card);
-  border: 1px solid var(--outline-variant);
-  border-radius: var(--radius-sm);
-  padding: 14px;
-  margin-bottom: 10px;
-}
-.parsed-quote:last-child { margin-bottom: 0; }
-.parsed-quote .hotel-name { font-weight: 600; font-size: 15px; }
-.parsed-quote .detail { font-size: 13px; color: var(--on-surface-variant); margin-top: 4px; }
-.parsed-quote .detail-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 6px;
-  margin-top: 8px;
-  font-size: 12px;
-}
-.parsed-quote .detail-grid .label { font-weight: 600; color: var(--on-surface-variant); }
-.action-tag {
-  display: inline-block;
-  padding: 2px 8px;
-  border-radius: 8px;
-  font-size: 11px;
-  font-weight: 600;
-}
-.action-add { background: #e8f5e9; color: #2e7d32; }
-.action-update { background: #e3f2fd; color: #1565c0; }
-
-/* ── Search ───────────────────────────────────────────────────────────── */
-.search-bar {
-  margin-bottom: 12px;
-  position: relative;
-}
-.search-bar input { padding-left: 40px; }
-.search-bar .material-icons-round {
-  position: absolute;
-  left: 12px;
-  top: 50%;
-  transform: translateY(-50%);
-  color: var(--on-surface-variant);
-  font-size: 20px;
-}
-
-/* ── Detail row ──────────────────────────────────────────────────────── */
-.detail-row td {
-  background: var(--surface-variant) !important;
-  padding: 12px 16px;
-  white-space: normal;
-  max-width: none;
-}
-.detail-content {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 16px;
-}
-.detail-section h4 {
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: .5px;
-  color: var(--primary);
-  margin-bottom: 8px;
-}
-.detail-section table {
-  font-size: 12px;
-  margin-bottom: 0;
-}
-.detail-section td, .detail-section th {
-  padding: 4px 8px;
-  background: var(--surface-card);
-}
-
-/* ── Empty state ─────────────────────────────────────────────────────── */
-.empty-state {
-  text-align: center;
-  padding: 60px 20px;
-  color: var(--on-surface-variant);
-}
-.empty-state .material-icons-round { font-size: 48px; margin-bottom: 12px; opacity: .5; }
-.empty-state p { font-size: 14px; }
-
-/* ── Snackbar ────────────────────────────────────────────────────────── */
-.snackbar {
-  position: fixed;
-  bottom: -60px;
-  left: 50%;
-  transform: translateX(-50%);
-  background: #333;
-  color: #fff;
-  padding: 12px 24px;
-  border-radius: 8px;
-  font-size: 14px;
-  z-index: 200;
-  transition: bottom .3s;
-  box-shadow: var(--shadow-md);
-}
-.snackbar.show { bottom: 24px; }
-
-/* ── Spinner ─────────────────────────────────────────────────────────── */
-.spinner {
-  display: inline-block;
-  width: 16px;
-  height: 16px;
-  border: 2px solid rgba(255,255,255,.3);
-  border-radius: 50%;
-  border-top-color: #fff;
-  animation: spin .6s linear infinite;
-}
-@keyframes spin { to { transform: rotate(360deg); } }
-
-/* ── Modal ────────────────────────────────────────────────────────────── */
-.modal-overlay {
-  display: none;
-  position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,.5);
-  z-index: 150;
-  align-items: center;
-  justify-content: center;
-}
-.modal-overlay.open { display: flex; }
-.modal {
-  background: var(--surface-card);
-  border-radius: var(--radius);
-  width: 90%;
-  max-width: 500px;
-  max-height: 80vh;
-  overflow-y: auto;
-  box-shadow: 0 24px 48px rgba(0,0,0,.2);
-}
-.modal-header {
-  padding: 20px 24px;
-  border-bottom: 1px solid var(--outline-variant);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font-weight: 600;
-  font-size: 16px;
-}
-.modal-body { padding: 24px; }
-.modal-footer {
-  padding: 16px 24px;
-  border-top: 1px solid var(--outline-variant);
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-}
-
-/* ── Stats row ───────────────────────────────────────────────────────── */
-.stats-row {
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
-  margin-bottom: 16px;
-}
-.stat-box {
-  background: var(--surface-card);
-  border: 1px solid var(--outline-variant);
-  border-radius: var(--radius-sm);
-  padding: 12px 20px;
-  text-align: center;
-  min-width: 100px;
-}
-.stat-box .num { font-size: 24px; font-weight: 700; color: var(--primary); }
-.stat-box .label { font-size: 11px; color: var(--on-surface-variant); text-transform: uppercase; }
-
-/* ── Filter bar ──────────────────────────────────────────────────────── */
-.filter-bar {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  flex-wrap: wrap;
-  margin-bottom: 12px;
-  padding: 0 16px;
-}
-.filter-chip {
-  padding: 4px 12px;
-  border-radius: 16px;
-  border: 1px solid var(--outline);
-  font-size: 12px;
-  cursor: pointer;
-  background: transparent;
-  transition: all .15s;
-}
-.filter-chip.active {
-  background: var(--primary);
-  color: #fff;
-  border-color: var(--primary);
-}
-.filter-chip:hover:not(.active) { background: var(--surface-variant); }
 </style>
 </head>
 <body>
 
-<!-- ── Topbar ─────────────────────────────────────────────────────────── -->
+<!-- ── Topbar ──────────────────────────────────── -->
 <div class="topbar">
-  <a href="/" title="Torna al portale">
-    <span class="material-icons-round">arrow_back</span>
-  </a>
+  <a href="/" title="Portal"><span class="material-icons-round">arrow_back</span></a>
   <span class="material-icons-round">apartment</span>
-  <h1>Partivia Spagna</h1>
+  <h1>Partivia Spain</h1>
   <div class="spacer"></div>
-  <span class="badge" id="countBadge">{{ quotes|length }} preventivi</span>
+  <a href="/api/partivia/export" class="btn-sm" style="background:rgba(255,255,255,.15);border-radius:8px;padding:6px 14px;font-size:12px;font-weight:600">
+    <span class="material-icons-round" style="font-size:16px;vertical-align:middle">download</span> XLSX
+  </a>
+  <span class="badge">{{ quotes|length }} quotes</span>
 </div>
 
-<!-- ── Container ──────────────────────────────────────────────────────── -->
+<!-- ── Tab bar ─────────────────────────────────── -->
+<div class="tab-bar">
+  <button class="tab-btn active" onclick="switchTab('overview')">
+    <span class="material-icons-round">dashboard</span><span class="tab-label">Overview</span>
+  </button>
+  <button class="tab-btn" onclick="switchTab('camere')">
+    <span class="material-icons-round">bed</span><span class="tab-label">Rooms</span>
+  </button>
+  <button class="tab-btn" onclick="switchTab('sale')">
+    <span class="material-icons-round">meeting_room</span><span class="tab-label">Meeting Rooms</span>
+  </button>
+  <button class="tab-btn" onclick="switchTab('fb')">
+    <span class="material-icons-round">restaurant</span><span class="tab-label">F&B</span>
+  </button>
+  <button class="tab-btn" onclick="switchTab('condizioni')">
+    <span class="material-icons-round">gavel</span><span class="tab-label">Terms</span>
+  </button>
+  <button class="tab-btn" onclick="switchTab('input')">
+    <span class="material-icons-round">add_circle</span><span class="tab-label">Input</span>
+  </button>
+</div>
+
 <div class="container">
+
+<!-- ══════════════════════════════════════════════ -->
+<!-- ██  TAB 1: OVERVIEW                         ██ -->
+<!-- ══════════════════════════════════════════════ -->
+<div class="tab-content active" id="tab-overview">
 
   <!-- Stats -->
   <div class="stats-row">
-    {% set cities = quotes|map(attribute='city')|list %}
     <div class="stat-box">
       <div class="num">{{ quotes|length }}</div>
-      <div class="label">Totale</div>
+      <div class="label">Total</div>
     </div>
-    {% for city in cities|unique|sort %}
+    {% for city, count in stats_cities.items()|sort %}
     <div class="stat-box">
-      <div class="num">{{ cities|select('equalto', city)|list|length }}</div>
+      <div class="num">{{ count }}</div>
       <div class="label">{{ city }}</div>
     </div>
     {% endfor %}
-    {% set confirmed = quotes|selectattr('quote_status', 'equalto', 'confermato')|list|length %}
-    {% if confirmed > 0 %}
+    {% for star, count in stats_stars.items()|sort(reverse=true) %}
+    {% if star > 0 %}
     <div class="stat-box">
-      <div class="num" style="color:var(--success)">{{ confirmed }}</div>
-      <div class="label">Confermati</div>
+      <div class="num">{{ count }}</div>
+      <div class="label">{{ star }} stars</div>
     </div>
     {% endif %}
+    {% endfor %}
   </div>
 
-  <!-- Toolbar -->
-  <div class="toolbar">
-    <a href="/api/partivia/export" class="btn btn-outline btn-sm">
-      <span class="material-icons-round">download</span>
-      Export XLSX
-    </a>
-    <button class="btn btn-outline btn-sm" onclick="openAddModal()">
-      <span class="material-icons-round">add</span>
-      Aggiungi Manuale
-    </button>
+  <!-- City filter -->
+  <div class="filter-bar">
+    <button class="filter-chip active" onclick="filterCards('all',this)">All</button>
+    {% for city in stats_cities.keys()|sort %}
+    <button class="filter-chip" onclick="filterCards('{{ city }}',this)">{{ city }}</button>
+    {% endfor %}
   </div>
+
+  <!-- Hotel cards grid -->
+  <div class="hotel-grid" id="hotelGrid">
+    {% for h in hotels %}
+    {% set q = h.best %}
+    <div class="hotel-card" data-city="{{ q.city }}" onclick="openHotelDetail('{{ q.hotel_name|lower|replace("'","") }}')" style="cursor:pointer">
+      {% if q.image_url %}
+      <div class="hotel-img"><img src="{{ q.image_url }}" alt="{{ q.hotel_name }}" loading="lazy"></div>
+      {% else %}
+      <div class="hotel-placeholder">{{ q.hotel_name[:2]|upper }}</div>
+      {% endif %}
+      <div class="hotel-card-body">
+        <h3>{{ q.hotel_name }}</h3>
+        <div class="city-stars">
+          {{ q.city }} <span class="stars">{{ '★' * (q.stars or 0) }}</span>
+          {% if h.count > 1 %}
+          <span style="margin-left:8px;background:var(--primary);color:#fff;border-radius:10px;padding:1px 8px;font-size:11px;font-weight:600">{{ h.count }} versions</span>
+          {% endif %}
+        </div>
+        {% if q.room_rates %}
+        <div class="price-range">
+          {% set prices = [] %}
+          {% for rr in q.room_rates %}
+            {% if rr.rate_per_night %}
+              {{ '' }}{% set _ = prices.append(rr.rate_per_night) %}
+            {% endif %}
+          {% endfor %}
+          {% if prices %}
+            {{ prices[0] }}{% if prices|length > 1 %} — {{ prices[-1] }}{% endif %} /night
+          {% endif %}
+        </div>
+        {% endif %}
+        {% if q.total_estimate %}
+        <div class="total">Total: {{ q.total_estimate }}</div>
+        {% endif %}
+        {% if q.rooms_available %}
+        <div class="total">Rooms: {{ q.rooms_available }}</div>
+        {% endif %}
+      </div>
+      <div class="hotel-card-footer">
+        <span class="status-badge status-{{ q.quote_status.replace(' ','_') }}"
+              onclick="event.stopPropagation();cycleStatus(this,{{ q.id }})">{{ q.quote_status.replace('_',' ') }}</span>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════ -->
+<!-- ██  TAB 2: ROOM RATES COMPARISON            ██ -->
+<!-- ══════════════════════════════════════════════ -->
+<div class="tab-content" id="tab-camere">
+  <div class="card">
+    <div class="card-header">
+      <span class="material-icons-round">bed</span>
+      Room Rates Comparison
+    </div>
+    <div style="overflow-x:auto">
+      <table class="cmp-table">
+        <thead>
+          <tr>
+            <th>Hotel</th>
+            <th style="text-align:center">Rooms</th>
+            {% for col in room_cols %}
+            <th style="text-align:center">{{ col }}</th>
+            {% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% set current_city = {'val': ''} %}
+          {% for rp in room_pivot %}
+          {% if rp.city != current_city.val %}
+          {% if current_city.update({'val': rp.city}) %}{% endif %}
+          <tr class="city-header"><td colspan="{{ room_cols|length + 2 }}">{{ rp.city }}</td></tr>
+          {% endif %}
+          <tr>
+            <td class="hotel-name">{{ rp.hotel }} <span class="stars">{{ '★' * (rp.stars or 0) }}</span></td>
+            <td style="text-align:center">{{ rp.rooms }}</td>
+            {% for col in room_cols %}
+            <td class="rate-cell">{{ rp.rates[col] or '—' }}</td>
+            {% endfor %}
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════ -->
+<!-- ██  TAB 3: MEETING ROOMS COMPARISON         ██ -->
+<!-- ══════════════════════════════════════════════ -->
+<div class="tab-content" id="tab-sale">
+  <div class="card">
+    <div class="card-header">
+      <span class="material-icons-round">meeting_room</span>
+      Meeting Rooms Comparison
+    </div>
+    <div style="overflow-x:auto">
+      <table class="cmp-table">
+        <thead>
+          <tr>
+            <th>Hotel</th>
+            <th>Room</th>
+            <th>Capacity</th>
+            <th>Cost</th>
+            <th>Equipment / Notes</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% set current_city = {'val': ''} %}
+          {% for q in quotes %}
+          {% if q.city != current_city.val %}
+          {% if current_city.update({'val': q.city}) %}{% endif %}
+          <tr class="city-header"><td colspan="5">{{ q.city }}</td></tr>
+          {% endif %}
+          {% if q.meeting_rooms %}
+          {% for mr in q.meeting_rooms %}
+          <tr>
+            <td class="hotel-name">{% if loop.first %}{{ q.hotel_name }}{% endif %}</td>
+            <td>{{ mr.name }}</td>
+            <td>{{ mr.capacity or '—' }}</td>
+            <td>{{ mr.rate or '—' }}</td>
+            <td class="long-text">{{ mr.notes or '—' }}</td>
+          </tr>
+          {% endfor %}
+          {% else %}
+          <tr>
+            <td class="hotel-name">{{ q.hotel_name }}</td>
+            <td colspan="4" style="color:var(--on-surface-variant)">No meeting room specified</td>
+          </tr>
+          {% endif %}
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════ -->
+<!-- ██  TAB 4: F&B COMPARISON                   ██ -->
+<!-- ══════════════════════════════════════════════ -->
+<div class="tab-content" id="tab-fb">
+  <div class="card">
+    <div class="card-header">
+      <span class="material-icons-round">restaurant</span>
+      F&B Comparison
+    </div>
+    <div style="overflow-x:auto">
+      <table class="cmp-table">
+        <thead>
+          <tr>
+            <th>Hotel</th>
+            {% for col in meal_cols %}
+            <th style="text-align:center">{{ col }}</th>
+            {% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% set current_city = {'val': ''} %}
+          {% for fp in fb_pivot %}
+          {% if fp.city != current_city.val %}
+          {% if current_city.update({'val': fp.city}) %}{% endif %}
+          <tr class="city-header"><td colspan="{{ meal_cols|length + 1 }}">{{ fp.city }}</td></tr>
+          {% endif %}
+          <tr>
+            <td class="hotel-name">{{ fp.hotel }}</td>
+            {% for col in meal_cols %}
+            <td class="rate-cell">{{ fp.meals[col] or '—' }}</td>
+            {% endfor %}
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════ -->
+<!-- ██  TAB 5: TERMS & CONDITIONS COMPARISON    ██ -->
+<!-- ══════════════════════════════════════════════ -->
+<div class="tab-content" id="tab-condizioni">
+  <div class="card">
+    <div class="card-header">
+      <span class="material-icons-round">gavel</span>
+      Terms & Conditions Comparison
+    </div>
+    <div style="overflow-x:auto">
+      <table class="cmp-table">
+        <thead>
+          <tr>
+            <th>Hotel</th>
+            <th>Cancellation</th>
+            <th>Payment</th>
+            <th>Offer Validity</th>
+            <th>Commission</th>
+            <th>Included Services</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% set current_city = {'val': ''} %}
+          {% for q in quotes %}
+          {% if q.city != current_city.val %}
+          {% if current_city.update({'val': q.city}) %}{% endif %}
+          <tr class="city-header"><td colspan="6">{{ q.city }}</td></tr>
+          {% endif %}
+          <tr>
+            <td class="hotel-name">{{ q.hotel_name }}</td>
+            <td class="long-text">{{ q.cancellation_policy or '—' }}</td>
+            <td class="long-text">{{ q.payment_terms or '—' }}</td>
+            <td>{{ q.validity_date or '—' }}</td>
+            <td>{{ q.commission or '—' }}</td>
+            <td class="long-text">{{ q.included_services or '—' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════ -->
+<!-- ██  TAB 6: INPUT                            ██ -->
+<!-- ══════════════════════════════════════════════ -->
+<div class="tab-content" id="tab-input">
 
   <!-- Email Parser -->
   <div class="card">
     <div class="card-header">
       <span class="material-icons-round">smart_toy</span>
-      Incolla Email Preventivo
+      Paste Quote Email
     </div>
     <div class="card-body">
-      <textarea id="emailText" placeholder="Incolla qui il testo dell'email con il preventivo hotel..."></textarea>
-      <div style="margin-top:10px; display:flex; align-items:center; gap:10px">
+      <textarea id="emailText" placeholder="Paste the hotel quote email text here..."></textarea>
+      <div style="margin-top:10px;display:flex;align-items:center;gap:10px">
         <button class="btn btn-primary" onclick="parseEmail()" id="parseBtn">
-          <span class="material-icons-round">auto_fix_high</span>
-          Analizza
+          <span class="material-icons-round">auto_fix_high</span> Analyze
         </button>
-        <span id="parseCost" style="font-size:12px; color:var(--on-surface-variant)"></span>
+        <button class="btn btn-outline btn-sm" onclick="openAddModal()">
+          <span class="material-icons-round">add</span> Add Manual
+        </button>
+        <span id="parseCost" style="font-size:12px;color:var(--on-surface-variant)"></span>
       </div>
       <div id="parseResults"></div>
     </div>
   </div>
 
-  <!-- Quotes Table -->
+  <!-- Quotes list -->
   <div class="card">
     <div class="card-header">
       <span class="material-icons-round">list</span>
-      Preventivi Hotel
+      All Quotes
     </div>
-    <div class="card-body" style="padding:0">
-      <!-- Search -->
-      <div class="search-bar" style="padding:16px 16px 0">
-        <span class="material-icons-round">search</span>
-        <input type="text" id="searchInput" placeholder="Cerca hotel, città..."
-               oninput="filterTable()">
-      </div>
-      <!-- City/Status filters -->
-      <div class="filter-bar" style="padding-top:8px">
-        <span style="font-size:11px;color:var(--on-surface-variant);font-weight:600">CITTÀ:</span>
-        <button class="filter-chip active" data-filter="city" data-value="all" onclick="setFilter(this)">Tutte</button>
-        {% for city in cities|unique|sort %}
-        <button class="filter-chip" data-filter="city" data-value="{{ city }}" onclick="setFilter(this)">{{ city }}</button>
-        {% endfor %}
-        <span style="margin-left:8px;font-size:11px;color:var(--on-surface-variant);font-weight:600">STATO:</span>
-        <button class="filter-chip active" data-filter="status" data-value="all" onclick="setFilter(this)">Tutti</button>
-        <button class="filter-chip" data-filter="status" data-value="da_valutare" onclick="setFilter(this)">Da valutare</button>
-        <button class="filter-chip" data-filter="status" data-value="in_trattativa" onclick="setFilter(this)">In trattativa</button>
-        <button class="filter-chip" data-filter="status" data-value="confermato" onclick="setFilter(this)">Confermato</button>
-        <button class="filter-chip" data-filter="status" data-value="rifiutato" onclick="setFilter(this)">Rifiutato</button>
-      </div>
-
-      <div class="table-wrap">
-        {% if quotes %}
-        <table id="quotesTable">
-          <thead>
-            <tr>
-              <th></th>
-              <th>Hotel</th>
-              <th>Città</th>
-              <th>Stelle</th>
-              <th>Camere</th>
-              <th>Singola</th>
-              <th>Doppia</th>
-              <th>Sala Meeting</th>
-              <th>Totale</th>
-              <th>Date</th>
-              <th>Validità</th>
-              <th>Stato</th>
-              <th>Fonte</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for q in quotes %}
-            {% set main_mr = q.meeting_rooms[0] if q.meeting_rooms else None %}
-            <tr data-id="{{ q.id }}" data-city="{{ q.city }}" data-status="{{ q.quote_status }}">
-              <td>
-                <button class="icon-btn" onclick="toggleDetail(this, {{ q.id }})" title="Dettaglio">
-                  <span class="material-icons-round" style="font-size:18px">expand_more</span>
-                </button>
-              </td>
-              <td class="editable" data-field="hotel_name">{{ q.hotel_name }}</td>
-              <td class="editable" data-field="city">{{ q.city }}</td>
-              <td class="editable" data-field="stars">
-                <span class="stars">{{ '★' * (q.stars or 0) }}</span>
-              </td>
-              <td class="editable" data-field="rooms_available">{{ q.rooms_available or '' }}</td>
-              <td>{% for rr in q.room_rates if 'singol' in rr.room_type|lower %}{{ rr.rate_per_night or '' }}{% endfor %}</td>
-              <td>{% for rr in q.room_rates if 'doppi' in rr.room_type|lower or 'double' in rr.room_type|lower or 'twin' in rr.room_type|lower %}{{ rr.rate_per_night or '' }}{% endfor %}</td>
-              <td>{{ main_mr.name if main_mr else '' }}{% if main_mr and main_mr.capacity %} ({{ main_mr.capacity }}){% endif %}</td>
-              <td class="editable" data-field="total_estimate">{{ q.total_estimate or '' }}</td>
-              <td class="editable" data-field="dates_proposed">{{ q.dates_proposed or '' }}</td>
-              <td class="editable" data-field="validity_date">{{ q.validity_date or '' }}</td>
-              <td>
-                <span class="status-badge status-{{ q.quote_status }}"
-                      onclick="cycleStatus(this, {{ q.id }})">{{ q.quote_status|replace('_', ' ') }}</span>
-              </td>
-              <td><span class="source-badge source-{{ q.source }}">{{ q.source }}</span></td>
-              <td>
-                <div class="action-btns">
-                  <button class="icon-btn delete" onclick="deleteQuote({{ q.id }})" title="Elimina">
-                    <span class="material-icons-round" style="font-size:18px">delete</span>
-                  </button>
-                </div>
-              </td>
-            </tr>
-            <!-- Detail row (hidden) -->
-            <tr class="detail-row" id="detail-{{ q.id }}" style="display:none">
-              <td colspan="14">
-                <div class="detail-content">
-                  <!-- Contatto -->
-                  <div class="detail-section">
-                    <h4>Contatto</h4>
-                    <p style="font-size:13px">
-                      {{ q.contact_name or '-' }}<br>
-                      <span style="color:var(--on-surface-variant)">{{ q.contact_email or '-' }}</span>
-                    </p>
-                  </div>
-                  <!-- Tariffe Camere -->
-                  <div class="detail-section">
-                    <h4>Tariffe Camere</h4>
-                    {% if q.room_rates %}
-                    <table>
-                      <tr><th>Tipo</th><th>Tariffa/Notte</th><th>Colazione</th><th>Note</th></tr>
-                      {% for rr in q.room_rates %}
-                      <tr>
-                        <td class="editable" data-field="room_type" data-sub="room-rate" data-subid="{{ rr.id }}">{{ rr.room_type }}</td>
-                        <td class="editable" data-field="rate_per_night" data-sub="room-rate" data-subid="{{ rr.id }}">{{ rr.rate_per_night or '' }}</td>
-                        <td class="editable" data-field="breakfast_included" data-sub="room-rate" data-subid="{{ rr.id }}">{{ rr.breakfast_included or '' }}</td>
-                        <td class="editable" data-field="notes" data-sub="room-rate" data-subid="{{ rr.id }}">{{ rr.notes or '' }}</td>
-                      </tr>
-                      {% endfor %}
-                    </table>
-                    {% else %}
-                    <p style="font-size:12px;color:var(--on-surface-variant)">Nessuna tariffa</p>
-                    {% endif %}
-                  </div>
-                  <!-- Sale Meeting -->
-                  <div class="detail-section">
-                    <h4>Sale Meeting</h4>
-                    {% if q.meeting_rooms %}
-                    <table>
-                      <tr><th>Sala</th><th>Capienza</th><th>Costo</th><th>Note</th></tr>
-                      {% for mr in q.meeting_rooms %}
-                      <tr>
-                        <td class="editable" data-field="name" data-sub="meeting-room" data-subid="{{ mr.id }}">{{ mr.name }}</td>
-                        <td class="editable" data-field="capacity" data-sub="meeting-room" data-subid="{{ mr.id }}">{{ mr.capacity or '' }}</td>
-                        <td class="editable" data-field="rate" data-sub="meeting-room" data-subid="{{ mr.id }}">{{ mr.rate or '' }}</td>
-                        <td class="editable" data-field="notes" data-sub="meeting-room" data-subid="{{ mr.id }}">{{ mr.notes or '' }}</td>
-                      </tr>
-                      {% endfor %}
-                    </table>
-                    {% else %}
-                    <p style="font-size:12px;color:var(--on-surface-variant)">Nessuna sala</p>
-                    {% endif %}
-                  </div>
-                  <!-- F&B -->
-                  <div class="detail-section">
-                    <h4>Food & Beverage</h4>
-                    {% if q.fb_options %}
-                    <table>
-                      <tr><th>Tipo</th><th>Prezzo/pax</th><th>Descrizione</th></tr>
-                      {% for fb in q.fb_options %}
-                      <tr>
-                        <td class="editable" data-field="meal_type" data-sub="fb-option" data-subid="{{ fb.id }}">{{ fb.meal_type }}</td>
-                        <td class="editable" data-field="price_per_person" data-sub="fb-option" data-subid="{{ fb.id }}">{{ fb.price_per_person or '' }}</td>
-                        <td class="editable" data-field="menu_description" data-sub="fb-option" data-subid="{{ fb.id }}">{{ fb.menu_description or '' }}</td>
-                      </tr>
-                      {% endfor %}
-                    </table>
-                    {% else %}
-                    <p style="font-size:12px;color:var(--on-surface-variant)">Nessuna opzione F&B</p>
-                    {% endif %}
-                  </div>
-                  <!-- Condizioni -->
-                  <div class="detail-section">
-                    <h4>Condizioni</h4>
-                    <div style="font-size:12px;line-height:1.8">
-                      <strong>Cancellazione:</strong> <span class="editable" data-field="cancellation_policy" data-id="{{ q.id }}" style="display:inline">{{ q.cancellation_policy or '-' }}</span><br>
-                      <strong>Pagamento:</strong> <span class="editable" data-field="payment_terms" data-id="{{ q.id }}" style="display:inline">{{ q.payment_terms or '-' }}</span><br>
-                      <strong>Commissione:</strong> <span class="editable" data-field="commission" data-id="{{ q.id }}" style="display:inline">{{ q.commission or '-' }}</span><br>
-                      <strong>Servizi:</strong> {{ q.included_services or '-' }}
-                    </div>
-                  </div>
-                  <!-- Note / Riassunto -->
-                  <div class="detail-section">
-                    <h4>Riassunto</h4>
-                    <p style="font-size:12px;line-height:1.5">{{ q.raw_summary or '-' }}</p>
-                    {% if q.notes %}
-                    <h4 style="margin-top:8px">Note</h4>
-                    <p style="font-size:12px;line-height:1.5">{{ q.notes }}</p>
-                    {% endif %}
-                  </div>
-                </div>
-              </td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-        {% else %}
-        <div class="empty-state">
-          <span class="material-icons-round">apartment</span>
-          <p>Nessun preventivo. Incolla un'email per iniziare.</p>
-        </div>
-        {% endif %}
-      </div>
+    <div style="overflow-x:auto">
+      <table class="input-table">
+        <thead>
+          <tr>
+            <th>Hotel</th>
+            <th>City</th>
+            <th>Stars</th>
+            <th>Rooms</th>
+            <th>Total</th>
+            <th>Dates</th>
+            <th>Status</th>
+            <th>Photo URL</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for q in quotes %}
+          <tr data-id="{{ q.id }}">
+            <td class="editable" data-field="hotel_name">{{ q.hotel_name }}</td>
+            <td class="editable" data-field="city">{{ q.city }}</td>
+            <td class="editable" data-field="stars">{{ q.stars or '' }}</td>
+            <td class="editable" data-field="rooms_available">{{ q.rooms_available or '' }}</td>
+            <td class="editable" data-field="total_estimate">{{ q.total_estimate or '' }}</td>
+            <td class="editable" data-field="dates_proposed">{{ q.dates_proposed or '' }}</td>
+            <td>
+              <span class="status-badge status-{{ q.quote_status.replace(' ','_') }}"
+                    onclick="cycleStatus(this,{{ q.id }})">{{ q.quote_status.replace('_',' ') }}</span>
+            </td>
+            <td class="editable" data-field="image_url" style="max-width:150px;overflow:hidden;text-overflow:ellipsis">{{ q.image_url or '' }}</td>
+            <td>
+              <button class="icon-btn delete" onclick="deleteQuote({{ q.id }})">
+                <span class="material-icons-round" style="font-size:18px">delete</span>
+              </button>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
     </div>
   </div>
 </div>
 
-<!-- ── Add Manual Modal ──────────────────────────────────────────────── -->
+</div><!-- /container -->
+
+<!-- ── Add Modal ──────────────────────────────── -->
 <div class="modal-overlay" id="addModal">
   <div class="modal">
     <div class="modal-header">
-      Aggiungi Preventivo
-      <button class="icon-btn" onclick="closeAddModal()">
-        <span class="material-icons-round">close</span>
-      </button>
+      Add Quote
+      <button class="icon-btn" onclick="closeAddModal()"><span class="material-icons-round">close</span></button>
     </div>
     <div class="modal-body">
-      <div class="form-group">
-        <label>Hotel</label>
-        <input type="text" id="addHotel">
-      </div>
-      <div class="form-group">
-        <label>Città</label>
+      <div class="form-group"><label>Hotel</label><input type="text" id="addHotel"></div>
+      <div class="form-group"><label>City</label>
         <select id="addCity">
           <option value="Barcellona">Barcellona</option>
           <option value="Madrid">Madrid</option>
@@ -734,52 +553,100 @@ textarea { resize: vertical; min-height: 120px; }
           <option value="Valencia">Valencia</option>
         </select>
       </div>
-      <div class="form-group">
-        <label>Stelle</label>
-        <select id="addStars">
-          <option value="">-</option>
-          <option value="3">3</option>
-          <option value="4">4</option>
-          <option value="5">5</option>
-        </select>
+      <div class="form-group"><label>Stars</label>
+        <select id="addStars"><option value="">-</option><option value="3">3</option><option value="4">4</option><option value="5">5</option></select>
       </div>
-      <div class="form-group">
-        <label>Contatto</label>
-        <input type="text" id="addContact">
-      </div>
-      <div class="form-group">
-        <label>Email contatto</label>
-        <input type="text" id="addContactEmail">
-      </div>
-      <div class="form-group">
-        <label>Date proposte</label>
-        <input type="text" id="addDates" placeholder="es. 10-13 ottobre 2026">
-      </div>
-      <div class="form-group">
-        <label>Camere disponibili</label>
-        <input type="text" id="addRooms">
-      </div>
-      <div class="form-group">
-        <label>Totale stimato</label>
-        <input type="text" id="addTotal" placeholder="es. € 45.000">
-      </div>
-      <div class="form-group">
-        <label>Note</label>
-        <textarea id="addNotes" style="min-height:60px"></textarea>
-      </div>
+      <div class="form-group"><label>Contact</label><input type="text" id="addContact"></div>
+      <div class="form-group"><label>Contact Email</label><input type="text" id="addContactEmail"></div>
+      <div class="form-group"><label>Proposed Dates</label><input type="text" id="addDates" placeholder="e.g. 10-13 October 2026"></div>
+      <div class="form-group"><label>Available Rooms</label><input type="text" id="addRooms"></div>
+      <div class="form-group"><label>Estimated Total</label><input type="text" id="addTotal" placeholder="e.g. € 45,000"></div>
+      <div class="form-group"><label>Photo URL</label><input type="text" id="addImage" placeholder="https://..."></div>
+      <div class="form-group"><label>Notes</label><textarea id="addNotes" style="min-height:60px"></textarea></div>
     </div>
     <div class="modal-footer">
-      <button class="btn btn-outline" onclick="closeAddModal()">Annulla</button>
-      <button class="btn btn-primary" onclick="addQuote()">Salva</button>
+      <button class="btn btn-outline" onclick="closeAddModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="addQuote()">Save</button>
     </div>
   </div>
 </div>
 
-<!-- ── Snackbar ───────────────────────────────────────────────────────── -->
+<!-- ── Detail Modal ────────────────────────────── -->
+<div class="modal-overlay" id="detailModal">
+  <div class="modal" style="max-width:800px;width:95%">
+    <div class="modal-header">
+      <span id="detailTitle">Hotel Detail</span>
+      <button class="icon-btn" onclick="closeDetail()"><span class="material-icons-round">close</span></button>
+    </div>
+    <div class="modal-body" id="detailBody" style="padding:20px;max-height:70vh;overflow-y:auto"></div>
+  </div>
+</div>
+
 <div class="snackbar" id="snackbar"></div>
 
+<!-- Grouped data per hotel for the detail modal -->
 <script>
-// ── Snackbar ──────────────────────────────────────────────────────────
+const HOTELS_DATA = {
+{% for h in hotels %}
+  {{ h.best.hotel_name|lower|replace("'","")|tojson }}: {
+    hotel: {{ h.best.hotel_name|tojson }},
+    city: {{ h.best.city|tojson }},
+    stars: {{ h.best.stars or 'null' }},
+    image: {{ (h.best.image_url or '')|tojson }},
+    best_id: {{ h.best.id }},
+    versions: [
+      {% for q in h.versions %}
+      {
+        id: {{ q.id }},
+        hotel: {{ q.hotel_name|tojson }},
+        contact_name: {{ (q.contact_name or '')|tojson }},
+        contact_email: {{ (q.contact_email or '')|tojson }},
+        dates: {{ (q.dates_proposed or '')|tojson }},
+        rooms: {{ (q.rooms_available or '')|tojson }},
+        min_rooms: {{ (q.min_rooms_required or '')|tojson }},
+        total: {{ (q.total_estimate or '')|tojson }},
+        cancellation: {{ (q.cancellation_policy or '')|tojson }},
+        payment: {{ (q.payment_terms or '')|tojson }},
+        validity: {{ (q.validity_date or '')|tojson }},
+        commission: {{ (q.commission or '')|tojson }},
+        services: {{ (q.included_services or '')|tojson }},
+        notes: {{ (q.notes or '')|tojson }},
+        summary: {{ (q.raw_summary or '')|tojson }},
+        status: {{ q.quote_status|tojson }},
+        room_rates: [
+          {% for rr in q.room_rates %}
+          { type: {{ rr.room_type|tojson }}, rate: {{ (rr.rate_per_night or '')|tojson }}, breakfast: {{ (rr.breakfast_included or '')|tojson }}, notes: {{ (rr.notes or '')|tojson }} },
+          {% endfor %}
+        ],
+        meeting_rooms: [
+          {% for mr in q.meeting_rooms %}
+          { name: {{ mr.name|tojson }}, capacity: {{ (mr.capacity or '')|tojson }}, rate: {{ (mr.rate or '')|tojson }}, notes: {{ (mr.notes or '')|tojson }} },
+          {% endfor %}
+        ],
+        fb_options: [
+          {% for fb in q.fb_options %}
+          { type: {{ fb.meal_type|tojson }}, price: {{ (fb.price_per_person or '')|tojson }}, desc: {{ (fb.menu_description or '')|tojson }} },
+          {% endfor %}
+        ],
+        completeness: {{ q.room_rates|length }} + {{ q.meeting_rooms|length }} + {{ q.fb_options|length }},
+      },
+      {% endfor %}
+    ],
+  },
+{% endfor %}
+};
+</script>
+
+<script>
+// ── Tab switching ─────────────────────────────
+function switchTab(name) {
+  document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  event.currentTarget.classList.add('active');
+}
+
+// ── Snackbar ──────────────────────────────────
 function showSnack(msg, ms=3000) {
   const el = document.getElementById('snackbar');
   el.textContent = msg;
@@ -787,112 +654,278 @@ function showSnack(msg, ms=3000) {
   setTimeout(() => el.classList.remove('show'), ms);
 }
 
-// ── Email parsing ─────────────────────────────────────────────────────
+// ── Card filter ───────────────────────────────
+function filterCards(city, chip) {
+  document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
+  chip.classList.add('active');
+  document.querySelectorAll('.hotel-card').forEach(card => {
+    card.style.display = (city === 'all' || card.dataset.city === city) ? '' : 'none';
+  });
+}
+
+// ── Hotel detail modal (summary + versions) ──
+function renderQuoteSection(q, label) {
+  let h = '';
+  const sectionStyle = 'margin-bottom:16px';
+  const h4Style = 'font-size:12px;text-transform:uppercase;color:var(--primary);margin-bottom:8px;letter-spacing:.5px';
+  const thStyle = 'padding:6px 10px;text-align:left';
+  const tdStyle = 'padding:6px 10px;border-bottom:1px solid var(--outline-variant)';
+
+  // Basic info
+  h += '<div style="font-size:12px;line-height:1.8;margin-bottom:12px">';
+  if (q.contact_name || q.contact_email) {
+    h += `<div><strong>Contact:</strong> ${q.contact_name}`;
+    if (q.contact_email) h += ` <a href="mailto:${q.contact_email}" style="color:var(--primary)">&lt;${q.contact_email}&gt;</a>`;
+    h += '</div>';
+  }
+  if (q.dates) h += `<div><strong>Dates:</strong> ${q.dates}</div>`;
+  if (q.rooms) h += `<div><strong>Rooms:</strong> ${q.rooms}</div>`;
+  if (q.total) h += `<div style="font-weight:600;color:var(--primary)"><strong>Total:</strong> ${q.total}</div>`;
+  h += `<div><span class="status-badge status-${q.status.replace(/ /g,'_')}">${q.status.replace(/_/g,' ')}</span></div>`;
+  h += '</div>';
+
+  // Room rates
+  if (q.room_rates.length) {
+    h += `<div style="${sectionStyle}"><h4 style="${h4Style}">Room Rates</h4>`;
+    h += '<table style="width:100%;border-collapse:collapse;font-size:12px">';
+    h += `<tr style="background:var(--surface-variant)"><th style="${thStyle}">Type</th><th style="${thStyle}">Rate/Night</th><th style="${thStyle}">Breakfast</th><th style="${thStyle}">Notes</th></tr>`;
+    q.room_rates.forEach(rr => {
+      h += `<tr><td style="${tdStyle}">${rr.type}</td><td style="${tdStyle};font-weight:600;color:var(--primary)">${rr.rate||'—'}</td><td style="${tdStyle}">${rr.breakfast||'—'}</td><td style="${tdStyle};font-size:11px;color:var(--on-surface-variant)">${rr.notes||''}</td></tr>`;
+    });
+    h += '</table></div>';
+  }
+
+  // Meeting rooms
+  if (q.meeting_rooms.length) {
+    h += `<div style="${sectionStyle}"><h4 style="${h4Style}">Meeting Rooms</h4>`;
+    h += '<table style="width:100%;border-collapse:collapse;font-size:12px">';
+    h += `<tr style="background:var(--surface-variant)"><th style="${thStyle}">Room</th><th style="${thStyle}">Capacity</th><th style="${thStyle}">Cost</th><th style="${thStyle}">Notes</th></tr>`;
+    q.meeting_rooms.forEach(mr => {
+      h += `<tr><td style="${tdStyle}">${mr.name}</td><td style="${tdStyle}">${mr.capacity||'—'}</td><td style="${tdStyle};font-weight:600">${mr.rate||'—'}</td><td style="${tdStyle};font-size:11px;color:var(--on-surface-variant)">${mr.notes||''}</td></tr>`;
+    });
+    h += '</table></div>';
+  }
+
+  // F&B
+  if (q.fb_options.length) {
+    h += `<div style="${sectionStyle}"><h4 style="${h4Style}">Food & Beverage</h4>`;
+    h += '<table style="width:100%;border-collapse:collapse;font-size:12px">';
+    h += `<tr style="background:var(--surface-variant)"><th style="${thStyle}">Type</th><th style="${thStyle}">Price/pax</th><th style="${thStyle}">Description</th></tr>`;
+    q.fb_options.forEach(fb => {
+      h += `<tr><td style="${tdStyle}">${fb.type}</td><td style="${tdStyle};font-weight:600">${fb.price||'—'}</td><td style="${tdStyle};font-size:11px">${fb.desc||''}</td></tr>`;
+    });
+    h += '</table></div>';
+  }
+
+  // Terms
+  h += `<div style="${sectionStyle}"><h4 style="${h4Style}">Terms</h4>`;
+  h += '<div style="font-size:12px;line-height:1.8">';
+  if (q.cancellation) h += `<div><strong>Cancellation:</strong> ${q.cancellation}</div>`;
+  if (q.payment) h += `<div><strong>Payment:</strong> ${q.payment}</div>`;
+  if (q.validity) h += `<div><strong>Offer Validity:</strong> ${q.validity}</div>`;
+  if (q.commission) h += `<div><strong>Commission:</strong> ${q.commission}</div>`;
+  if (q.services) h += `<div><strong>Included Services:</strong> ${q.services}</div>`;
+  h += '</div></div>';
+
+  // Summary
+  if (q.summary) {
+    h += `<div style="${sectionStyle}"><h4 style="${h4Style}">Email Summary</h4>`;
+    h += `<div style="font-size:12px;line-height:1.5;color:var(--on-surface-variant);font-style:italic">${q.summary}</div></div>`;
+  }
+  if (q.notes) {
+    h += `<div><h4 style="${h4Style}">Notes</h4>`;
+    h += `<div style="font-size:12px;line-height:1.5">${q.notes}</div></div>`;
+  }
+
+  return h;
+}
+
+function openHotelDetail(hotelKey) {
+  const hotel = HOTELS_DATA[hotelKey];
+  if (!hotel) return;
+
+  const best = hotel.versions.reduce((a, b) => a.completeness >= b.completeness ? a : b);
+
+  document.getElementById('detailTitle').textContent = hotel.hotel + (hotel.stars ? ' ' + '★'.repeat(hotel.stars) : '');
+
+  let h = '';
+
+  // ── Header with image ──
+  h += '<div style="display:flex;gap:20px;margin-bottom:20px;flex-wrap:wrap">';
+  if (hotel.image) {
+    h += `<img src="${hotel.image}" style="width:280px;height:180px;object-fit:cover;border-radius:12px" alt="${hotel.hotel}">`;
+  }
+  h += `<div style="flex:1;min-width:200px">`;
+  h += `<div style="font-size:15px;font-weight:600;margin-bottom:4px">${hotel.hotel}</div>`;
+  h += `<div style="font-size:13px;color:var(--on-surface-variant);margin-bottom:8px">${hotel.city} ${hotel.stars ? '★'.repeat(hotel.stars) : ''}</div>`;
+  if (hotel.versions.length > 1) {
+    h += `<div style="font-size:12px;color:var(--primary);font-weight:600;margin-bottom:4px">${hotel.versions.length} emails/versions processed</div>`;
+  }
+  h += '</div></div>';
+
+  // ── Main quote (most complete) ──
+  h += '<div style="background:var(--surface-variant);border-radius:12px;padding:16px;margin-bottom:20px">';
+  h += '<div style="font-size:13px;font-weight:700;color:var(--primary-dark);margin-bottom:12px;display:flex;align-items:center;gap:6px">';
+  h += '<span class="material-icons-round" style="font-size:18px">star</span> Main Quote (most complete)</div>';
+  h += renderQuoteSection(best);
+  h += '</div>';
+
+  // ── Other versions (if any) ──
+  if (hotel.versions.length > 1) {
+    h += '<div style="margin-top:8px">';
+    h += '<div style="font-size:13px;font-weight:700;color:var(--on-surface-variant);margin-bottom:12px;cursor:pointer;display:flex;align-items:center;gap:6px" onclick="document.getElementById(\'versionsCollapse\').style.display=document.getElementById(\'versionsCollapse\').style.display===\'none\'?\'\':\'none\';this.querySelector(\'.material-icons-round\').textContent=document.getElementById(\'versionsCollapse\').style.display===\'none\'?\'expand_more\':\'expand_less\'">';
+    h += `<span class="material-icons-round" style="font-size:18px">expand_more</span> Other versions / emails (${hotel.versions.length - 1})`;
+    h += '</div>';
+    h += '<div id="versionsCollapse" style="display:none">';
+
+    hotel.versions.forEach((v, i) => {
+      if (v.id === best.id) return; // skip the best already shown
+      h += `<div style="border:1px solid var(--outline-variant);border-radius:12px;padding:16px;margin-bottom:12px">`;
+      h += `<div style="font-size:12px;font-weight:600;color:var(--on-surface-variant);margin-bottom:8px">Version ${i + 1} — ${v.room_rates.length} rates, ${v.meeting_rooms.length} rooms, ${v.fb_options.length} F&B</div>`;
+      h += renderQuoteSection(v);
+      h += '</div>';
+    });
+
+    h += '</div></div>';
+  }
+
+  document.getElementById('detailBody').innerHTML = h;
+  document.getElementById('detailModal').classList.add('open');
+}
+
+function closeDetail() {
+  document.getElementById('detailModal').classList.remove('open');
+}
+
+// Close modal with Escape
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    closeDetail();
+    closeAddModal();
+  }
+});
+
+// ── Status cycling ────────────────────────────
+const STATUSES = ['da_valutare','in_trattativa','confermato','rifiutato','scaduto'];
+async function cycleStatus(badge, qid) {
+  const current = badge.textContent.trim().replace(/ /g,'_');
+  const idx = STATUSES.indexOf(current);
+  const next = STATUSES[(idx + 1) % STATUSES.length];
+  badge.className = 'status-badge status-' + next;
+  badge.textContent = next.replace(/_/g,' ');
+  await fetch(`/api/partivia/quote/${qid}`, {
+    method:'PUT', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({quote_status:next}),
+  });
+  showSnack('Status updated');
+}
+
+// ── Delete ────────────────────────────────────
+async function deleteQuote(qid) {
+  if (!confirm('Delete this quote?')) return;
+  const r = await fetch(`/api/partivia/quote/${qid}`, {method:'DELETE'});
+  if ((await r.json()).ok) { showSnack('Deleted'); setTimeout(()=>location.reload(),500); }
+}
+
+// ── Inline edit (input tab) ───────────────────
+document.querySelectorAll('.input-table td.editable').forEach(td => {
+  td.addEventListener('dblclick', () => {
+    if (td.querySelector('input')) return;
+    const field = td.dataset.field;
+    const qid = td.closest('tr').dataset.id;
+    const original = td.textContent.trim();
+    const input = document.createElement('input');
+    input.className = 'inline-input';
+    input.value = original;
+    td.textContent = '';
+    td.appendChild(input);
+    input.focus();
+    input.select();
+    const save = async () => {
+      const val = input.value.trim();
+      td.textContent = val || original;
+      if (val !== original) {
+        await fetch(`/api/partivia/quote/${qid}`, {
+          method:'PUT', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({[field]:val}),
+        });
+        showSnack('Saved');
+      }
+    };
+    input.addEventListener('blur', save);
+    input.addEventListener('keydown', e => {
+      if (e.key==='Enter') input.blur();
+      if (e.key==='Escape') { td.textContent=original; }
+    });
+  });
+});
+
+// ── Email parsing ─────────────────────────────
 async function parseEmail() {
   const text = document.getElementById('emailText').value.trim();
-  if (!text) return showSnack('Incolla del testo prima');
-
+  if (!text) return showSnack('Paste some text first');
   const btn = document.getElementById('parseBtn');
   btn.disabled = true;
-  btn.innerHTML = '<span class="spinner"></span> Analisi...';
-
+  btn.innerHTML = '<span class="spinner"></span> Analyzing...';
   try {
     const r = await fetch('/api/partivia/parse-email', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text }),
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({text}),
     });
     const j = await r.json();
-    if (!j.ok) { showSnack('Errore: ' + j.error, 5000); return; }
-
+    if (!j.ok) { showSnack('Error: '+j.error,5000); return; }
     const parsed = j.parsed;
     const cost = j.usage;
-    document.getElementById('parseCost').textContent =
-      `${cost.input + cost.output} token | €${cost.cost_eur.toFixed(4)}`;
+    document.getElementById('parseCost').textContent = `${cost.input+cost.output} token | €${cost.cost_eur.toFixed(4)}`;
 
     let html = '<div class="parsed-results">';
-    html += `<div style="margin-bottom:12px;font-size:13px;color:var(--on-surface-variant)">
-      <strong>Riepilogo:</strong> ${parsed.summary || ''}</div>`;
+    html += `<div style="margin-bottom:12px;font-size:13px;color:var(--on-surface-variant)"><strong>Summary:</strong> ${parsed.summary||''}</div>`;
 
     if (!parsed.is_quote) {
-      html += `<div style="padding:20px;text-align:center;color:var(--on-surface-variant)">
-        Tipo: <strong>${parsed.message_type}</strong> — nessun preventivo trovato.</div>`;
+      html += `<div style="padding:20px;text-align:center;color:var(--on-surface-variant)">Type: <strong>${parsed.message_type}</strong> — no quote found.</div>`;
     } else {
-      (parsed.quotes || []).forEach((q, i) => {
-        const isUpd = q.is_update;
+      (parsed.quotes||[]).forEach((q,i) => {
         html += `<div class="parsed-quote">
           <div style="display:flex;align-items:center;gap:8px">
             <input type="checkbox" class="parsed-check" data-index="${i}" checked>
-            <span class="hotel-name">${q.hotel_name || '?'}</span>
-            <span class="stars">${'★'.repeat(q.stars || 0)}</span>
-            <span class="action-tag ${isUpd ? 'action-update' : 'action-add'}">
-              ${isUpd ? 'AGGIORNA' : 'NUOVO'}
-            </span>
+            <span class="hotel-name">${q.hotel_name||'?'}</span>
+            <span class="stars">${'★'.repeat(q.stars||0)}</span>
+            <span class="action-tag ${q.is_update?'action-update':'action-add'}">${q.is_update?'UPDATE':'NEW'}</span>
           </div>
-          <div class="detail">${q.city || ''} — ${q.dates_proposed || ''} — ${q.rooms_available || '?'} camere</div>
+          <div class="detail">${q.city||''} — ${q.dates_proposed||''} — ${q.rooms_available||'?'} rooms</div>
           <div class="detail-grid">`;
-
-        // Room rates
-        if (q.room_rates && q.room_rates.length) {
-          html += '<div><span class="label">Camere:</span><br>';
-          q.room_rates.forEach(rr => {
-            html += `${rr.room_type}: ${rr.rate_per_night || '?'}`;
-            if (rr.breakfast_included) html += ` (col: ${rr.breakfast_included})`;
-            html += '<br>';
-          });
-          html += '</div>';
+        if (q.room_rates&&q.room_rates.length) {
+          html+='<div><span class="label">Rooms:</span><br>';
+          q.room_rates.forEach(rr=>{html+=`${rr.room_type}: ${rr.rate_per_night||'?'}<br>`;});
+          html+='</div>';
         }
-        // Meeting rooms
-        if (q.meeting_rooms && q.meeting_rooms.length) {
-          html += '<div><span class="label">Sale:</span><br>';
-          q.meeting_rooms.forEach(mr => {
-            html += `${mr.name}: ${mr.capacity || '?'} — ${mr.rate || '?'}<br>`;
-          });
-          html += '</div>';
+        if (q.meeting_rooms&&q.meeting_rooms.length) {
+          html+='<div><span class="label">Meeting Rooms:</span><br>';
+          q.meeting_rooms.forEach(mr=>{html+=`${mr.name}: ${mr.capacity||'?'} — ${mr.rate||'?'}<br>`;});
+          html+='</div>';
         }
-        // F&B
-        if (q.fb_options && q.fb_options.length) {
-          html += '<div><span class="label">F&B:</span><br>';
-          q.fb_options.forEach(fb => {
-            html += `${fb.meal_type}: ${fb.price_per_person || '?'}<br>`;
-          });
-          html += '</div>';
+        if (q.fb_options&&q.fb_options.length) {
+          html+='<div><span class="label">F&B:</span><br>';
+          q.fb_options.forEach(fb=>{html+=`${fb.meal_type}: ${fb.price_per_person||'?'}<br>`;});
+          html+='</div>';
         }
-        // Totale e condizioni
-        html += `<div><span class="label">Totale:</span> ${q.total_estimate || '-'}<br>
-          <span class="label">Cancellazione:</span> ${q.cancellation_policy || '-'}<br>
-          <span class="label">Validità:</span> ${q.validity_date || '-'}</div>`;
-
-        html += '</div>';  // detail-grid
-        if (q.raw_summary) {
-          html += `<div class="detail" style="margin-top:8px;font-style:italic">${q.raw_summary}</div>`;
-        }
-        html += '</div>';  // parsed-quote
+        html+=`<div><span class="label">Total:</span> ${q.total_estimate||'-'}<br>
+          <span class="label">Offer Validity:</span> ${q.validity_date||'-'}</div>`;
+        html+='</div>';
+        if (q.raw_summary) html+=`<div class="detail" style="margin-top:8px;font-style:italic">${q.raw_summary}</div>`;
+        html+='</div>';
       });
-
       html += `<div style="margin-top:12px;display:flex;gap:8px">
-        <button class="btn btn-success" onclick="applyParsed()">
-          <span class="material-icons-round">check</span>
-          Applica selezionati
-        </button>
-        <button class="btn btn-outline" onclick="document.getElementById('parseResults').innerHTML=''">
-          Annulla
-        </button>
+        <button class="btn btn-success" onclick="applyParsed()"><span class="material-icons-round">check</span> Apply Selected</button>
+        <button class="btn btn-outline" onclick="document.getElementById('parseResults').innerHTML=''">Cancel</button>
       </div>`;
     }
-
     html += '</div>';
     document.getElementById('parseResults').innerHTML = html;
-
-    window._parsedQuotes = parsed.quotes || [];
+    window._parsedQuotes = parsed.quotes||[];
     window._emailLogId = j.email_log_id;
-
-  } catch (err) {
-    showSnack('Errore: ' + err.message, 5000);
-  } finally {
-    btn.disabled = false;
-    btn.innerHTML = '<span class="material-icons-round">auto_fix_high</span> Analizza';
-  }
+  } catch(err) { showSnack('Error: '+err.message,5000); }
+  finally { btn.disabled=false; btn.innerHTML='<span class="material-icons-round">auto_fix_high</span> Analyze'; }
 }
 
 async function applyParsed() {
@@ -901,191 +934,44 @@ async function applyParsed() {
   document.querySelectorAll('.parsed-check').forEach(cb => {
     if (cb.checked) selected.push(window._parsedQuotes[cb.dataset.index]);
   });
-  if (!selected.length) return showSnack('Nessun preventivo selezionato');
-
+  if (!selected.length) return showSnack('No quotes selected');
   const r = await fetch('/api/partivia/apply', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ quotes: selected, email_log_id: window._emailLogId || null }),
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({quotes:selected, email_log_id:window._emailLogId||null}),
   });
   const j = await r.json();
   if (j.ok) {
-    const added = j.results.filter(r => r.action === 'added').length;
-    const updated = j.results.filter(r => r.action === 'updated').length;
-    showSnack(`${added} aggiunti, ${updated} aggiornati`);
-    setTimeout(() => location.reload(), 800);
-  } else {
-    showSnack('Errore: ' + j.error, 5000);
-  }
+    const added = j.results.filter(r=>r.action==='added').length;
+    const updated = j.results.filter(r=>r.action==='updated').length;
+    showSnack(`${added} added, ${updated} updated`);
+    setTimeout(()=>location.reload(),800);
+  } else showSnack('Error: '+j.error,5000);
 }
 
-// ── Detail toggle ─────────────────────────────────────────────────────
-function toggleDetail(btn, qid) {
-  const row = document.getElementById('detail-' + qid);
-  const icon = btn.querySelector('.material-icons-round');
-  if (row.style.display === 'none') {
-    row.style.display = '';
-    icon.textContent = 'expand_less';
-  } else {
-    row.style.display = 'none';
-    icon.textContent = 'expand_more';
-  }
-}
-
-// ── Status cycling ────────────────────────────────────────────────────
-const STATUSES = ['da_valutare', 'in_trattativa', 'confermato', 'rifiutato', 'scaduto'];
-async function cycleStatus(badge, qid) {
-  const current = badge.textContent.trim().replace(/ /g, '_');
-  const idx = STATUSES.indexOf(current);
-  const next = STATUSES[(idx + 1) % STATUSES.length];
-
-  badge.className = 'status-badge status-' + next;
-  badge.textContent = next.replace(/_/g, ' ');
-
-  // Update parent row data-status
-  const row = badge.closest('tr');
-  if (row) row.dataset.status = next;
-
-  await fetch(`/api/partivia/quote/${qid}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ quote_status: next }),
-  });
-  showSnack('Stato aggiornato');
-}
-
-// ── Inline editing ────────────────────────────────────────────────────
-document.querySelectorAll('td.editable').forEach(td => {
-  td.addEventListener('dblclick', () => {
-    if (td.querySelector('input')) return;
-    const field = td.dataset.field;
-    const sub = td.dataset.sub;
-    const subid = td.dataset.subid;
-    const qid = sub ? null : td.closest('tr').dataset.id;
-    const original = td.textContent.trim();
-
-    const input = document.createElement('input');
-    input.className = 'inline-input';
-    input.value = original === '-' ? '' : original;
-    td.textContent = '';
-    td.appendChild(input);
-    input.focus();
-    input.select();
-
-    const save = async () => {
-      const val = input.value.trim();
-      td.textContent = val || (sub ? '' : original);
-
-      // Stars: update display
-      if (field === 'stars') {
-        const n = parseInt(val) || 0;
-        td.innerHTML = '<span class="stars">' + '★'.repeat(n) + '</span>';
-      }
-
-      if (val !== original) {
-        let url, body = { [field]: val };
-        if (sub) {
-          url = `/api/partivia/${sub}/${subid}`;
-        } else {
-          url = `/api/partivia/quote/${qid}`;
-        }
-        await fetch(url, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
-        });
-        showSnack('Salvato');
-      }
-    };
-
-    input.addEventListener('blur', save);
-    input.addEventListener('keydown', e => {
-      if (e.key === 'Enter') input.blur();
-      if (e.key === 'Escape') { td.textContent = original; }
-    });
-  });
-});
-
-// ── Delete ─────────────────────────────────────────────────────────────
-async function deleteQuote(qid) {
-  if (!confirm('Eliminare questo preventivo?')) return;
-  const r = await fetch(`/api/partivia/quote/${qid}`, { method: 'DELETE' });
-  const j = await r.json();
-  if (j.ok) {
-    showSnack('Eliminato');
-    setTimeout(() => location.reload(), 500);
-  }
-}
-
-// ── Search & filter ───────────────────────────────────────────────────
-let activeFilters = { city: 'all', status: 'all' };
-
-function setFilter(chip) {
-  const filter = chip.dataset.filter;
-  const value = chip.dataset.value;
-  activeFilters[filter] = value;
-
-  // Update chip UI
-  document.querySelectorAll(`.filter-chip[data-filter="${filter}"]`).forEach(c => c.classList.remove('active'));
-  chip.classList.add('active');
-  applyFilters();
-}
-
-function filterTable() { applyFilters(); }
-
-function applyFilters() {
-  const search = (document.getElementById('searchInput').value || '').toLowerCase();
-  const rows = document.querySelectorAll('#quotesTable tbody tr:not(.detail-row)');
-
-  rows.forEach(row => {
-    const city = row.dataset.city || '';
-    const status = row.dataset.status || '';
-    const text = row.textContent.toLowerCase();
-
-    let show = true;
-    if (activeFilters.city !== 'all' && city !== activeFilters.city) show = false;
-    if (activeFilters.status !== 'all' && status !== activeFilters.status) show = false;
-    if (search && !text.includes(search)) show = false;
-
-    row.style.display = show ? '' : 'none';
-    // Hide detail row too
-    const detailRow = document.getElementById('detail-' + row.dataset.id);
-    if (detailRow && !show) detailRow.style.display = 'none';
-  });
-}
-
-// ── Add manual ────────────────────────────────────────────────────────
+// ── Add manual ────────────────────────────────
 function openAddModal() { document.getElementById('addModal').classList.add('open'); }
 function closeAddModal() { document.getElementById('addModal').classList.remove('open'); }
-
 async function addQuote() {
   const data = {
     hotel_name: document.getElementById('addHotel').value.trim(),
     city: document.getElementById('addCity').value,
     stars: document.getElementById('addStars').value ? parseInt(document.getElementById('addStars').value) : null,
-    contact_name: document.getElementById('addContact').value.trim() || null,
-    contact_email: document.getElementById('addContactEmail').value.trim() || null,
-    dates_proposed: document.getElementById('addDates').value.trim() || null,
-    rooms_available: document.getElementById('addRooms').value.trim() || null,
-    total_estimate: document.getElementById('addTotal').value.trim() || null,
-    notes: document.getElementById('addNotes').value.trim() || null,
+    contact_name: document.getElementById('addContact').value.trim()||null,
+    contact_email: document.getElementById('addContactEmail').value.trim()||null,
+    dates_proposed: document.getElementById('addDates').value.trim()||null,
+    rooms_available: document.getElementById('addRooms').value.trim()||null,
+    total_estimate: document.getElementById('addTotal').value.trim()||null,
+    image_url: document.getElementById('addImage').value.trim()||null,
+    notes: document.getElementById('addNotes').value.trim()||null,
   };
-  if (!data.hotel_name) return showSnack('Inserisci il nome dell\'hotel');
-
+  if (!data.hotel_name) return showSnack('Enter the hotel name');
   const r = await fetch('/api/partivia/quote', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    method:'POST', headers:{'Content-Type':'application/json'},
     body: JSON.stringify(data),
   });
-  const j = await r.json();
-  if (j.ok) {
-    showSnack('Preventivo aggiunto');
-    setTimeout(() => location.reload(), 500);
-  } else {
-    showSnack('Errore: ' + j.error, 5000);
-  }
+  if ((await r.json()).ok) { showSnack('Added'); setTimeout(()=>location.reload(),500); }
+  else showSnack('Error',5000);
 }
 </script>
-
 </body>
 </html>

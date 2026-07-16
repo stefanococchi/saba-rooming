@@ -1105,10 +1105,139 @@ Per "azione": "update", valorizza "match_id" con l'ID dell'ospite corrispondente
 
     @app.route('/partivia')
     def partivia():
+        import re
+
         quotes = (PartiviaQuote.query
                   .order_by(PartiviaQuote.city, PartiviaQuote.hotel_name)
                   .all())
-        return render_template('partivia.html', quotes=quotes)
+
+        # ── Normalizzazione tipo camera per pivot ──
+        def normalize_room_type(rt):
+            rt_l = rt.lower().strip()
+            if 'suite' in rt_l and 'junior' not in rt_l:
+                return 'Suite'
+            if 'junior' in rt_l:
+                return 'Junior Suite'
+            if 'singol' in rt_l or 'single' in rt_l:
+                return 'Singola'
+            if 'superior' in rt_l:
+                return 'Superior'
+            if 'deluxe' in rt_l:
+                return 'Deluxe'
+            if any(k in rt_l for k in ('doppi', 'double', 'twin', 'dbl')):
+                return 'Doppia/Twin'
+            if 'triple' in rt_l or 'tripl' in rt_l:
+                return 'Tripla'
+            return rt.strip()
+
+        # ── Normalizzazione tipo pasto per pivot ──
+        def normalize_meal_type(mt):
+            mt_l = mt.lower().strip()
+            if 'coffee' in mt_l or 'break' in mt_l:
+                return 'Coffee Break'
+            if 'cocktail' in mt_l or 'welcome' in mt_l or 'aperitivo' in mt_l:
+                return 'Cocktail'
+            if 'gala' in mt_l:
+                return 'Gala Dinner'
+            if 'cena' in mt_l or 'dinner' in mt_l:
+                return 'Cena'
+            if 'pranzo' in mt_l or 'lunch' in mt_l or 'buffet' in mt_l:
+                return 'Pranzo'
+            if 'colazione' in mt_l or 'breakfast' in mt_l:
+                return 'Colazione'
+            if 'ddr' in mt_l or 'delegate' in mt_l:
+                return 'DDR'
+            return mt.strip()
+
+        # ── Estrai numero da stringa prezzo ──
+        def parse_price(s):
+            if not s:
+                return None
+            m = re.search(r'[\d.,]+', s.replace('.', '').replace(',', '.'))
+            return float(m.group()) if m else None
+
+        # ── Dati aggregati per le tab ──
+        ROOM_COLS = ['Singola', 'Doppia/Twin', 'Superior', 'Deluxe',
+                     'Junior Suite', 'Suite']
+        MEAL_COLS = ['Colazione', 'Coffee Break', 'Pranzo', 'Cena',
+                     'Cocktail', 'Gala Dinner', 'DDR']
+
+        room_pivot = []  # lista di dict per ogni quote
+        fb_pivot = []
+        for q in quotes:
+            # Room pivot
+            rates_map = {}
+            for rr in q.room_rates:
+                norm = normalize_room_type(rr.room_type)
+                if norm not in rates_map:
+                    rates_map[norm] = rr.rate_per_night or ''
+            room_pivot.append({
+                'id': q.id,
+                'hotel': q.hotel_name,
+                'city': q.city,
+                'stars': q.stars,
+                'rooms': q.rooms_available or '',
+                'rates': {col: rates_map.get(col, '') for col in ROOM_COLS},
+                'price_val': parse_price(rates_map.get('Doppia/Twin')
+                                         or rates_map.get('Singola')),
+            })
+
+            # F&B pivot
+            fb_map = {}
+            for fb in q.fb_options:
+                norm = normalize_meal_type(fb.meal_type)
+                if norm not in fb_map:
+                    fb_map[norm] = fb.price_per_person or ''
+            fb_pivot.append({
+                'id': q.id,
+                'hotel': q.hotel_name,
+                'city': q.city,
+                'meals': {col: fb_map.get(col, '') for col in MEAL_COLS},
+            })
+
+        # ── Raggruppa per hotel (per Overview) ──
+        hotels_grouped = {}  # key = hotel_name_lower → list of quotes
+        for q in quotes:
+            key = q.hotel_name.lower().strip()
+            hotels_grouped.setdefault(key, []).append(q)
+
+        # Per ogni gruppo, scegli il "best" (più dati) e tieni le versioni
+        hotels = []  # lista di dict con best + versions
+        for key, group in hotels_grouped.items():
+            # Ordina per completezza: più room_rates + meeting_rooms + fb_options
+            scored = sorted(group, key=lambda q: (
+                len(q.room_rates) + len(q.meeting_rooms) + len(q.fb_options)
+            ), reverse=True)
+            best = scored[0]
+            hotels.append({
+                'best': best,
+                'versions': group,
+                'count': len(group),
+            })
+
+        # Ordina hotels per città + nome
+        hotels.sort(key=lambda h: (h['best'].city, h['best'].hotel_name))
+
+        # Stats
+        cities = {}
+        stars_count = {}
+        status_count = {}
+        for q in quotes:
+            cities[q.city] = cities.get(q.city, 0) + 1
+            s = q.stars or 0
+            stars_count[s] = stars_count.get(s, 0) + 1
+            status_count[q.quote_status] = status_count.get(q.quote_status, 0) + 1
+
+        return render_template('partivia.html',
+                               quotes=quotes,
+                               hotels=hotels,
+                               room_pivot=room_pivot,
+                               room_cols=ROOM_COLS,
+                               fb_pivot=fb_pivot,
+                               meal_cols=MEAL_COLS,
+                               stats_cities=cities,
+                               stats_stars=stars_count,
+                               stats_status=status_count)
 
     # ── Parse email preventivo ────────────────────────────────────────────
 
@@ -1357,7 +1486,7 @@ Rispondi SOLO con JSON valido (niente markdown):
                       'min_rooms_required', 'cancellation_policy',
                       'payment_terms', 'validity_date', 'commission',
                       'total_estimate', 'included_services', 'notes',
-                      'raw_summary', 'quote_status'):
+                      'raw_summary', 'quote_status', 'image_url'):
             if field in data:
                 val = data[field]
                 if field == 'stars' and val is not None:
@@ -1604,6 +1733,7 @@ Rispondi SOLO con JSON valido (niente markdown):
             dates_proposed=data.get('dates_proposed'),
             rooms_available=data.get('rooms_available'),
             total_estimate=data.get('total_estimate'),
+            image_url=data.get('image_url'),
             notes=data.get('notes'),
             source='manual',
         )

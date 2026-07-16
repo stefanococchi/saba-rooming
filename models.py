@@ -85,6 +85,7 @@ class PartiviaQuote(db.Model):
     notes               = db.Column(db.Text)
     raw_summary         = db.Column(db.Text)
     quote_status        = db.Column(db.String(100), default='da_valutare')
+    image_url           = db.Column(db.Text)
     source              = db.Column(db.String(20), default='email')
     email_log_id        = db.Column(db.Integer, db.ForeignKey('email_logs.id'))
     created_at          = db.Column(db.DateTime, default=datetime.utcnow)
