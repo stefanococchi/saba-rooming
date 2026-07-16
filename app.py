@@ -1316,7 +1316,11 @@ For each quote, extract:
 - is_update: true if updating an existing quote (with match_id), false if new
 - match_id: ID of existing quote if updating, null if new
 
-IMPORTANT: All notes and raw_summary MUST be in English. Translate if the source is in another language.
+IMPORTANT: ALL text fields MUST be in English. This includes:
+- raw_summary, notes, room_rates[].notes, meeting_rooms[].notes, fb_options[].menu_description
+- cancellation_policy, payment_terms, included_services
+- breakfast_included (use "Yes"/"No"/"Not specified" only)
+Always translate from Spanish, Italian, or any other language to English. Never leave any field in its original language.
 
 CRITICAL: Room costs (rate_per_night) and dates_proposed are the MOST important data to extract.
 - Every room_rates entry MUST have a rate_per_night value with € symbol. If the email quotes room prices in ANY format (per night, per stay, per person, package), convert to per-night rate and include it.
@@ -1546,15 +1550,20 @@ Reply ONLY with valid JSON (no markdown):
         results = []
         total_cost = 0.0
 
-        system_prompt = """You are an assistant that generates concise English summaries for hotel quotes.
+        system_prompt = """You are an assistant that processes hotel quote data.
 Given structured data about a hotel quote, produce a JSON object with:
 - raw_summary: 2-3 sentence summary in English. MUST always include:
   1. Room rates per night (e.g. "Double rooms at €180/night")
   2. Proposed dates if available
   3. Key highlights (capacity, meeting rooms, F&B)
+- translated_notes: ALL the text fields below translated to English. Return them as a JSON object.
+
+For each input field that is NOT already in English, translate it. Keep prices, numbers and proper nouns unchanged.
 
 Reply ONLY with valid JSON (no markdown):
-{"raw_summary": "..."}"""
+{"raw_summary": "...", "room_rates_notes": {"0": "translated note for first room rate", "1": "..."}, "meeting_rooms_notes": {"0": "translated note", ...}, "fb_descriptions": {"0": "translated description", ...}, "cancellation_policy": "...", "payment_terms": "...", "breakfast_labels": {"0": "Yes/No/Not specified", ...}}
+
+Only include fields that needed translation. Omit fields already in English."""
 
         for q in quotes:
             # Check if this quote has an original email we can re-parse
@@ -1648,8 +1657,8 @@ Email text:
             else:
                 # No original email — rebuild summary from existing DB data
                 room_info = []
-                for rr in q.room_rates:
-                    parts = [rr.room_type]
+                for idx, rr in enumerate(q.room_rates):
+                    parts = [f'[{idx}] {rr.room_type}']
                     if rr.rate_per_night:
                         parts.append(f'rate: {rr.rate_per_night}/night')
                     if rr.breakfast_included:
@@ -1659,19 +1668,23 @@ Email text:
                     room_info.append(', '.join(parts))
 
                 meeting_info = []
-                for mr in q.meeting_rooms:
-                    parts = [mr.name]
+                for idx, mr in enumerate(q.meeting_rooms):
+                    parts = [f'[{idx}] {mr.name}']
                     if mr.capacity:
                         parts.append(f'capacity: {mr.capacity}')
                     if mr.rate:
                         parts.append(f'rate: {mr.rate}')
+                    if mr.notes:
+                        parts.append(f'notes: {mr.notes}')
                     meeting_info.append(', '.join(parts))
 
                 fb_info = []
-                for fb in q.fb_options:
-                    parts = [fb.meal_type]
+                for idx, fb in enumerate(q.fb_options):
+                    parts = [f'[{idx}] {fb.meal_type}']
                     if fb.price_per_person:
                         parts.append(fb.price_per_person)
+                    if fb.menu_description:
+                        parts.append(f'desc: {fb.menu_description}')
                     fb_info.append(', '.join(parts))
 
                 user_msg = f"""Hotel: {q.hotel_name}
@@ -1695,7 +1708,7 @@ Notes: {q.notes or 'N/A'}"""
                 try:
                     response = client.messages.create(
                         model='claude-haiku-4-5-20251001',
-                        max_tokens=500,
+                        max_tokens=1500,
                         system=system_prompt,
                         messages=[{'role': 'user', 'content': user_msg}],
                     )
@@ -1712,11 +1725,40 @@ Notes: {q.notes or 'N/A'}"""
                     total_cost += (inp * 0.80 + out * 4.00) / 1_000_000
 
                     q.raw_summary = parsed.get('raw_summary', q.raw_summary)
+
+                    # Apply translated notes to room_rates
+                    rr_notes = parsed.get('room_rates_notes', {})
+                    breakfast_labels = parsed.get('breakfast_labels', {})
+                    for idx, rr in enumerate(q.room_rates):
+                        if str(idx) in rr_notes:
+                            rr.notes = rr_notes[str(idx)]
+                        if str(idx) in breakfast_labels:
+                            rr.breakfast_included = breakfast_labels[str(idx)]
+
+                    # Apply translated notes to meeting_rooms
+                    mr_notes = parsed.get('meeting_rooms_notes', {})
+                    for idx, mr in enumerate(q.meeting_rooms):
+                        if str(idx) in mr_notes:
+                            mr.notes = mr_notes[str(idx)]
+
+                    # Apply translated descriptions to fb_options
+                    fb_descs = parsed.get('fb_descriptions', {})
+                    for idx, fb in enumerate(q.fb_options):
+                        if str(idx) in fb_descs:
+                            fb.menu_description = fb_descs[str(idx)]
+
+                    # Apply translated top-level fields
+                    if parsed.get('cancellation_policy'):
+                        q.cancellation_policy = parsed['cancellation_policy']
+                    if parsed.get('payment_terms'):
+                        q.payment_terms = parsed['payment_terms']
+
                     db.session.flush()
 
                     results.append({
                         'hotel': q.hotel_name, 'ok': True, 'mode': 'rebuild',
                         'summary': (q.raw_summary or '')[:120],
+                        'translated': list(rr_notes.keys()) + list(mr_notes.keys()),
                     })
                 except Exception as e:
                     results.append({'hotel': q.hotel_name, 'ok': False,
