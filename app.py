@@ -1135,16 +1135,29 @@ Per "azione": "update", valorizza "match_id" con l'ID dell'ospite corrispondente
                 return 'Suite'
             if 'junior' in rt_l:
                 return 'Junior Suite'
-            if 'singol' in rt_l or 'single' in rt_l:
-                return 'Singola'
             if 'superior' in rt_l:
                 return 'Superior'
             if 'deluxe' in rt_l:
                 return 'Deluxe'
-            if any(k in rt_l for k in ('doppi', 'double', 'twin', 'dbl')):
-                return 'Doppia/Twin'
             if 'triple' in rt_l or 'tripl' in rt_l:
                 return 'Tripla'
+            # "Double for single use" / "single occupancy" → Singola
+            if any(k in rt_l for k in ('single use', 'single occupancy',
+                                        'uso singol', 'for single',
+                                        'dui', 'individual use',
+                                        'dus')):
+                return 'Singola'
+            # Pure single
+            if any(k in rt_l for k in ('singol', 'single')):
+                return 'Singola'
+            if any(k in rt_l for k in ('doppi', 'double', 'twin',
+                                        'dbl', 'double use',
+                                        'double occupancy')):
+                return 'Doppia/Twin'
+            # Run of House / ROH → treat as Doppia/Twin (most common)
+            if 'run of' in rt_l or 'roh' in rt_l:
+                return 'Doppia/Twin'
+            # Premium/standard mix → keep as-is
             return rt.strip()
 
         # ── Normalizzazione tipo pasto per pivot ──
