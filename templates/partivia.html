@@ -102,8 +102,8 @@ textarea { resize:vertical; min-height:120px; }
 /* ── Comparison tables ──────────────────────── */
 .cmp-table { width:100%; border-collapse:collapse; font-size:12px; }
 .cmp-table th { background:var(--primary); color:#fff; padding:10px 12px; text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.3px; white-space:nowrap; position:relative; }
-.cmp-table th .col-resizer { position:absolute; right:0; top:0; bottom:0; width:5px; cursor:col-resize; background:transparent; }
-.cmp-table th .col-resizer:hover, .cmp-table th .col-resizer.resizing { background:rgba(255,255,255,.4); }
+.cmp-table th .col-resizer { position:absolute; right:0; top:0; bottom:0; width:5px; cursor:col-resize; background:rgba(255,255,255,.2); border-right:2px solid rgba(255,255,255,.3); }
+.cmp-table th .col-resizer:hover, .cmp-table th .col-resizer.resizing { background:rgba(255,255,255,.5); border-right-color:rgba(255,255,255,.8); }
 .cmp-table td { padding:8px 12px; border-bottom:1px solid var(--outline-variant); vertical-align:middle; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:0; }
 .cmp-table tr:hover td { background:var(--surface-variant); }
 .cmp-table .city-header td { background:var(--surface-variant); font-weight:700; font-size:13px; color:var(--primary-dark); padding:10px 12px; }
