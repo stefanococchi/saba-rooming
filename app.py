@@ -1507,6 +1507,10 @@ Reply ONLY with valid JSON (no markdown):
 
     @app.post('/api/partivia/reparse-all')
     def partivia_reparse_all():
+        """Re-generate raw_summary for ALL quotes using existing DB data.
+        Works even without original email text — builds a structured
+        description from stored fields and asks the LLM to produce a
+        proper summary with room costs and dates."""
         import anthropic
         import time as _time
 
@@ -1514,127 +1518,66 @@ Reply ONLY with valid JSON (no markdown):
         if not api_key:
             return jsonify(ok=False, error='ANTHROPIC_API_KEY non configurata'), 500
 
-        # Group quotes by email_log_id
-        quotes = PartiviaQuote.query.filter(
-            PartiviaQuote.email_log_id.isnot(None)
-        ).order_by(PartiviaQuote.email_log_id).all()
-
+        quotes = PartiviaQuote.query.all()
         if not quotes:
-            return jsonify(ok=False, error='No quotes with email_log_id found')
-
-        email_groups = {}
-        for q in quotes:
-            email_groups.setdefault(q.email_log_id, []).append(q)
-
-        # Build system prompt (same as parse-email)
-        existing = PartiviaQuote.query.order_by(PartiviaQuote.city).all()
-        existing_list = '\n'.join(
-            f'- [id={q.id}] {q.hotel_name} ({q.city}, {q.stars or "?"}★) '
-            f'— stato: {q.quote_status}, date: {q.dates_proposed or "n/a"}'
-            for q in existing
-        ) or '(nessun preventivo ancora registrato)'
-
-        system_prompt = f"""You are an assistant that extracts hotel quote data from emails.
-The event is "N!Partivia" — a corporate incentive trip in Spain.
-Possible destinations: Barcellona, Madrid, Siviglia, Valencia.
-
-Quotes already registered:
-{existing_list}
-
-Analyze the email and extract ALL hotel quotes/proposals present.
-For each quote, extract:
-- hotel_name (hotel name)
-- city (Barcellona, Madrid, Siviglia or Valencia — always normalize to Italian spelling)
-- stars (integer 1-5 or null)
-- contact_name, contact_email (hotel contact)
-- website_url (hotel website URL if mentioned, or null)
-- dates_proposed (proposed dates, e.g. "10-13 October 2026" — MANDATORY, always extract available dates/periods mentioned in the email)
-- rooms_available (available rooms)
-- min_rooms_required (minimum rooms required)
-- room_rates: list of objects with room_type, rate_per_night (with €, MANDATORY — always extract the nightly rate even if you need to calculate it from a total or package price), breakfast_included (yes/no/not specified), notes (in English, about room specifics only). NEVER leave rate_per_night empty or null — if the email mentions any price for rooms, extract it. If a total/package price is given instead of per-night, divide and note "calculated from total" in notes.
-- meeting_rooms: list with name, capacity, rate, notes (in English — technical details: AV equipment, layout, natural light, etc.)
-- fb_options: list with meal_type (Breakfast/Lunch/Dinner/Coffee Break/Gala Dinner/DDR), price_per_person, menu_description
-- cancellation_policy, payment_terms, validity_date, commission
-- total_estimate (total estimate if present)
-- included_services (list of included services like WiFi, parking, etc.)
-- notes (in English — only about rooms and meeting rooms, not general conditions)
-- raw_summary (2-3 sentence summary in English — MUST always include room rates/costs per night, e.g. "Double rooms at €180/night". Room pricing is the most important information in the summary.)
-- is_update: true if updating an existing quote (with match_id), false if new
-- match_id: ID of existing quote if updating, null if new
-
-IMPORTANT: All notes and raw_summary MUST be in English. Translate if the source is in another language.
-
-CRITICAL: Room costs (rate_per_night) and dates_proposed are the MOST important data to extract.
-- Every room_rates entry MUST have a rate_per_night value with € symbol. If the email quotes room prices in ANY format (per night, per stay, per person, package), convert to per-night rate and include it.
-- dates_proposed MUST always be filled if any dates or periods are mentioned in the email (check-in/check-out, event dates, availability windows).
-- The raw_summary MUST always mention the room rates (e.g. "rooms from €X to €Y per night") and the proposed dates.
-
-If the message does NOT contain quotes (e.g. simple follow-up), set is_quote=false.
-
-Reply ONLY with valid JSON (no markdown):
-{{{{
-  "quotes": [...],
-  "is_quote": true,
-  "message_type": "quote",
-  "summary": "..."
-}}}}"""
+            return jsonify(ok=False, error='No quotes found')
 
         client = anthropic.Anthropic(api_key=api_key)
         results = []
         total_cost = 0.0
 
-        for email_log_id, group_quotes in email_groups.items():
-            email_log = EmailLog.query.get(email_log_id)
-            if not email_log or not email_log.testo:
-                for q in group_quotes:
-                    results.append({'hotel': q.hotel_name, 'ok': False,
-                                    'error': 'No email text'})
-                continue
+        system_prompt = """You are an assistant that generates concise English summaries for hotel quotes.
+Given structured data about a hotel quote, produce a JSON object with:
+- raw_summary: 2-3 sentence summary in English. MUST always include:
+  1. Room rates per night (e.g. "Double rooms at €180/night")
+  2. Proposed dates if available
+  3. Key highlights (capacity, meeting rooms, F&B)
 
-            try:
-                response = client.messages.create(
-                    model='claude-haiku-4-5-20251001',
-                    max_tokens=4096,
-                    system=system_prompt,
-                    messages=[{'role': 'user', 'content': email_log.testo}],
-                )
-                raw = response.content[0].text.strip()
-                if raw.startswith('```'):
-                    raw = raw.split('\n', 1)[1] if '\n' in raw else raw[3:]
-                    if raw.endswith('```'):
-                        raw = raw[:-3]
-                    raw = raw.strip()
+Reply ONLY with valid JSON (no markdown):
+{"raw_summary": "..."}"""
 
-                parsed = json.loads(raw)
-                inp = response.usage.input_tokens
-                out = response.usage.output_tokens
-                cost = (inp * 0.80 + out * 4.00) / 1_000_000
-                total_cost += cost
+        for q in quotes:
+            # Check if this quote has an original email we can re-parse
+            has_email = False
+            if q.email_log_id:
+                email_log = EmailLog.query.get(q.email_log_id)
+                if email_log and email_log.testo:
+                    has_email = True
 
-                if not parsed.get('is_quote'):
-                    for q in group_quotes:
-                        results.append({'hotel': q.hotel_name, 'ok': False,
-                                        'error': 'Not a quote'})
-                    continue
+            if has_email:
+                # Full re-parse from original email
+                full_prompt = f"""Extract the hotel quote data from this email. Focus on:
+1. room_rates with rate_per_night (MANDATORY, with € symbol)
+2. dates_proposed (MANDATORY)
+3. raw_summary that includes room costs and dates
 
-                parsed_quotes = parsed.get('quotes', [])
+The hotel name should be: {q.hotel_name}
 
-                for q in group_quotes:
-                    # Match by hotel name
-                    hotel_lower = q.hotel_name.lower().strip()
-                    pq = None
-                    for cand in parsed_quotes:
-                        cand_name = cand.get('hotel_name', '').lower().strip()
-                        if hotel_lower == cand_name or hotel_lower in cand_name or cand_name in hotel_lower:
-                            pq = cand
-                            break
+Reply ONLY with valid JSON:
+{{"hotel_name": "...", "dates_proposed": "...", "room_rates": [{{"room_type": "...", "rate_per_night": "€...", "breakfast_included": "...", "notes": "..."}}], "raw_summary": "...", "meeting_rooms": [...], "fb_options": [...], "cancellation_policy": "...", "payment_terms": "...", "validity_date": "...", "commission": "...", "total_estimate": "...", "included_services": [...], "notes": "..."}}
 
-                    if not pq:
-                        results.append({'hotel': q.hotel_name, 'ok': False,
-                                        'error': 'No match in parsed results'})
-                        continue
+Email text:
+{email_log.testo}"""
 
-                    # Update fields (preserve status, image_url, source)
+                try:
+                    response = client.messages.create(
+                        model='claude-haiku-4-5-20251001',
+                        max_tokens=4096,
+                        messages=[{'role': 'user', 'content': full_prompt}],
+                    )
+                    raw = response.content[0].text.strip()
+                    if raw.startswith('```'):
+                        raw = raw.split('\n', 1)[1] if '\n' in raw else raw[3:]
+                        if raw.endswith('```'):
+                            raw = raw[:-3]
+                        raw = raw.strip()
+
+                    pq = json.loads(raw)
+                    inp = response.usage.input_tokens
+                    out = response.usage.output_tokens
+                    total_cost += (inp * 0.80 + out * 4.00) / 1_000_000
+
+                    # Update all fields from re-parse
                     for field in ('contact_name', 'contact_email',
                                   'dates_proposed', 'rooms_available',
                                   'min_rooms_required', 'cancellation_policy',
@@ -1645,9 +1588,9 @@ Reply ONLY with valid JSON (no markdown):
                         if val is not None:
                             setattr(q, field, val)
                     if pq.get('included_services'):
-                        q.included_services = ', '.join(pq['included_services'])
+                        svc = pq['included_services']
+                        q.included_services = ', '.join(svc) if isinstance(svc, list) else svc
 
-                    # Replace room_rates
                     if pq.get('room_rates'):
                         PartiviaRoomRate.query.filter_by(quote_id=q.id).delete()
                         for rr in pq['room_rates']:
@@ -1657,48 +1600,109 @@ Reply ONLY with valid JSON (no markdown):
                                 rate_per_night=rr.get('rate_per_night'),
                                 breakfast_included=rr.get('breakfast_included'),
                                 notes=rr.get('notes')))
-
-                    # Replace meeting_rooms
                     if pq.get('meeting_rooms'):
                         PartiviaMeetingRoom.query.filter_by(quote_id=q.id).delete()
                         for mr in pq['meeting_rooms']:
                             db.session.add(PartiviaMeetingRoom(
-                                quote_id=q.id,
-                                name=mr.get('name', ''),
+                                quote_id=q.id, name=mr.get('name', ''),
                                 capacity=mr.get('capacity'),
-                                rate=mr.get('rate'),
-                                notes=mr.get('notes')))
-
-                    # Replace fb_options
+                                rate=mr.get('rate'), notes=mr.get('notes')))
                     if pq.get('fb_options'):
                         PartiviaFBOption.query.filter_by(quote_id=q.id).delete()
                         for fb in pq['fb_options']:
                             db.session.add(PartiviaFBOption(
-                                quote_id=q.id,
-                                meal_type=fb.get('meal_type', ''),
+                                quote_id=q.id, meal_type=fb.get('meal_type', ''),
                                 price_per_person=fb.get('price_per_person'),
                                 menu_description=fb.get('menu_description')))
 
                     db.session.flush()
-                    rates_info = [rr.get('rate_per_night', '?')
-                                  for rr in pq.get('room_rates', [])]
                     results.append({
-                        'hotel': q.hotel_name, 'ok': True,
-                        'rates': rates_info,
+                        'hotel': q.hotel_name, 'ok': True, 'mode': 'email',
+                        'rates': [rr.get('rate_per_night', '?') for rr in pq.get('room_rates', [])],
                         'dates': pq.get('dates_proposed'),
                         'summary': (pq.get('raw_summary') or '')[:120],
                     })
-
-                _time.sleep(0.3)  # rate limiting
-
-            except json.JSONDecodeError:
-                for q in group_quotes:
-                    results.append({'hotel': q.hotel_name, 'ok': False,
-                                    'error': 'Invalid JSON from LLM'})
-            except Exception as e:
-                for q in group_quotes:
+                except Exception as e:
                     results.append({'hotel': q.hotel_name, 'ok': False,
                                     'error': str(e)})
+            else:
+                # No original email — rebuild summary from existing DB data
+                room_info = []
+                for rr in q.room_rates:
+                    parts = [rr.room_type]
+                    if rr.rate_per_night:
+                        parts.append(f'rate: {rr.rate_per_night}/night')
+                    if rr.breakfast_included:
+                        parts.append(f'breakfast: {rr.breakfast_included}')
+                    if rr.notes:
+                        parts.append(f'notes: {rr.notes}')
+                    room_info.append(', '.join(parts))
+
+                meeting_info = []
+                for mr in q.meeting_rooms:
+                    parts = [mr.name]
+                    if mr.capacity:
+                        parts.append(f'capacity: {mr.capacity}')
+                    if mr.rate:
+                        parts.append(f'rate: {mr.rate}')
+                    meeting_info.append(', '.join(parts))
+
+                fb_info = []
+                for fb in q.fb_options:
+                    parts = [fb.meal_type]
+                    if fb.price_per_person:
+                        parts.append(fb.price_per_person)
+                    fb_info.append(', '.join(parts))
+
+                user_msg = f"""Hotel: {q.hotel_name}
+City: {q.city}
+Stars: {q.stars or 'N/A'}
+Dates proposed: {q.dates_proposed or 'N/A'}
+Rooms available: {q.rooms_available or 'N/A'}
+Room rates:
+{chr(10).join('  - ' + r for r in room_info) if room_info else '  (none)'}
+Meeting rooms:
+{chr(10).join('  - ' + m for m in meeting_info) if meeting_info else '  (none)'}
+F&B options:
+{chr(10).join('  - ' + f for f in fb_info) if fb_info else '  (none)'}
+Total estimate: {q.total_estimate or 'N/A'}
+Cancellation: {q.cancellation_policy or 'N/A'}
+Payment terms: {q.payment_terms or 'N/A'}
+Deadline: {q.validity_date or 'N/A'}
+Commission: {q.commission or 'N/A'}
+Notes: {q.notes or 'N/A'}"""
+
+                try:
+                    response = client.messages.create(
+                        model='claude-haiku-4-5-20251001',
+                        max_tokens=500,
+                        system=system_prompt,
+                        messages=[{'role': 'user', 'content': user_msg}],
+                    )
+                    raw = response.content[0].text.strip()
+                    if raw.startswith('```'):
+                        raw = raw.split('\n', 1)[1] if '\n' in raw else raw[3:]
+                        if raw.endswith('```'):
+                            raw = raw[:-3]
+                        raw = raw.strip()
+
+                    parsed = json.loads(raw)
+                    inp = response.usage.input_tokens
+                    out = response.usage.output_tokens
+                    total_cost += (inp * 0.80 + out * 4.00) / 1_000_000
+
+                    q.raw_summary = parsed.get('raw_summary', q.raw_summary)
+                    db.session.flush()
+
+                    results.append({
+                        'hotel': q.hotel_name, 'ok': True, 'mode': 'rebuild',
+                        'summary': (q.raw_summary or '')[:120],
+                    })
+                except Exception as e:
+                    results.append({'hotel': q.hotel_name, 'ok': False,
+                                    'error': str(e)})
+
+            _time.sleep(0.3)  # rate limiting
 
         db.session.commit()
         return jsonify(ok=True, results=results,
