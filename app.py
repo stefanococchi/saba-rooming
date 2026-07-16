@@ -1314,6 +1314,12 @@ For each quote, extract:
 - included_services (list of included services like WiFi, parking, etc.)
 - notes (in English — only about rooms and meeting rooms, not general conditions)
 - raw_summary (2-3 sentence summary in English — MUST always include room rates/costs per night, e.g. "Double rooms at €180/night". Room pricing is the most important information in the summary.)
+- quote_status: one of "pending_review", "negotiating", "confirmed", "declined", "expired". Determine from the email tone:
+  * "confirmed" if the hotel confirms availability/booking
+  * "declined" if the hotel declines or says dates are not available
+  * "expired" if the option deadline has passed or quote is no longer valid
+  * "negotiating" if the hotel is providing a quote/proposal with rates
+  * "pending_review" only if unclear
 - is_update: true if updating an existing quote (with match_id), false if new
 - match_id: ID of existing quote if updating, null if new
 
@@ -1435,7 +1441,7 @@ Reply ONLY with valid JSON (no markdown):
                               'min_rooms_required', 'cancellation_policy',
                               'payment_terms', 'validity_date', 'commission',
                               'total_estimate', 'notes', 'raw_summary',
-                              'website_url', 'address'):
+                              'website_url', 'address', 'quote_status'):
                     if qd.get(field) is not None:
                         setattr(q, field, qd[field])
                 if qd.get('included_services'):
@@ -1492,6 +1498,7 @@ Reply ONLY with valid JSON (no markdown):
                     raw_summary=qd.get('raw_summary'),
                     website_url=qd.get('website_url'),
                     address=qd.get('address'),
+                    quote_status=qd.get('quote_status', 'pending_review'),
                     source='email',
                     email_log_id=email_log_id,
                 )
