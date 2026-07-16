@@ -37,6 +37,23 @@ def create_app():
 
     with app.app_context():
         db.create_all()
+
+        # Migrate Italian statuses to English (one-time)
+        _status_map = {
+            'da_valutare': 'pending_review',
+            'in_trattativa': 'negotiating',
+            'confermato': 'confirmed',
+            'rifiutato': 'declined',
+            'scaduto': 'expired',
+        }
+        _migrated = 0
+        for _q in PartiviaQuote.query.filter(
+                PartiviaQuote.quote_status.in_(_status_map.keys())).all():
+            _q.quote_status = _status_map[_q.quote_status]
+            _migrated += 1
+        if _migrated:
+            db.session.commit()
+
         # Seed contratti camere se non esistono
         if RoomContract.query.count() == 0:
             CONTRATTI = [
@@ -1258,36 +1275,39 @@ Per "azione": "update", valorizza "match_id" con l'ID dell'ospite corrispondente
             for q in existing
         ) or '(nessun preventivo ancora registrato)'
 
-        system_prompt = f"""Sei un assistente che estrae dati di preventivi hotel da email.
-L'evento è "N!Partivia" — un viaggio incentive aziendale in Spagna.
-Possibili destinazioni: Barcellona, Madrid, Siviglia, Valencia.
+        system_prompt = f"""You are an assistant that extracts hotel quote data from emails.
+The event is "N!Partivia" — a corporate incentive trip in Spain.
+Possible destinations: Barcellona, Madrid, Siviglia, Valencia.
 
-Preventivi già registrati:
+Quotes already registered:
 {existing_list}
 
-Analizza l'email e estrai TUTTI i preventivi/offerte hotel presenti.
-Per ogni preventivo, estrai:
-- hotel_name (nome hotel)
-- city (Barcellona, Madrid, Siviglia o Valencia — normalizza sempre in italiano)
-- stars (stelle, intero 1-5 o null)
-- contact_name, contact_email (contatto hotel)
-- dates_proposed (date proposte, es. "10-13 ottobre 2026")
-- rooms_available (camere disponibili)
-- min_rooms_required (minimo camere richieste)
-- room_rates: lista di oggetti con room_type, rate_per_night (con €), breakfast_included (sì/no/non specificato), notes
-- meeting_rooms: lista con name, capacity, rate, notes
-- fb_options: lista con meal_type (colazione/pranzo/cena/coffee break/gala dinner), price_per_person, menu_description
+Analyze the email and extract ALL hotel quotes/proposals present.
+For each quote, extract:
+- hotel_name (hotel name)
+- city (Barcellona, Madrid, Siviglia or Valencia — always normalize to Italian spelling)
+- stars (integer 1-5 or null)
+- contact_name, contact_email (hotel contact)
+- website_url (hotel website URL if mentioned, or null)
+- dates_proposed (proposed dates, e.g. "10-13 October 2026")
+- rooms_available (available rooms)
+- min_rooms_required (minimum rooms required)
+- room_rates: list of objects with room_type, rate_per_night (with €), breakfast_included (yes/no/not specified), notes (in English, about room specifics only)
+- meeting_rooms: list with name, capacity, rate, notes (in English — technical details: AV equipment, layout, natural light, etc.)
+- fb_options: list with meal_type (Breakfast/Lunch/Dinner/Coffee Break/Gala Dinner/DDR), price_per_person, menu_description
 - cancellation_policy, payment_terms, validity_date, commission
-- total_estimate (stima totale se presente)
-- included_services (lista servizi inclusi come WiFi, parcheggio, etc.)
-- notes (condizioni speciali, upgrade offerti)
-- raw_summary (riassunto del contenuto in 2-3 frasi)
-- is_update: true se aggiorna un preventivo già in lista (con match_id), false se è nuovo
-- match_id: ID del preventivo esistente se è un aggiornamento, null se nuovo
+- total_estimate (total estimate if present)
+- included_services (list of included services like WiFi, parking, etc.)
+- notes (in English — only about rooms and meeting rooms, not general conditions)
+- raw_summary (2-3 sentence summary in English)
+- is_update: true if updating an existing quote (with match_id), false if new
+- match_id: ID of existing quote if updating, null if new
 
-Se il messaggio NON contiene preventivi (es. semplice follow-up), imposta is_quote=false.
+IMPORTANT: All notes and raw_summary MUST be in English. Translate if the source is in another language.
 
-Rispondi SOLO con JSON valido (niente markdown):
+If the message does NOT contain quotes (e.g. simple follow-up), set is_quote=false.
+
+Reply ONLY with valid JSON (no markdown):
 {{
   "quotes": [
     {{
@@ -1296,33 +1316,34 @@ Rispondi SOLO con JSON valido (niente markdown):
       "stars": 4,
       "contact_name": "Mario Rossi",
       "contact_email": "mario@hotel.com",
-      "dates_proposed": "10-13 ottobre 2026",
+      "website_url": "https://www.hotelexample.com",
+      "dates_proposed": "10-13 October 2026",
       "rooms_available": "80",
       "min_rooms_required": null,
       "room_rates": [
-        {{"room_type": "Doppia", "rate_per_night": "€ 180", "breakfast_included": "sì", "notes": null}}
+        {{"room_type": "Double", "rate_per_night": "€ 180", "breakfast_included": "yes", "notes": "Sea view upgrade available"}}
       ],
       "meeting_rooms": [
-        {{"name": "Sala Grande", "capacity": "200 pax teatro", "rate": "€ 2.000/giorno", "notes": "AV incluso"}}
+        {{"name": "Grand Hall", "capacity": "200 pax theatre", "rate": "€ 2,000/day", "notes": "AV included, natural daylight, 250sqm"}}
       ],
       "fb_options": [
-        {{"meal_type": "Cena", "price_per_person": "€ 55/pax", "menu_description": "Menu 3 portate"}}
+        {{"meal_type": "Dinner", "price_per_person": "€ 55/pax", "menu_description": "3-course menu"}}
       ],
-      "cancellation_policy": "Cancellazione gratuita entro 30gg",
-      "payment_terms": "30% alla conferma",
+      "cancellation_policy": "Free cancellation up to 30 days",
+      "payment_terms": "30% upon confirmation",
       "validity_date": "30/09/2026",
       "commission": "10%",
-      "total_estimate": "€ 45.000",
-      "included_services": ["WiFi", "Parcheggio", "Palestra"],
-      "notes": "Upgrade camera su richiesta",
-      "raw_summary": "Hotel Example propone 80 camere doppie a €180/notte...",
+      "total_estimate": "€ 45,000",
+      "included_services": ["WiFi", "Parking", "Gym"],
+      "notes": "Room upgrade available on request",
+      "raw_summary": "Hotel Example offers 80 double rooms at €180/night...",
       "is_update": false,
       "match_id": null
     }}
   ],
   "is_quote": true,
-  "message_type": "preventivo",
-  "summary": "Ricevuto preventivo da Hotel Example per Barcellona..."
+  "message_type": "quote",
+  "summary": "Received quote from Hotel Example for Barcellona..."
 }}"""
 
         api_key = os.environ.get('ANTHROPIC_API_KEY')
@@ -1390,7 +1411,8 @@ Rispondi SOLO con JSON valido (niente markdown):
                               'contact_email', 'dates_proposed', 'rooms_available',
                               'min_rooms_required', 'cancellation_policy',
                               'payment_terms', 'validity_date', 'commission',
-                              'total_estimate', 'notes', 'raw_summary'):
+                              'total_estimate', 'notes', 'raw_summary',
+                              'website_url'):
                     if qd.get(field) is not None:
                         setattr(q, field, qd[field])
                 if qd.get('included_services'):
@@ -1445,6 +1467,7 @@ Rispondi SOLO con JSON valido (niente markdown):
                     included_services=', '.join(qd.get('included_services', [])),
                     notes=qd.get('notes'),
                     raw_summary=qd.get('raw_summary'),
+                    website_url=qd.get('website_url'),
                     source='email',
                     email_log_id=email_log_id,
                 )
@@ -1486,7 +1509,8 @@ Rispondi SOLO con JSON valido (niente markdown):
                       'min_rooms_required', 'cancellation_policy',
                       'payment_terms', 'validity_date', 'commission',
                       'total_estimate', 'included_services', 'notes',
-                      'raw_summary', 'quote_status', 'image_url'):
+                      'raw_summary', 'quote_status', 'image_url',
+                      'website_url'):
             if field in data:
                 val = data[field]
                 if field == 'stars' and val is not None:
@@ -1535,6 +1559,19 @@ Rispondi SOLO con JSON valido (niente markdown):
         db.session.commit()
         return jsonify(ok=True)
 
+    # ── Bulk set option deadline ───────────────────────────────────────────
+
+    @app.post('/api/partivia/bulk-deadline')
+    def partivia_bulk_deadline():
+        data = request.get_json()
+        deadline = data.get('deadline', '')
+        quotes = PartiviaQuote.query.all()
+        for q in quotes:
+            q.validity_date = deadline
+            q.updated_at = datetime.utcnow()
+        db.session.commit()
+        return jsonify(ok=True, count=len(quotes))
+
     # ── Export Excel comparativo ──────────────────────────────────────────
 
     @app.get('/api/partivia/export')
@@ -1552,21 +1589,23 @@ Rispondi SOLO con JSON valido (niente markdown):
         header_fill = PatternFill('solid', fgColor='2F5496')
         city_fill = PatternFill('solid', fgColor='D6E4F0')
         city_font = Font(bold=True, size=12)
+        link_font = Font(bold=True, size=12, color='0563C1', underline='single')
+        section_font = Font(bold=True, color='2F5496')
         thin_border = Border(
             left=Side(style='thin'), right=Side(style='thin'),
             top=Side(style='thin'), bottom=Side(style='thin'))
         wrap = Alignment(wrap_text=True, vertical='top')
 
-        # ── Tab 1: Confronto Hotel ──
+        # ── Tab 1: Hotel Comparison (client-facing) ──
         ws = wb.active
-        ws.title = 'Confronto Hotel'
+        ws.title = 'Hotel Comparison'
         headers = [
-            'Città', 'Hotel', 'Stelle', 'Camere',
-            'Singola/notte', 'Doppia/notte', 'Suite/notte',
-            'Sala Meeting', 'Capienza', 'Costo Sala',
-            'Pranzo/pax', 'Cena/pax', 'Coffee Break',
-            'Totale Stimato', 'Cancellazione', 'Validità',
-            'Commissione', 'Servizi Inclusi', 'Contatto', 'Note', 'Stato',
+            'City', 'Hotel', 'Stars', 'Available Dates',
+            'Rooms Available',
+            'Single/night', 'Double/night', 'Suite/night',
+            'Meeting Room', 'Capacity', 'Meeting Cost',
+            'Lunch/pax', 'Dinner/pax', 'Coffee Break/pax',
+            'Option Deadline', 'Notes',
         ]
         for col, h in enumerate(headers, 1):
             cell = ws.cell(row=1, column=col, value=h)
@@ -1578,12 +1617,19 @@ Rispondi SOLO con JSON valido (niente markdown):
         for row, q in enumerate(quotes, 2):
             rates = {r.room_type.lower(): r for r in q.room_rates}
             single = next((r for k, r in rates.items()
-                           if 'singol' in k), None)
+                           if 'singol' in k or 'single' in k), None)
             double = next((r for k, r in rates.items()
                            if 'doppi' in k or 'double' in k or 'twin' in k), None)
             suite = next((r for k, r in rates.items()
                           if 'suite' in k or 'junior' in k), None)
             main_mr = q.meeting_rooms[0] if q.meeting_rooms else None
+
+            # Collect all meeting room notes for technical details
+            mr_notes = '; '.join(
+                f"{mr.name}: {mr.notes}" for mr in q.meeting_rooms
+                if mr.notes
+            ) if q.meeting_rooms else ''
+
             fb = {o.meal_type.lower(): o for o in q.fb_options}
             lunch = next((o for k, o in fb.items()
                           if 'pranzo' in k or 'lunch' in k), None)
@@ -1592,8 +1638,20 @@ Rispondi SOLO con JSON valido (niente markdown):
             coffee = next((o for k, o in fb.items()
                            if 'coffee' in k or 'break' in k), None)
 
+            # Notes: room + meeting only
+            note_parts = []
+            if mr_notes:
+                note_parts.append(mr_notes)
+            # Room notes
+            for rr in q.room_rates:
+                if rr.notes:
+                    note_parts.append(f"{rr.room_type}: {rr.notes}")
+            if q.notes:
+                note_parts.append(q.notes)
+
             vals = [
-                q.city, q.hotel_name, q.stars, q.rooms_available,
+                q.city, q.hotel_name, q.stars, q.dates_proposed or '',
+                q.rooms_available or '',
                 single.rate_per_night if single else '',
                 double.rate_per_night if double else '',
                 suite.rate_per_night if suite else '',
@@ -1603,28 +1661,33 @@ Rispondi SOLO con JSON valido (niente markdown):
                 lunch.price_per_person if lunch else '',
                 dinner.price_per_person if dinner else '',
                 coffee.price_per_person if coffee else '',
-                q.total_estimate or '',
-                q.cancellation_policy or '',
                 q.validity_date or '',
-                q.commission or '',
-                q.included_services or '',
-                f'{q.contact_name or ""} {q.contact_email or ""}'.strip(),
-                q.notes or '',
-                q.quote_status,
+                '; '.join(note_parts) if note_parts else '',
             ]
             for col, v in enumerate(vals, 1):
                 cell = ws.cell(row=row, column=col, value=v)
                 cell.border = thin_border
                 cell.alignment = wrap
 
+            # Hotel name as hyperlink if website_url exists
+            hotel_cell = ws.cell(row=row, column=2)
+            if q.website_url:
+                hotel_cell.hyperlink = q.website_url
+                hotel_cell.font = Font(color='0563C1', underline='single')
+
+            # Highlight option deadline
+            deadline_cell = ws.cell(row=row, column=15)
+            if q.validity_date:
+                deadline_cell.font = Font(bold=True, color='E65100')
+
         for col in range(1, len(headers) + 1):
             ws.column_dimensions[get_column_letter(col)].width = 16
-        ws.column_dimensions['B'].width = 28
-        ws.column_dimensions['R'].width = 30
-        ws.column_dimensions['T'].width = 40
+        ws.column_dimensions['B'].width = 30
+        ws.column_dimensions['D'].width = 22
+        ws.column_dimensions[get_column_letter(16)].width = 45
         ws.freeze_panes = 'C2'
 
-        # ── Tab 2+: Dettaglio per città ──
+        # ── Tab 2+: Detail per city ──
         quotes_by_city = {}
         for q in quotes:
             quotes_by_city.setdefault(q.city.upper(), []).append(q)
@@ -1633,90 +1696,112 @@ Rispondi SOLO con JSON valido (niente markdown):
             cqs = quotes_by_city[city]
             ws_c = wb.create_sheet(title=city[:31])
             ws_c.merge_cells('A1:F1')
-            cell = ws_c.cell(row=1, column=1, value=f'Preventivi — {city}')
+            cell = ws_c.cell(row=1, column=1, value=f'Hotel Quotes — {city}')
             cell.font = Font(bold=True, size=14, color='2F5496')
 
             r = 3
             for q in sorted(cqs, key=lambda x: x.hotel_name):
                 ws_c.merge_cells(f'A{r}:F{r}')
-                cell = ws_c.cell(row=r, column=1,
-                                 value=f"{q.hotel_name} {'★' * (q.stars or 0)}")
-                cell.font = city_font
+                hotel_label = f"{q.hotel_name} {'★' * (q.stars or 0)}"
+                cell = ws_c.cell(row=r, column=1, value=hotel_label)
+                if q.website_url:
+                    cell.hyperlink = q.website_url
+                    cell.font = link_font
+                else:
+                    cell.font = city_font
                 cell.fill = city_fill
                 r += 1
                 for label, val in [
-                    ('Contatto', f'{q.contact_name or "-"} ({q.contact_email or "-"})'),
-                    ('Date', q.dates_proposed or '-'),
-                    ('Camere', str(q.rooms_available) if q.rooms_available else '-'),
-                    ('Totale', q.total_estimate or '-'),
-                    ('Stato', q.quote_status),
+                    ('Available Dates', q.dates_proposed or '-'),
+                    ('Rooms Available', str(q.rooms_available) if q.rooms_available else '-'),
+                    ('Option Deadline', q.validity_date or '-'),
                 ]:
                     ws_c.cell(row=r, column=1, value=label).font = Font(bold=True)
-                    ws_c.cell(row=r, column=2, value=val)
+                    val_cell = ws_c.cell(row=r, column=2, value=val)
+                    if label == 'Option Deadline' and q.validity_date:
+                        val_cell.font = Font(bold=True, color='E65100')
                     r += 1
+
+                # ROOM RATES
                 if q.room_rates:
                     r += 1
                     ws_c.cell(row=r, column=1,
-                              value='TARIFFE CAMERE').font = Font(bold=True, color='2F5496')
+                              value='ROOM RATES').font = section_font
+                    r += 1
+                    for hdr_col, hdr_val in enumerate(
+                            ['Type', 'Rate/Night', 'Breakfast', 'Notes'], 1):
+                        c = ws_c.cell(row=r, column=hdr_col, value=hdr_val)
+                        c.font = Font(bold=True, size=10)
+                        c.fill = PatternFill('solid', fgColor='E8ECF4')
                     r += 1
                     for rate in q.room_rates:
                         ws_c.cell(row=r, column=1, value=rate.room_type)
                         ws_c.cell(row=r, column=2, value=rate.rate_per_night)
-                        ws_c.cell(row=r, column=3, value=rate.breakfast_included or '')
+                        ws_c.cell(row=r, column=3,
+                                  value=rate.breakfast_included or '')
                         ws_c.cell(row=r, column=4, value=rate.notes or '')
                         r += 1
+
+                # MEETING ROOMS
                 if q.meeting_rooms:
                     r += 1
                     ws_c.cell(row=r, column=1,
-                              value='SALE MEETING').font = Font(bold=True, color='2F5496')
+                              value='MEETING ROOMS').font = section_font
+                    r += 1
+                    for hdr_col, hdr_val in enumerate(
+                            ['Room', 'Capacity', 'Cost', 'Technical Details'], 1):
+                        c = ws_c.cell(row=r, column=hdr_col, value=hdr_val)
+                        c.font = Font(bold=True, size=10)
+                        c.fill = PatternFill('solid', fgColor='E8ECF4')
                     r += 1
                     for mr in q.meeting_rooms:
                         ws_c.cell(row=r, column=1, value=mr.name)
                         ws_c.cell(row=r, column=2, value=mr.capacity or '')
                         ws_c.cell(row=r, column=3, value=mr.rate or '')
-                        ws_c.cell(row=r, column=4, value=mr.notes or '')
+                        ws_c.cell(row=r, column=4,
+                                  value=mr.notes or '').alignment = wrap
                         r += 1
+
+                # F&B RATES
                 if q.fb_options:
                     r += 1
                     ws_c.cell(row=r, column=1,
-                              value='FOOD & BEVERAGE').font = Font(bold=True, color='2F5496')
+                              value='F&B RATES').font = section_font
+                    r += 1
+                    for hdr_col, hdr_val in enumerate(
+                            ['Type', 'Price/pax', 'Description'], 1):
+                        c = ws_c.cell(row=r, column=hdr_col, value=hdr_val)
+                        c.font = Font(bold=True, size=10)
+                        c.fill = PatternFill('solid', fgColor='E8ECF4')
                     r += 1
                     for fb in q.fb_options:
                         ws_c.cell(row=r, column=1, value=fb.meal_type)
-                        ws_c.cell(row=r, column=2, value=fb.price_per_person or '')
-                        ws_c.cell(row=r, column=3, value=fb.menu_description or '')
+                        ws_c.cell(row=r, column=2,
+                                  value=fb.price_per_person or '')
+                        ws_c.cell(row=r, column=3,
+                                  value=fb.menu_description or '')
                         r += 1
-                r += 1
-                ws_c.cell(row=r, column=1,
-                          value='CONDIZIONI').font = Font(bold=True, color='2F5496')
-                r += 1
-                for label, val in [
-                    ('Cancellazione', q.cancellation_policy or '-'),
-                    ('Pagamento', q.payment_terms or '-'),
-                    ('Validità', q.validity_date or '-'),
-                    ('Commissione', q.commission or '-'),
-                    ('Servizi', q.included_services or '-'),
-                ]:
-                    ws_c.cell(row=r, column=1, value=label).font = Font(bold=True)
-                    ws_c.cell(row=r, column=2, value=val).alignment = wrap
-                    r += 1
+
+                # NOTES (room + meeting only)
                 if q.notes:
-                    ws_c.cell(row=r, column=1, value='Note').font = Font(bold=True)
-                    ws_c.cell(row=r, column=2, value=q.notes).alignment = wrap
+                    r += 1
+                    ws_c.cell(row=r, column=1, value='Notes').font = Font(bold=True)
+                    ws_c.cell(row=r, column=2,
+                              value=q.notes).alignment = wrap
                     r += 1
                 r += 2
 
             ws_c.column_dimensions['A'].width = 22
             ws_c.column_dimensions['B'].width = 35
             ws_c.column_dimensions['C'].width = 20
-            ws_c.column_dimensions['D'].width = 30
+            ws_c.column_dimensions['D'].width = 40
 
         buf = BytesIO()
         wb.save(buf)
         buf.seek(0)
         today = datetime.now().strftime('%Y-%m-%d')
         return send_file(buf, as_attachment=True,
-                         download_name=f'partivia_confronto_{today}.xlsx',
+                         download_name=f'partivia_hotel_comparison_{today}.xlsx',
                          mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
 
     # ── Aggiungi manualmente ──────────────────────────────────────────────
@@ -1733,7 +1818,9 @@ Rispondi SOLO con JSON valido (niente markdown):
             dates_proposed=data.get('dates_proposed'),
             rooms_available=data.get('rooms_available'),
             total_estimate=data.get('total_estimate'),
+            validity_date=data.get('validity_date'),
             image_url=data.get('image_url'),
+            website_url=data.get('website_url'),
             notes=data.get('notes'),
             source='manual',
         )

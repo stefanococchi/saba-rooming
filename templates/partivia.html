@@ -63,7 +63,7 @@ body { font-family:'Inter',system-ui,sans-serif; background:var(--surface); colo
 .btn-danger { background:transparent; color:var(--error); border:1px solid #f5c6cb; }
 .btn-sm { padding:6px 12px; font-size:13px; }
 .btn:disabled { opacity:.5; cursor:not-allowed; }
-input[type="text"],textarea,select { font-family:inherit; font-size:14px; padding:10px 14px; border:1px solid var(--outline); border-radius:var(--radius-sm); background:var(--surface); color:var(--on-surface); width:100%; transition:border-color .15s; }
+input[type="text"],input[type="date"],textarea,select { font-family:inherit; font-size:14px; padding:10px 14px; border:1px solid var(--outline); border-radius:var(--radius-sm); background:var(--surface); color:var(--on-surface); width:100%; transition:border-color .15s; }
 input:focus,textarea:focus,select:focus { outline:none; border-color:var(--primary); box-shadow:0 0 0 3px rgba(47,84,150,.15); }
 textarea { resize:vertical; min-height:120px; }
 .form-group { margin-bottom:14px; }
@@ -93,11 +93,11 @@ textarea { resize:vertical; min-height:120px; }
 
 /* ── Status ─────────────────────────────────── */
 .status-badge { display:inline-block; padding:3px 10px; border-radius:10px; font-size:11px; font-weight:600; text-transform:uppercase; cursor:pointer; }
-.status-da_valutare { background:#fff3e0; color:#e65100; }
-.status-in_trattativa { background:#e3f2fd; color:#1565c0; }
-.status-confermato { background:#e8f5e9; color:#2e7d32; }
-.status-rifiutato { background:#fce4ec; color:#c62828; }
-.status-scaduto { background:#f5f5f5; color:#757575; }
+.status-pending_review { background:#fff3e0; color:#e65100; }
+.status-negotiating { background:#e3f2fd; color:#1565c0; }
+.status-confirmed { background:#e8f5e9; color:#2e7d32; }
+.status-declined { background:#fce4ec; color:#c62828; }
+.status-expired { background:#f5f5f5; color:#757575; }
 
 /* ── Comparison tables ──────────────────────── */
 .cmp-table { width:100%; border-collapse:collapse; font-size:12px; }
@@ -159,6 +159,10 @@ textarea { resize:vertical; min-height:120px; }
 .input-table td.editable:hover { background:#e0e8f5; }
 .input-table tr:hover td { background:var(--surface-variant); }
 
+/* ── Deadline banner ────────────────────────── */
+.deadline-banner { background:var(--surface-card); border:1px solid var(--outline-variant); border-radius:var(--radius-sm); padding:12px 20px; display:flex; align-items:center; gap:12px; margin-bottom:16px; flex-wrap:wrap; }
+.deadline-banner .material-icons-round { color:var(--warning); font-size:22px; }
+
 /* ── Responsive ─────────────────────────────── */
 @media(max-width:700px) {
   .hotel-grid { grid-template-columns:1fr; }
@@ -210,6 +214,17 @@ textarea { resize:vertical; min-height:120px; }
 <!-- ══════════════════════════════════════════════ -->
 <div class="tab-content active" id="tab-overview">
 
+  <!-- Option deadline banner -->
+  <div class="deadline-banner">
+    <span class="material-icons-round">schedule</span>
+    <span style="font-weight:600;font-size:14px">Option Deadline:</span>
+    <input type="text" id="bulkDeadline" value="July 20, 2026" style="width:180px;padding:6px 10px;font-size:13px">
+    <button class="btn btn-sm btn-primary" onclick="setBulkDeadline()">
+      <span class="material-icons-round" style="font-size:16px">update</span> Set for All Hotels
+    </button>
+    <span id="deadlineStatus" style="font-size:12px;color:var(--on-surface-variant)"></span>
+  </div>
+
   <!-- Stats -->
   <div class="stats-row">
     <div class="stat-box">
@@ -251,7 +266,9 @@ textarea { resize:vertical; min-height:120px; }
       <div class="hotel-placeholder">{{ q.hotel_name[:2]|upper }}</div>
       {% endif %}
       <div class="hotel-card-body">
-        <h3>{{ q.hotel_name }}</h3>
+        <h3>
+          {% if q.website_url %}<a href="{{ q.website_url }}" target="_blank" onclick="event.stopPropagation()" style="color:inherit;text-decoration:underline">{{ q.hotel_name }}</a>{% else %}{{ q.hotel_name }}{% endif %}
+        </h3>
         <div class="city-stars">
           {{ q.city }} <span class="stars">{{ '★' * (q.stars or 0) }}</span>
           {% if h.count > 1 %}
@@ -276,6 +293,9 @@ textarea { resize:vertical; min-height:120px; }
         {% endif %}
         {% if q.rooms_available %}
         <div class="total">Rooms: {{ q.rooms_available }}</div>
+        {% endif %}
+        {% if q.validity_date %}
+        <div class="total" style="color:var(--warning);font-weight:600">Deadline: {{ q.validity_date }}</div>
         {% endif %}
       </div>
       <div class="hotel-card-footer">
@@ -433,7 +453,7 @@ textarea { resize:vertical; min-height:120px; }
             <th>Hotel</th>
             <th>Cancellation</th>
             <th>Payment</th>
-            <th>Offer Validity</th>
+            <th>Option Deadline</th>
             <th>Commission</th>
             <th>Included Services</th>
           </tr>
@@ -449,7 +469,7 @@ textarea { resize:vertical; min-height:120px; }
             <td class="hotel-name">{{ q.hotel_name }}</td>
             <td class="long-text">{{ q.cancellation_policy or '—' }}</td>
             <td class="long-text">{{ q.payment_terms or '—' }}</td>
-            <td>{{ q.validity_date or '—' }}</td>
+            <td style="font-weight:600;color:var(--warning)">{{ q.validity_date or '—' }}</td>
             <td>{{ q.commission or '—' }}</td>
             <td class="long-text">{{ q.included_services or '—' }}</td>
           </tr>
@@ -502,7 +522,9 @@ textarea { resize:vertical; min-height:120px; }
             <th>Rooms</th>
             <th>Total</th>
             <th>Dates</th>
+            <th>Option Deadline</th>
             <th>Status</th>
+            <th>Website URL</th>
             <th>Photo URL</th>
             <th></th>
           </tr>
@@ -516,10 +538,12 @@ textarea { resize:vertical; min-height:120px; }
             <td class="editable" data-field="rooms_available">{{ q.rooms_available or '' }}</td>
             <td class="editable" data-field="total_estimate">{{ q.total_estimate or '' }}</td>
             <td class="editable" data-field="dates_proposed">{{ q.dates_proposed or '' }}</td>
+            <td class="editable" data-field="validity_date" style="font-weight:600;color:var(--warning)">{{ q.validity_date or '' }}</td>
             <td>
               <span class="status-badge status-{{ q.quote_status.replace(' ','_') }}"
                     onclick="cycleStatus(this,{{ q.id }})">{{ q.quote_status.replace('_',' ') }}</span>
             </td>
+            <td class="editable" data-field="website_url" style="max-width:150px;overflow:hidden;text-overflow:ellipsis">{{ q.website_url or '' }}</td>
             <td class="editable" data-field="image_url" style="max-width:150px;overflow:hidden;text-overflow:ellipsis">{{ q.image_url or '' }}</td>
             <td>
               <button class="icon-btn delete" onclick="deleteQuote({{ q.id }})">
@@ -544,7 +568,7 @@ textarea { resize:vertical; min-height:120px; }
       <button class="icon-btn" onclick="closeAddModal()"><span class="material-icons-round">close</span></button>
     </div>
     <div class="modal-body">
-      <div class="form-group"><label>Hotel</label><input type="text" id="addHotel"></div>
+      <div class="form-group"><label>Hotel Name</label><input type="text" id="addHotel"></div>
       <div class="form-group"><label>City</label>
         <select id="addCity">
           <option value="Barcellona">Barcellona</option>
@@ -556,13 +580,15 @@ textarea { resize:vertical; min-height:120px; }
       <div class="form-group"><label>Stars</label>
         <select id="addStars"><option value="">-</option><option value="3">3</option><option value="4">4</option><option value="5">5</option></select>
       </div>
-      <div class="form-group"><label>Contact</label><input type="text" id="addContact"></div>
+      <div class="form-group"><label>Contact Name</label><input type="text" id="addContact"></div>
       <div class="form-group"><label>Contact Email</label><input type="text" id="addContactEmail"></div>
       <div class="form-group"><label>Proposed Dates</label><input type="text" id="addDates" placeholder="e.g. 10-13 October 2026"></div>
       <div class="form-group"><label>Available Rooms</label><input type="text" id="addRooms"></div>
       <div class="form-group"><label>Estimated Total</label><input type="text" id="addTotal" placeholder="e.g. € 45,000"></div>
+      <div class="form-group"><label>Option Deadline</label><input type="text" id="addDeadline" value="July 20, 2026"></div>
+      <div class="form-group"><label>Hotel Website URL</label><input type="text" id="addWebsite" placeholder="https://..."></div>
       <div class="form-group"><label>Photo URL</label><input type="text" id="addImage" placeholder="https://..."></div>
-      <div class="form-group"><label>Notes</label><textarea id="addNotes" style="min-height:60px"></textarea></div>
+      <div class="form-group"><label>Notes (room/meeting only, in English)</label><textarea id="addNotes" style="min-height:60px" placeholder="Notes about rooms and meeting rooms only..."></textarea></div>
     </div>
     <div class="modal-footer">
       <button class="btn btn-outline" onclick="closeAddModal()">Cancel</button>
@@ -593,6 +619,7 @@ const HOTELS_DATA = {
     city: {{ h.best.city|tojson }},
     stars: {{ h.best.stars or 'null' }},
     image: {{ (h.best.image_url or '')|tojson }},
+    website: {{ (h.best.website_url or '')|tojson }},
     best_id: {{ h.best.id }},
     versions: [
       {% for q in h.versions %}
@@ -613,6 +640,7 @@ const HOTELS_DATA = {
         notes: {{ (q.notes or '')|tojson }},
         summary: {{ (q.raw_summary or '')|tojson }},
         status: {{ q.quote_status|tojson }},
+        website: {{ (q.website_url or '')|tojson }},
         room_rates: [
           {% for rr in q.room_rates %}
           { type: {{ rr.room_type|tojson }}, rate: {{ (rr.rate_per_night or '')|tojson }}, breakfast: {{ (rr.breakfast_included or '')|tojson }}, notes: {{ (rr.notes or '')|tojson }} },
@@ -663,6 +691,22 @@ function filterCards(city, chip) {
   });
 }
 
+// ── Bulk deadline ─────────────────────────────
+async function setBulkDeadline() {
+  const deadline = document.getElementById('bulkDeadline').value.trim();
+  if (!deadline) return showSnack('Enter a deadline first');
+  const r = await fetch('/api/partivia/bulk-deadline', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({deadline}),
+  });
+  const j = await r.json();
+  if (j.ok) {
+    document.getElementById('deadlineStatus').textContent = `Set for ${j.count} quotes`;
+    showSnack(`Option deadline set to "${deadline}" for all ${j.count} quotes`);
+    setTimeout(()=>location.reload(),1000);
+  }
+}
+
 // ── Hotel detail modal (summary + versions) ──
 function renderQuoteSection(q, label) {
   let h = '';
@@ -678,9 +722,10 @@ function renderQuoteSection(q, label) {
     if (q.contact_email) h += ` <a href="mailto:${q.contact_email}" style="color:var(--primary)">&lt;${q.contact_email}&gt;</a>`;
     h += '</div>';
   }
-  if (q.dates) h += `<div><strong>Dates:</strong> ${q.dates}</div>`;
-  if (q.rooms) h += `<div><strong>Rooms:</strong> ${q.rooms}</div>`;
+  if (q.dates) h += `<div><strong>Available Dates:</strong> ${q.dates}</div>`;
+  if (q.rooms) h += `<div><strong>Rooms Available:</strong> ${q.rooms}</div>`;
   if (q.total) h += `<div style="font-weight:600;color:var(--primary)"><strong>Total:</strong> ${q.total}</div>`;
+  if (q.validity) h += `<div style="color:var(--warning);font-weight:600"><strong>Option Deadline:</strong> ${q.validity}</div>`;
   h += `<div><span class="status-badge status-${q.status.replace(/ /g,'_')}">${q.status.replace(/_/g,' ')}</span></div>`;
   h += '</div>';
 
@@ -722,7 +767,7 @@ function renderQuoteSection(q, label) {
   h += '<div style="font-size:12px;line-height:1.8">';
   if (q.cancellation) h += `<div><strong>Cancellation:</strong> ${q.cancellation}</div>`;
   if (q.payment) h += `<div><strong>Payment:</strong> ${q.payment}</div>`;
-  if (q.validity) h += `<div><strong>Offer Validity:</strong> ${q.validity}</div>`;
+  if (q.validity) h += `<div><strong>Option Deadline:</strong> ${q.validity}</div>`;
   if (q.commission) h += `<div><strong>Commission:</strong> ${q.commission}</div>`;
   if (q.services) h += `<div><strong>Included Services:</strong> ${q.services}</div>`;
   h += '</div></div>';
@@ -746,7 +791,7 @@ function openHotelDetail(hotelKey) {
 
   const best = hotel.versions.reduce((a, b) => a.completeness >= b.completeness ? a : b);
 
-  document.getElementById('detailTitle').textContent = hotel.hotel + (hotel.stars ? ' ' + '★'.repeat(hotel.stars) : '');
+  document.getElementById('detailTitle').textContent = hotel.hotel + (hotel.stars ? ' ' + '\u2605'.repeat(hotel.stars) : '');
 
   let h = '';
 
@@ -756,8 +801,11 @@ function openHotelDetail(hotelKey) {
     h += `<img src="${hotel.image}" style="width:280px;height:180px;object-fit:cover;border-radius:12px" alt="${hotel.hotel}">`;
   }
   h += `<div style="flex:1;min-width:200px">`;
-  h += `<div style="font-size:15px;font-weight:600;margin-bottom:4px">${hotel.hotel}</div>`;
-  h += `<div style="font-size:13px;color:var(--on-surface-variant);margin-bottom:8px">${hotel.city} ${hotel.stars ? '★'.repeat(hotel.stars) : ''}</div>`;
+  const hotelTitle = hotel.website
+    ? `<a href="${hotel.website}" target="_blank" style="color:var(--primary);text-decoration:underline;font-size:15px;font-weight:600">${hotel.hotel}</a>`
+    : `<span style="font-size:15px;font-weight:600">${hotel.hotel}</span>`;
+  h += `<div style="margin-bottom:4px">${hotelTitle}</div>`;
+  h += `<div style="font-size:13px;color:var(--on-surface-variant);margin-bottom:8px">${hotel.city} ${hotel.stars ? '\u2605'.repeat(hotel.stars) : ''}</div>`;
   if (hotel.versions.length > 1) {
     h += `<div style="font-size:12px;color:var(--primary);font-weight:600;margin-bottom:4px">${hotel.versions.length} emails/versions processed</div>`;
   }
@@ -779,7 +827,7 @@ function openHotelDetail(hotelKey) {
     h += '<div id="versionsCollapse" style="display:none">';
 
     hotel.versions.forEach((v, i) => {
-      if (v.id === best.id) return; // skip the best already shown
+      if (v.id === best.id) return;
       h += `<div style="border:1px solid var(--outline-variant);border-radius:12px;padding:16px;margin-bottom:12px">`;
       h += `<div style="font-size:12px;font-weight:600;color:var(--on-surface-variant);margin-bottom:8px">Version ${i + 1} — ${v.room_rates.length} rates, ${v.meeting_rooms.length} rooms, ${v.fb_options.length} F&B</div>`;
       h += renderQuoteSection(v);
@@ -805,8 +853,8 @@ document.addEventListener('keydown', e => {
   }
 });
 
-// ── Status cycling ────────────────────────────
-const STATUSES = ['da_valutare','in_trattativa','confermato','rifiutato','scaduto'];
+// ── Status cycling (English statuses) ─────────
+const STATUSES = ['pending_review','negotiating','confirmed','declined','expired'];
 async function cycleStatus(badge, qid) {
   const current = badge.textContent.trim().replace(/ /g,'_');
   const idx = STATUSES.indexOf(current);
@@ -876,7 +924,7 @@ async function parseEmail() {
     if (!j.ok) { showSnack('Error: '+j.error,5000); return; }
     const parsed = j.parsed;
     const cost = j.usage;
-    document.getElementById('parseCost').textContent = `${cost.input+cost.output} token | €${cost.cost_eur.toFixed(4)}`;
+    document.getElementById('parseCost').textContent = `${cost.input+cost.output} tokens | \u20ac${cost.cost_eur.toFixed(4)}`;
 
     let html = '<div class="parsed-results">';
     html += `<div style="margin-bottom:12px;font-size:13px;color:var(--on-surface-variant)"><strong>Summary:</strong> ${parsed.summary||''}</div>`;
@@ -889,7 +937,7 @@ async function parseEmail() {
           <div style="display:flex;align-items:center;gap:8px">
             <input type="checkbox" class="parsed-check" data-index="${i}" checked>
             <span class="hotel-name">${q.hotel_name||'?'}</span>
-            <span class="stars">${'★'.repeat(q.stars||0)}</span>
+            <span class="stars">${'\u2605'.repeat(q.stars||0)}</span>
             <span class="action-tag ${q.is_update?'action-update':'action-add'}">${q.is_update?'UPDATE':'NEW'}</span>
           </div>
           <div class="detail">${q.city||''} — ${q.dates_proposed||''} — ${q.rooms_available||'?'} rooms</div>
@@ -910,7 +958,7 @@ async function parseEmail() {
           html+='</div>';
         }
         html+=`<div><span class="label">Total:</span> ${q.total_estimate||'-'}<br>
-          <span class="label">Offer Validity:</span> ${q.validity_date||'-'}</div>`;
+          <span class="label">Option Deadline:</span> ${q.validity_date||'-'}</div>`;
         html+='</div>';
         if (q.raw_summary) html+=`<div class="detail" style="margin-top:8px;font-style:italic">${q.raw_summary}</div>`;
         html+='</div>';
@@ -961,6 +1009,8 @@ async function addQuote() {
     dates_proposed: document.getElementById('addDates').value.trim()||null,
     rooms_available: document.getElementById('addRooms').value.trim()||null,
     total_estimate: document.getElementById('addTotal').value.trim()||null,
+    validity_date: document.getElementById('addDeadline').value.trim()||null,
+    website_url: document.getElementById('addWebsite').value.trim()||null,
     image_url: document.getElementById('addImage').value.trim()||null,
     notes: document.getElementById('addNotes').value.trim()||null,
   };
