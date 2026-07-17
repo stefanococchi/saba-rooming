@@ -1967,7 +1967,7 @@ Notes: {q.notes or 'N/A'}"""
 
     # ── Edit inline quote ─────────────────────────────────────────────────
 
-    @app.put('/api/partivia/quote/<int:qid>')
+    @app.route('/api/partivia/quote/<int:qid>', methods=['PUT', 'PATCH'])
     def partivia_update_quote(qid):
         q = PartiviaQuote.query.get_or_404(qid)
         data = request.get_json()
