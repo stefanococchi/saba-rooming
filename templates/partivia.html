@@ -218,6 +218,9 @@ textarea { resize:vertical; min-height:120px; }
   <button class="tab-btn" onclick="switchTab('input')">
     <span class="material-icons-round">add_circle</span><span class="tab-label">Input</span>
   </button>
+  <button class="tab-btn" onclick="switchTab('email_history')">
+    <span class="material-icons-round">history</span><span class="tab-label">Email History</span>
+  </button>
 </div>
 
 <div class="container">
@@ -606,6 +609,21 @@ textarea { resize:vertical; min-height:120px; }
   </div>
 </div>
 
+<!-- ══════════════════════════════════════════════ -->
+<!-- ██  TAB 8: EMAIL HISTORY                    ██ -->
+<!-- ══════════════════════════════════════════════ -->
+<div class="tab-content" id="tab-email_history">
+  <div class="card">
+    <div class="card-header">
+      <span class="material-icons-round">history</span>
+      Email History — Quotes
+    </div>
+    <div class="card-body" id="emailHistoryTab" style="min-height:200px">
+      <p style="color:var(--on-surface-variant);text-align:center;padding:20px">Loading...</p>
+    </div>
+  </div>
+</div>
+
 </div><!-- /container -->
 
 <!-- ── Add Modal ──────────────────────────────── -->
@@ -763,6 +781,7 @@ function switchTab(name) {
   document.getElementById('tab-' + name).classList.add('active');
   event.currentTarget.classList.add('active');
   if (name === 'map' && !mapInitialized) { initMap(); mapInitialized = true; }
+  if (name === 'email_history') { loadEmailHistory(); }
 }
 
 function initMap() {
@@ -1177,36 +1196,49 @@ async function applyParsed() {
 }
 
 // ── Email History ─────────────────────────────
+function renderEmailList(logs, container) {
+  if (logs.length === 0) {
+    container.innerHTML = '<p style="color:var(--on-surface-variant);padding:20px;text-align:center">No emails analyzed yet.</p>';
+  } else {
+    container.innerHTML = logs.map(l => {
+      const date = new Date(l.created_at).toLocaleString('en-GB');
+      const quoteList = l.quotes.length
+        ? l.quotes.map(q => q.hotel_name).join(', ')
+        : '<em>no linked quotes</em>';
+      return `
+      <div style="border:1px solid var(--outline-variant);border-radius:var(--radius-sm);padding:14px;margin-bottom:10px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+          <span style="font-size:12px;color:var(--on-surface-variant)">${date}</span>
+          <button class="btn btn-outline btn-sm" onclick="showEmailLog(${l.id})">
+            <span class="material-icons-round" style="font-size:16px">visibility</span>
+            View text
+          </button>
+        </div>
+        ${l.summary ? `<div style="font-size:13px;font-weight:500;margin-bottom:6px">${l.summary}</div>` : ''}
+        <div style="font-size:12px;color:var(--on-surface-variant)">
+          <span class="material-icons-round" style="font-size:14px;vertical-align:middle">hotel</span>
+          ${quoteList}
+        </div>
+      </div>`;
+    }).join('');
+  }
+}
+
+async function loadEmailHistory() {
+  try {
+    const r = await fetch('/api/partivia/email-logs');
+    const logs = await r.json();
+    renderEmailList(logs, document.getElementById('emailHistoryTab'));
+  } catch (err) {
+    showSnack('Error loading history', 3000);
+  }
+}
+
 async function showEmailLogs() {
   try {
     const r = await fetch('/api/partivia/email-logs');
     const logs = await r.json();
-    const container = document.getElementById('emailLogsList');
-    if (logs.length === 0) {
-      container.innerHTML = '<p style="color:var(--on-surface-variant);padding:20px;text-align:center">No emails analyzed yet.</p>';
-    } else {
-      container.innerHTML = logs.map(l => {
-        const date = new Date(l.created_at).toLocaleString('en-GB');
-        const quoteList = l.quotes.length
-          ? l.quotes.map(q => q.hotel_name).join(', ')
-          : '<em>no linked quotes</em>';
-        return `
-        <div style="border:1px solid var(--outline-variant);border-radius:var(--radius-sm);padding:14px;margin-bottom:10px">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-            <span style="font-size:12px;color:var(--on-surface-variant)">${date}</span>
-            <button class="btn btn-outline btn-sm" onclick="showEmailLog(${l.id})">
-              <span class="material-icons-round" style="font-size:16px">visibility</span>
-              View text
-            </button>
-          </div>
-          ${l.summary ? `<div style="font-size:13px;font-weight:500;margin-bottom:6px">${l.summary}</div>` : ''}
-          <div style="font-size:12px;color:var(--on-surface-variant)">
-            <span class="material-icons-round" style="font-size:14px;vertical-align:middle">hotel</span>
-            ${quoteList}
-          </div>
-        </div>`;
-      }).join('');
-    }
+    renderEmailList(logs, document.getElementById('emailLogsList'));
     document.getElementById('emailLogsModal').classList.add('active');
   } catch (err) {
     showSnack('Error loading history', 3000);
