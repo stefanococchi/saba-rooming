@@ -308,8 +308,9 @@ textarea { resize:vertical; min-height:120px; }
               {{ '' }}{% set _ = prices.append(rr.rate_per_night) %}
             {% endif %}
           {% endfor %}
-          {% if prices %}
-            {{ prices[0] }}{% if prices|length > 1 %} — {{ prices[-1] }}{% endif %} /night
+          {% set sorted_prices = prices|sort_prices %}
+          {% if sorted_prices %}
+            {{ sorted_prices[0] }}{% if sorted_prices|length > 1 %} — {{ sorted_prices[-1] }}{% endif %} /night
           {% endif %}
         </div>
         {% endif %}

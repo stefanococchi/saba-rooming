@@ -36,6 +36,18 @@ def create_app():
 
     db.init_app(app)
 
+    import re as _re
+    def _parse_eur(s):
+        if not s:
+            return 999999
+        cleaned = _re.sub(r'[^\d.,]', '', s).replace('.', '', s.count('.') - 1).replace(',', '.')
+        try:
+            return float(cleaned)
+        except ValueError:
+            return 999999
+
+    app.jinja_env.filters['sort_prices'] = lambda lst: sorted(lst, key=_parse_eur)
+
     with app.app_context():
         db.create_all()
 
