@@ -467,7 +467,7 @@ textarea { resize:vertical; min-height:120px; }
             <th>Cancellation</th>
             <th>Payment</th>
             <th>Option Deadline</th>
-            <th>Commission</th>
+            <!-- <th>Commission</th> -->
             <th>Included Services</th>
           </tr>
         </thead>
@@ -476,14 +476,14 @@ textarea { resize:vertical; min-height:120px; }
           {% for q in quotes %}
           {% if q.city != current_city.val %}
           {% if current_city.update({'val': q.city}) %}{% endif %}
-          <tr class="city-header"><td colspan="6">{{ q.city }}</td></tr>
+          <tr class="city-header"><td colspan="5">{{ q.city }}</td></tr>
           {% endif %}
           <tr>
             <td class="hotel-name">{{ q.hotel_name }}</td>
             <td class="long-text">{{ q.cancellation_policy or '—' }}</td>
             <td class="long-text">{{ q.payment_terms or '—' }}</td>
             <td style="font-weight:600;color:var(--warning)">{{ q.validity_date or '—' }}</td>
-            <td>{{ q.commission or '—' }}</td>
+            <!-- <td>{{ q.commission or '—' }}</td> -->
             <td class="long-text">{{ q.included_services or '—' }}</td>
           </tr>
           {% endfor %}
@@ -526,6 +526,9 @@ textarea { resize:vertical; min-height:120px; }
         <button class="btn btn-outline btn-sm" onclick="openAddModal()">
           <span class="material-icons-round">add</span> Add Manual
         </button>
+        <button class="btn btn-outline btn-sm" onclick="showEmailLogs()">
+          <span class="material-icons-round">history</span> Email History
+        </button>
         <span id="parseCost" style="font-size:12px;color:var(--on-surface-variant)"></span>
       </div>
       <div id="parseResults"></div>
@@ -549,7 +552,7 @@ textarea { resize:vertical; min-height:120px; }
             <th>Total</th>
             <th>Dates</th>
             <th>Option Deadline</th>
-            <th>Status</th>
+            <!-- <th>Status</th> -->
             <th>Address</th>
             <th>Website URL</th>
             <th>Photo</th>
@@ -566,10 +569,10 @@ textarea { resize:vertical; min-height:120px; }
             <td class="editable" data-field="total_estimate">{{ q.total_estimate or '' }}</td>
             <td class="editable" data-field="dates_proposed">{{ q.dates_proposed or '' }}</td>
             <td class="editable" data-field="validity_date" style="font-weight:600;color:var(--warning)">{{ q.validity_date or '' }}</td>
-            <td>
+            <!-- <td>
               <span class="status-badge status-{{ q.quote_status.replace(' ','_') }}"
                     onclick="cycleStatus(this,{{ q.id }})">{{ q.quote_status.replace('_',' ') }}</span>
-            </td>
+            </td> -->
             <td class="editable" data-field="address">{{ q.address or '' }}</td>
             <td class="editable" data-field="website_url" style="max-width:150px;overflow:hidden;text-overflow:ellipsis">{{ q.website_url or '' }}</td>
             <td class="img-cell" data-id="{{ q.id }}" style="min-width:80px;text-align:center">
@@ -659,6 +662,36 @@ textarea { resize:vertical; min-height:120px; }
   </div>
 </div>
 
+<!-- Email History Modal -->
+<div class="modal-overlay" id="emailLogsModal" onclick="if(event.target===this)this.classList.remove('active')">
+  <div class="modal" style="max-width:800px;max-height:85vh;display:flex;flex-direction:column">
+    <h3 style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+      <span class="material-icons-round" style="color:var(--primary)">history</span>
+      Email History — Quotes
+    </h3>
+    <div id="emailLogsList" style="flex:1;overflow-y:auto"></div>
+    <div class="btn-group" style="margin-top:14px">
+      <button class="btn btn-outline" onclick="document.getElementById('emailLogsModal').classList.remove('active')">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Email Log Detail Modal -->
+<div class="modal-overlay" id="emailLogModal" onclick="if(event.target===this)this.classList.remove('active')">
+  <div class="modal" style="max-width:700px">
+    <h3 style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+      <span class="material-icons-round" style="color:var(--primary)">mail</span>
+      Original Message
+    </h3>
+    <div id="emailLogDate" style="font-size:12px;color:var(--on-surface-variant);margin-bottom:8px"></div>
+    <div id="emailLogSummary" style="font-size:13px;font-style:italic;color:var(--on-surface-variant);margin-bottom:12px"></div>
+    <pre id="emailLogText" style="background:var(--surface-variant);padding:16px;border-radius:var(--radius-sm);font-size:13px;white-space:pre-wrap;word-wrap:break-word;max-height:400px;overflow-y:auto"></pre>
+    <div class="btn-group" style="margin-top:14px">
+      <button class="btn btn-outline" onclick="document.getElementById('emailLogModal').classList.remove('active')">Close</button>
+    </div>
+  </div>
+</div>
+
 <div class="snackbar" id="snackbar"></div>
 
 <!-- Grouped data per hotel for the detail modal -->
@@ -687,7 +720,7 @@ const HOTELS_DATA = {
         cancellation: {{ (q.cancellation_policy or '')|tojson }},
         payment: {{ (q.payment_terms or '')|tojson }},
         validity: {{ (q.validity_date or '')|tojson }},
-        commission: {{ (q.commission or '')|tojson }},
+        /* commission: {{ (q.commission or '')|tojson }}, */
         services: {{ (q.included_services or '')|tojson }},
         notes: {{ (q.notes or '')|tojson }},
         summary: {{ (q.raw_summary or '')|tojson }},
@@ -896,7 +929,7 @@ function renderQuoteSection(q, label) {
   if (q.cancellation) h += `<div><strong>Cancellation:</strong> ${q.cancellation}</div>`;
   if (q.payment) h += `<div><strong>Payment:</strong> ${q.payment}</div>`;
   if (q.validity) h += `<div><strong>Option Deadline:</strong> ${q.validity}</div>`;
-  if (q.commission) h += `<div><strong>Commission:</strong> ${q.commission}</div>`;
+  /* commission hidden - not visible to client */
   if (q.services) h += `<div><strong>Included Services:</strong> ${q.services}</div>`;
   h += '</div></div>';
 
@@ -1131,6 +1164,56 @@ async function applyParsed() {
     showSnack(`${added} added, ${updated} updated`);
     setTimeout(()=>location.reload(),800);
   } else showSnack('Error: '+j.error,5000);
+}
+
+// ── Email History ─────────────────────────────
+async function showEmailLogs() {
+  try {
+    const r = await fetch('/api/partivia/email-logs');
+    const logs = await r.json();
+    const container = document.getElementById('emailLogsList');
+    if (logs.length === 0) {
+      container.innerHTML = '<p style="color:var(--on-surface-variant);padding:20px;text-align:center">No emails analyzed yet.</p>';
+    } else {
+      container.innerHTML = logs.map(l => {
+        const date = new Date(l.created_at).toLocaleString('en-GB');
+        const quoteList = l.quotes.length
+          ? l.quotes.map(q => q.hotel_name).join(', ')
+          : '<em>no linked quotes</em>';
+        return `
+        <div style="border:1px solid var(--outline-variant);border-radius:var(--radius-sm);padding:14px;margin-bottom:10px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+            <span style="font-size:12px;color:var(--on-surface-variant)">${date}</span>
+            <button class="btn btn-outline btn-sm" onclick="showEmailLog(${l.id})">
+              <span class="material-icons-round" style="font-size:16px">visibility</span>
+              View text
+            </button>
+          </div>
+          ${l.summary ? `<div style="font-size:13px;font-weight:500;margin-bottom:6px">${l.summary}</div>` : ''}
+          <div style="font-size:12px;color:var(--on-surface-variant)">
+            <span class="material-icons-round" style="font-size:14px;vertical-align:middle">hotel</span>
+            ${quoteList}
+          </div>
+        </div>`;
+      }).join('');
+    }
+    document.getElementById('emailLogsModal').classList.add('active');
+  } catch (err) {
+    showSnack('Error loading history', 3000);
+  }
+}
+
+async function showEmailLog(logId) {
+  try {
+    const r = await fetch(`/api/email-log/${logId}`);
+    const j = await r.json();
+    document.getElementById('emailLogText').textContent = j.testo;
+    document.getElementById('emailLogDate').textContent = `Received: ${new Date(j.created_at).toLocaleString('en-GB')}`;
+    document.getElementById('emailLogSummary').textContent = j.summary || '';
+    document.getElementById('emailLogModal').classList.add('active');
+  } catch (err) {
+    showSnack('Error loading message', 3000);
+  }
 }
 
 // ── Add manual ────────────────────────────────

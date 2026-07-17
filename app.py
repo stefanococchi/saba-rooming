@@ -38,6 +38,14 @@ def create_app():
     with app.app_context():
         db.create_all()
 
+        # Add log_type column to email_logs if missing
+        with db.engine.connect() as conn:
+            from sqlalchemy import text, inspect
+            cols = [c['name'] for c in inspect(db.engine).get_columns('email_logs')]
+            if 'log_type' not in cols:
+                conn.execute(text("ALTER TABLE email_logs ADD COLUMN log_type VARCHAR(20) DEFAULT 'rooming'"))
+                conn.commit()
+
         # Migrate Italian statuses to English (one-time)
         _status_map = {
             'da_valutare': 'pending_review',
@@ -1019,7 +1027,7 @@ Per "azione": "update", valorizza "match_id" con l'ID dell'ospite corrispondente
                         g['current_data'] = {f: getattr(existing, f) for f in compare_fields}
 
             # Salva il messaggio originale nel log (anche se non verrà applicato)
-            email_log = EmailLog(testo=text, summary=parsed.get('summary'))
+            email_log = EmailLog(testo=text, summary=parsed.get('summary'), log_type='rooming')
             db.session.add(email_log)
             db.session.commit()
 
@@ -1092,7 +1100,9 @@ Per "azione": "update", valorizza "match_id" con l'ID dell'ospite corrispondente
 
     @app.get('/api/email-logs')
     def list_email_logs():
-        logs = EmailLog.query.order_by(EmailLog.created_at.desc()).all()
+        logs = EmailLog.query.filter(
+            (EmailLog.log_type == 'rooming') | (EmailLog.log_type.is_(None))
+        ).order_by(EmailLog.created_at.desc()).all()
         return jsonify([{
             'id': l.id,
             'summary': l.summary,
@@ -1100,6 +1110,18 @@ Per "azione": "update", valorizza "match_id" con l'ID dell'ospite corrispondente
             'created_at': l.created_at.isoformat(),
             'guests': [{'id': g.id, 'nome_completo': g.nome_completo}
                         for g in Guest.query.filter_by(email_log_id=l.id).all()]
+        } for l in logs])
+
+    @app.get('/api/partivia/email-logs')
+    def list_partivia_email_logs():
+        logs = EmailLog.query.filter_by(log_type='partivia').order_by(EmailLog.created_at.desc()).all()
+        return jsonify([{
+            'id': l.id,
+            'summary': l.summary,
+            'testo': l.testo,
+            'created_at': l.created_at.isoformat(),
+            'quotes': [{'id': q.id, 'hotel_name': q.hotel_name}
+                        for q in PartiviaQuote.query.filter_by(email_log_id=l.id).all()]
         } for l in logs])
 
     @app.get('/api/email-log/<int:log_id>')
@@ -1403,7 +1425,7 @@ Reply ONLY with valid JSON (no markdown):
             cost = (inp * 0.80 + out * 4.00) / 1_000_000
 
             # Salva log
-            email_log = EmailLog(testo=text, summary=parsed.get('summary'))
+            email_log = EmailLog(testo=text, summary=parsed.get('summary'), log_type='partivia')
             db.session.add(email_log)
             db.session.commit()
 

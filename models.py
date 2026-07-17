@@ -47,6 +47,7 @@ class EmailLog(db.Model):
     id         = db.Column(db.Integer, primary_key=True)
     testo      = db.Column(db.Text, nullable=False)
     summary    = db.Column(db.Text)
+    log_type   = db.Column(db.String(20), default='rooming')  # 'rooming' or 'partivia'
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 
