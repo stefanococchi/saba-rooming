@@ -1409,7 +1409,20 @@ function restoreBudgetParams() {
 
 function parsePrice(str) {
   if (!str) return null;
-  const cleaned = str.replace(/[^\d.,]/g, '').replace(/\.(?=\d{3})/g, '').replace(',', '.');
+  // Remove currency symbols and whitespace
+  let cleaned = str.replace(/[€$£\s]/g, '');
+  // Remove trailing text like /day, /night, /pax
+  cleaned = cleaned.split(/[/\(]/)[0].trim();
+  // Handle comma as thousands separator (1,365 → 1365)
+  if (cleaned.includes(',') && !cleaned.includes('.')) {
+    cleaned = cleaned.replace(/,/g, '');
+  } else if (cleaned.includes(',') && cleaned.includes('.')) {
+    if (cleaned.lastIndexOf(',') > cleaned.lastIndexOf('.')) {
+      cleaned = cleaned.replace(/\./g, '').replace(',', '.');
+    } else {
+      cleaned = cleaned.replace(/,/g, '');
+    }
+  }
   const num = parseFloat(cleaned);
   return isNaN(num) ? null : num;
 }
@@ -1454,7 +1467,23 @@ function findFBPrice(fbOptions, mealType) {
 function findMeetingRate(meetingRooms) {
   if (!meetingRooms || !meetingRooms.length) return null;
   for (const mr of meetingRooms) {
-    const p = parsePrice(mr.rate);
+    const rate = (mr.rate || '');
+    const rLow = rate.toLowerCase();
+    // Try to extract half-day price specifically
+    const patterns = [
+      /€\s?([\d,.\s]+?)[\s/]*(?:\(?half)/i,
+      /half[- ]?day[:\s]*€\s?([\d,.\s]+)/i,
+      /([\d,.]+)\/half/i,
+    ];
+    for (const pat of patterns) {
+      const m = rLow.match(pat);
+      if (m) {
+        const p = parsePrice(m[1]);
+        if (p && p > 10) return p;
+      }
+    }
+    // Fallback: first parseable price
+    const p = parsePrice(rate);
     if (p) return p;
   }
   return null;

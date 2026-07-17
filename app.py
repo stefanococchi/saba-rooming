@@ -2142,7 +2142,15 @@ Notes: {q.notes or 'N/A'}"""
         def parse_price(s):
             if not s:
                 return None
-            cleaned = re.sub(r'[^\d.,]', '', s).replace('.', '', s.count('.') - 1).replace(',', '.')
+            cleaned = re.sub(r'[€$£\s]', '', str(s))
+            cleaned = re.split(r'[/\(]', cleaned)[0].strip()
+            if ',' in cleaned and '.' not in cleaned:
+                cleaned = cleaned.replace(',', '')
+            elif ',' in cleaned and '.' in cleaned:
+                if cleaned.rindex(',') > cleaned.rindex('.'):
+                    cleaned = cleaned.replace('.', '').replace(',', '.')
+                else:
+                    cleaned = cleaned.replace(',', '')
             try:
                 return float(cleaned)
             except ValueError:
@@ -2178,6 +2186,14 @@ Notes: {q.notes or 'N/A'}"""
 
         def find_meeting(mrs):
             for mr in mrs:
+                rate_str = (mr.rate or '').lower()
+                # Try half-day price first
+                half_match = re.search(r'€?\s?([\d.,]+)\s*[/\(]?\s*half', rate_str, re.I) \
+                    or re.search(r'half[- ]?day[:\s]*€?\s?([\d.,]+)', rate_str, re.I)
+                if half_match:
+                    p = parse_price(half_match.group(1))
+                    if p:
+                        return p
                 p = parse_price(mr.rate)
                 if p:
                     return p
