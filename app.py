@@ -917,6 +917,230 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
                          download_name=f'rooming_flight_{today}.xlsx',
                          mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
 
+    # ── EXPORT STANZE / VOLI / CAMERE ────────────────────────────────────────
+
+    @app.get('/api/export/stanze/<int:giorno>')
+    def export_stanze(giorno):
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+
+        if giorno not in (8, 9, 10, 11):
+            return jsonify(ok=False, error='Giorno non valido'), 400
+
+        campo = f'presenza_{giorno}'
+        presenti = Guest.query.filter(getattr(Guest, campo) == True).order_by(
+            Guest.cognome, Guest.nome).all()
+
+        # Raggruppa per stanze
+        stanze, assegnati = [], set()
+        for g in presenti:
+            if g.id in assegnati:
+                continue
+            stanza = [g]
+            assegnati.add(g.id)
+            if g.divide_stanza_con and g.divide_stanza_con.strip():
+                compagni = [n.strip().lower() for n in g.divide_stanza_con.split(',')]
+                for p in presenti:
+                    if p.id in assegnati:
+                        continue
+                    nc = f'{p.nome} {p.cognome}'.lower()
+                    cl, nl = p.cognome.lower(), p.nome.lower()
+                    for cn in compagni:
+                        if cn in nc or cn in cl or cn in nl or cl in cn or nl in cn:
+                            stanza.append(p)
+                            assegnati.add(p.id)
+                            break
+            stanze.append(stanza)
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = f'Stanze {giorno} Ott'
+        hfont = Font(bold=True, color='FFFFFF', size=11)
+        hfill = PatternFill('solid', fgColor='795548')
+        border = Border(left=Side(style='thin'), right=Side(style='thin'),
+                        top=Side(style='thin'), bottom=Side(style='thin'))
+
+        headers = ['#', 'Cognome', 'Nome', 'Tipo Camera', 'Divide stanza con']
+        for c, h in enumerate(headers, 1):
+            cell = ws.cell(row=1, column=c, value=h)
+            cell.font = hfont
+            cell.fill = hfill
+            cell.alignment = Alignment(horizontal='center')
+            cell.border = border
+
+        row = 2
+        for i, stanza in enumerate(stanze, 1):
+            for g in stanza:
+                ws.cell(row=row, column=1, value=i).border = border
+                ws.cell(row=row, column=2, value=g.cognome).border = border
+                ws.cell(row=row, column=3, value=g.nome).border = border
+                ws.cell(row=row, column=4, value=g.tipo_camera or '').border = border
+                ws.cell(row=row, column=5, value=g.divide_stanza_con or '').border = border
+                row += 1
+
+        for col in ws.columns:
+            mx = max(len(str(c.value or '')) for c in col)
+            ws.column_dimensions[col[0].column_letter].width = min(mx + 4, 40)
+
+        buf = BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+        return send_file(buf, as_attachment=True,
+                         download_name=f'stanze_{giorno}_ott.xlsx',
+                         mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
+    @app.get('/api/export/voli/<tipo>')
+    def export_voli(tipo):
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+
+        if tipo not in ('andata', 'ritorno'):
+            return jsonify(ok=False, error='Tipo non valido'), 400
+
+        campo = Guest.volo_arrivo if tipo == 'andata' else Guest.volo_partenza
+        guests = Guest.query.filter(campo.isnot(None), campo != '').order_by(
+            campo, Guest.cognome, Guest.nome).all()
+
+        wb = Workbook()
+        ws = wb.active
+        label = 'Andata' if tipo == 'andata' else 'Ritorno'
+        ws.title = f'Voli {label}'
+        hfont = Font(bold=True, color='FFFFFF', size=11)
+        hfill = PatternFill('solid', fgColor='6D4C41')
+        border = Border(left=Side(style='thin'), right=Side(style='thin'),
+                        top=Side(style='thin'), bottom=Side(style='thin'))
+
+        headers = ['Volo', 'Cognome', 'Nome', 'Sede Lavoro', 'Aeroporto']
+        for c, h in enumerate(headers, 1):
+            cell = ws.cell(row=1, column=c, value=h)
+            cell.font = hfont
+            cell.fill = hfill
+            cell.alignment = Alignment(horizontal='center')
+            cell.border = border
+
+        for r, g in enumerate(guests, 2):
+            volo = (g.volo_arrivo if tipo == 'andata' else g.volo_partenza) or ''
+            aeroporto = (g.aeroporto_partenza if tipo == 'andata' else g.aeroporto_arrivo) or ''
+            vals = [volo, g.cognome, g.nome, g.sede_lavoro or '', aeroporto]
+            for c, v in enumerate(vals, 1):
+                ws.cell(row=r, column=c, value=v).border = border
+
+        for col in ws.columns:
+            mx = max(len(str(c.value or '')) for c in col)
+            ws.column_dimensions[col[0].column_letter].width = min(mx + 4, 40)
+
+        buf = BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+        return send_file(buf, as_attachment=True,
+                         download_name=f'voli_{tipo}.xlsx',
+                         mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
+    @app.get('/api/export/camere/<int:notte>')
+    def export_camere(notte):
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+
+        if notte not in (8, 9, 10, 11):
+            return jsonify(ok=False, error='Notte non valida'), 400
+
+        contratti = RoomContract.query.filter_by(notte=notte).order_by(
+            RoomContract.tariffa_netta).all()
+
+        campo = f'presenza_{notte}'
+        presenti = Guest.query.filter(getattr(Guest, campo) == True).order_by(
+            Guest.cognome, Guest.nome).all()
+
+        # Raggruppa per stanze
+        assegnati_ids = set()
+        stanze = []
+        for g in presenti:
+            if g.id in assegnati_ids:
+                continue
+            stanza = [g]
+            assegnati_ids.add(g.id)
+            if g.divide_stanza_con and g.divide_stanza_con.strip():
+                compagni = [n.strip().lower() for n in g.divide_stanza_con.split(',')]
+                for p in presenti:
+                    if p.id in assegnati_ids:
+                        continue
+                    nc = f'{p.nome} {p.cognome}'.lower()
+                    cl, nl = p.cognome.lower(), p.nome.lower()
+                    for cn in compagni:
+                        if cn in nc or cn in cl or cn in nl or cl in cn or nl in cn:
+                            stanza.append(p)
+                            assegnati_ids.add(p.id)
+                            break
+            stanze.append(stanza)
+
+        assegnazioni_per_tipo = {}
+        non_assegnati = []
+        for stanza in stanze:
+            camera = stanza[0].camera_assegnata
+            if camera:
+                assegnazioni_per_tipo[camera] = assegnazioni_per_tipo.get(camera, 0) + 1
+            else:
+                non_assegnati.append(stanza)
+
+        wb = Workbook()
+        hfont = Font(bold=True, color='FFFFFF', size=11)
+        hfill = PatternFill('solid', fgColor='795548')
+        hfill2 = PatternFill('solid', fgColor='6D4C41')
+        border = Border(left=Side(style='thin'), right=Side(style='thin'),
+                        top=Side(style='thin'), bottom=Side(style='thin'))
+
+        # Sheet 1: Contratti
+        ws1 = wb.active
+        ws1.title = 'Disponibilità'
+        h1 = ['Tipologia', 'Disponibili', 'Assegnate', 'Libere', 'Tariffa Netta', 'Tariffa Lorda']
+        for c, h in enumerate(h1, 1):
+            cell = ws1.cell(row=1, column=c, value=h)
+            cell.font = hfont
+            cell.fill = hfill
+            cell.alignment = Alignment(horizontal='center')
+            cell.border = border
+        for r, ct in enumerate(contratti, 2):
+            usate = assegnazioni_per_tipo.get(ct.tipo, 0)
+            vals = [ct.tipo, ct.disponibili, usate, ct.disponibili - usate,
+                    ct.tariffa_netta, ct.tariffa_lorda]
+            for c, v in enumerate(vals, 1):
+                cell = ws1.cell(row=r, column=c, value=v)
+                cell.border = border
+                if c >= 5:
+                    cell.number_format = '#,##0.00 €'
+        for col in ws1.columns:
+            mx = max(len(str(c.value or '')) for c in col)
+            ws1.column_dimensions[col[0].column_letter].width = min(mx + 4, 40)
+
+        # Sheet 2: Assegnazioni
+        ws2 = wb.create_sheet('Assegnazioni')
+        h2 = ['#', 'Cognome', 'Nome', 'Camera Assegnata', 'Tipo Richiesto']
+        for c, h in enumerate(h2, 1):
+            cell = ws2.cell(row=1, column=c, value=h)
+            cell.font = hfont
+            cell.fill = hfill2
+            cell.alignment = Alignment(horizontal='center')
+            cell.border = border
+        row = 2
+        for i, stanza in enumerate(stanze, 1):
+            for g in stanza:
+                ws2.cell(row=row, column=1, value=i).border = border
+                ws2.cell(row=row, column=2, value=g.cognome).border = border
+                ws2.cell(row=row, column=3, value=g.nome).border = border
+                ws2.cell(row=row, column=4, value=g.camera_assegnata or '').border = border
+                ws2.cell(row=row, column=5, value=g.tipo_camera or '').border = border
+                row += 1
+        for col in ws2.columns:
+            mx = max(len(str(c.value or '')) for c in col)
+            ws2.column_dimensions[col[0].column_letter].width = min(mx + 4, 40)
+
+        buf = BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+        return send_file(buf, as_attachment=True,
+                         download_name=f'camere_notte_{notte}_ott.xlsx',
+                         mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
     # ── EMAIL PARSING (LLM) ─────────────────────────────────────────────────
 
     @app.post('/api/parse-email')

@@ -703,6 +703,9 @@ textarea { resize: vertical; min-height: 120px; }
     </h3>
     <div id="camereContent"></div>
     <div class="btn-group">
+      <a id="camereExportBtn" class="btn btn-outline btn-sm" style="display:flex;align-items:center;gap:4px;text-decoration:none">
+        <span class="material-icons-round" style="font-size:16px">download</span> XLSX
+      </a>
       <button class="btn btn-outline" onclick="document.getElementById('camereModal').classList.remove('active')">Chiudi</button>
     </div>
   </div>
@@ -717,6 +720,9 @@ textarea { resize: vertical; min-height: 120px; }
     </h3>
     <div id="voliContent"></div>
     <div class="btn-group">
+      <a id="voliExportBtn" class="btn btn-outline btn-sm" style="display:flex;align-items:center;gap:4px;text-decoration:none">
+        <span class="material-icons-round" style="font-size:16px">download</span> XLSX
+      </a>
       <button class="btn btn-outline" onclick="document.getElementById('voliModal').classList.remove('active')">Chiudi</button>
     </div>
   </div>
@@ -731,6 +737,9 @@ textarea { resize: vertical; min-height: 120px; }
     </h3>
     <div id="stanzeContent"></div>
     <div class="btn-group">
+      <a id="stanzeExportBtn" class="btn btn-outline btn-sm" style="display:flex;align-items:center;gap:4px;text-decoration:none">
+        <span class="material-icons-round" style="font-size:16px">download</span> XLSX
+      </a>
       <button class="btn btn-outline" onclick="document.getElementById('stanzeModal').classList.remove('active')">Chiudi</button>
     </div>
   </div>
@@ -1065,6 +1074,7 @@ async function showStanze(giorno) {
   const title = document.getElementById('stanzeTitle');
 
   title.innerHTML = `<span class="material-icons-round" style="vertical-align:middle;margin-right:6px">bed</span> Stanze ${giorno} Ottobre`;
+  document.getElementById('stanzeExportBtn').href = `/api/export/stanze/${giorno}`;
   content.innerHTML = '<div style="text-align:center;padding:16px"><span class="spinner"></span></div>';
   modal.classList.add('active');
 
@@ -1163,6 +1173,7 @@ async function showVoli(tipo) {
   const icon = tipo === 'andata' ? 'flight_land' : 'flight_takeoff';
 
   title.innerHTML = `<span class="material-icons-round" style="vertical-align:middle;margin-right:6px">${icon}</span> Voli ${label}`;
+  document.getElementById('voliExportBtn').href = `/api/export/voli/${tipo}`;
   content.innerHTML = '<div style="text-align:center;padding:16px"><span class="spinner"></span></div>';
   modal.classList.add('active');
 
@@ -1220,6 +1231,7 @@ async function showCamere(notte) {
   const content = document.getElementById('camereContent');
   document.getElementById('camereTitle').innerHTML =
     `<span class="material-icons-round" style="vertical-align:middle;margin-right:6px">meeting_room</span> Camere Notte ${notte} Ottobre`;
+  document.getElementById('camereExportBtn').href = `/api/export/camere/${notte}`;
   content.innerHTML = '<div style="text-align:center;padding:16px"><span class="spinner"></span></div>';
   modal.classList.add('active');
 
