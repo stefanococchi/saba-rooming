@@ -1541,10 +1541,8 @@ function calcBudget() {
   }
 
   rows.sort((a, b) => {
-    if (a.total === null && b.total === null) return 0;
-    if (a.total === null) return 1;
-    if (b.total === null) return -1;
-    return a.total - b.total;
+    if (a.city !== b.city) return a.city.localeCompare(b.city);
+    return a.hotel.localeCompare(b.hotel);
   });
 
   const tbody = document.getElementById('budgetBody');
