@@ -136,3 +136,11 @@ class PartiviaFBOption(db.Model):
     meal_type        = db.Column(db.Text, nullable=False)
     price_per_person = db.Column(db.Text)
     menu_description = db.Column(db.Text)
+
+
+class BudgetOverride(db.Model):
+    __tablename__ = 'budget_overrides'
+
+    id         = db.Column(db.Integer, primary_key=True)
+    data       = db.Column(db.JSON, default=dict)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

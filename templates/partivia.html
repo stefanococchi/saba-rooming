@@ -535,31 +535,31 @@ textarea { resize:vertical; min-height:120px; }
       <div style="display:flex;flex-wrap:wrap;gap:16px;margin-bottom:20px;padding:16px;background:var(--surface-variant);border-radius:var(--radius-sm)">
         <div style="flex:1;min-width:120px">
           <label style="font-size:11px;font-weight:600;text-transform:uppercase;color:var(--on-surface-variant);display:block;margin-bottom:4px">Rooms</label>
-          <input type="number" id="budgetRooms" value="50" min="1" style="width:100%;padding:8px 10px;font-size:14px;border:1px solid var(--outline);border-radius:8px" oninput="calcBudget()">
+          <input type="number" id="budgetRooms" value="50" min="1" style="width:100%;padding:8px 10px;font-size:14px;border:1px solid var(--outline);border-radius:8px" oninput="saveBudgetParams();calcBudget()">
         </div>
         <div style="flex:1;min-width:120px">
           <label style="font-size:11px;font-weight:600;text-transform:uppercase;color:var(--on-surface-variant);display:block;margin-bottom:4px">Nights</label>
-          <input type="number" id="budgetNights" value="2" min="1" style="width:100%;padding:8px 10px;font-size:14px;border:1px solid var(--outline);border-radius:8px" oninput="calcBudget()">
+          <input type="number" id="budgetNights" value="2" min="1" style="width:100%;padding:8px 10px;font-size:14px;border:1px solid var(--outline);border-radius:8px" oninput="saveBudgetParams();calcBudget()">
         </div>
         <div style="flex:1;min-width:120px">
           <label style="font-size:11px;font-weight:600;text-transform:uppercase;color:var(--on-surface-variant);display:block;margin-bottom:4px">Participants</label>
-          <input type="number" id="budgetPax" value="50" min="1" style="width:100%;padding:8px 10px;font-size:14px;border:1px solid var(--outline);border-radius:8px" oninput="calcBudget()">
+          <input type="number" id="budgetPax" value="50" min="1" style="width:100%;padding:8px 10px;font-size:14px;border:1px solid var(--outline);border-radius:8px" oninput="saveBudgetParams();calcBudget()">
         </div>
         <div style="flex:1;min-width:120px">
           <label style="font-size:11px;font-weight:600;text-transform:uppercase;color:var(--on-surface-variant);display:block;margin-bottom:4px">Lunches</label>
-          <input type="number" id="budgetLunches" value="2" min="0" style="width:100%;padding:8px 10px;font-size:14px;border:1px solid var(--outline);border-radius:8px" oninput="calcBudget()">
+          <input type="number" id="budgetLunches" value="2" min="0" style="width:100%;padding:8px 10px;font-size:14px;border:1px solid var(--outline);border-radius:8px" oninput="saveBudgetParams();calcBudget()">
         </div>
         <div style="flex:1;min-width:120px">
           <label style="font-size:11px;font-weight:600;text-transform:uppercase;color:var(--on-surface-variant);display:block;margin-bottom:4px">Half-day Meeting Rooms</label>
-          <input type="number" id="budgetMeetings" value="2" min="0" style="width:100%;padding:8px 10px;font-size:14px;border:1px solid var(--outline);border-radius:8px" oninput="calcBudget()">
+          <input type="number" id="budgetMeetings" value="2" min="0" style="width:100%;padding:8px 10px;font-size:14px;border:1px solid var(--outline);border-radius:8px" oninput="saveBudgetParams();calcBudget()">
         </div>
         <div style="flex:1;min-width:120px">
           <label style="font-size:11px;font-weight:600;text-transform:uppercase;color:var(--on-surface-variant);display:block;margin-bottom:4px">Dinner €/person</label>
-          <input type="number" id="budgetDinner" value="65" min="0" style="width:100%;padding:8px 10px;font-size:14px;border:1px solid var(--outline);border-radius:8px" oninput="calcBudget()">
+          <input type="number" id="budgetDinner" value="65" min="0" style="width:100%;padding:8px 10px;font-size:14px;border:1px solid var(--outline);border-radius:8px" oninput="saveBudgetParams();calcBudget()">
         </div>
         <div style="flex:1;min-width:120px">
           <label style="font-size:11px;font-weight:600;text-transform:uppercase;color:var(--on-surface-variant);display:block;margin-bottom:4px">Room Type</label>
-          <select id="budgetRoomType" style="width:100%;padding:8px 10px;font-size:14px;border:1px solid var(--outline);border-radius:8px" onchange="calcBudget()">
+          <select id="budgetRoomType" style="width:100%;padding:8px 10px;font-size:14px;border:1px solid var(--outline);border-radius:8px" onchange="saveBudgetParams();calcBudget()">
             <option value="double">Double / DUS</option>
             <option value="single">Single</option>
             <option value="twin">Twin</option>
@@ -864,7 +864,7 @@ function switchTab(name) {
   document.getElementById('tab-' + name).classList.add('active');
   event.currentTarget.classList.add('active');
   if (name === 'map' && !mapInitialized) { initMap(); mapInitialized = true; }
-  if (name === 'budget') { calcBudget(); }
+  if (name === 'budget') { loadBudgetOverrides().then(() => { restoreBudgetParams(); calcBudget(); }); }
   if (name === 'email_history') { loadEmailHistory(); }
 }
 
@@ -1280,9 +1280,52 @@ async function applyParsed() {
 }
 
 // ── Budget Calculator ─────────────────────────
+let budgetOverrides = {};
+
+async function loadBudgetOverrides() {
+  try {
+    const r = await fetch('/api/partivia/budget-overrides');
+    budgetOverrides = await r.json() || {};
+  } catch(e) { budgetOverrides = {}; }
+}
+
+async function saveBudgetOverrides() {
+  try {
+    await fetch('/api/partivia/budget-overrides', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(budgetOverrides),
+    });
+  } catch(e) { showSnack('Error saving overrides', 3000); }
+}
+
+function saveBudgetParams() {
+  budgetOverrides._params = {
+    rooms: document.getElementById('budgetRooms').value,
+    nights: document.getElementById('budgetNights').value,
+    pax: document.getElementById('budgetPax').value,
+    lunches: document.getElementById('budgetLunches').value,
+    meetings: document.getElementById('budgetMeetings').value,
+    dinner: document.getElementById('budgetDinner').value,
+    roomType: document.getElementById('budgetRoomType').value,
+  };
+  saveBudgetOverrides();
+}
+
+function restoreBudgetParams() {
+  const p = budgetOverrides._params;
+  if (!p) return;
+  if (p.rooms) document.getElementById('budgetRooms').value = p.rooms;
+  if (p.nights) document.getElementById('budgetNights').value = p.nights;
+  if (p.pax) document.getElementById('budgetPax').value = p.pax;
+  if (p.lunches) document.getElementById('budgetLunches').value = p.lunches;
+  if (p.meetings) document.getElementById('budgetMeetings').value = p.meetings;
+  if (p.dinner) document.getElementById('budgetDinner').value = p.dinner;
+  if (p.roomType) document.getElementById('budgetRoomType').value = p.roomType;
+}
+
 function parsePrice(str) {
   if (!str) return null;
-  // Extract number from strings like "€ 180", "€180/night", "€ 2,000/day", "180€", "180"
   const cleaned = str.replace(/[^\d.,]/g, '').replace(/\.(?=\d{3})/g, '').replace(',', '.');
   const num = parseFloat(cleaned);
   return isNaN(num) ? null : num;
@@ -1291,18 +1334,16 @@ function parsePrice(str) {
 function findRate(rates, roomType) {
   if (!rates || !rates.length) return null;
   const keywords = {
-    'double': ['double', 'doble', 'doppi', 'dbl', 'dus', 'dus '],
+    'double': ['double', 'doble', 'doppi', 'dbl', 'dus'],
     'single': ['single', 'singol', 'sgl', 'individual'],
     'twin': ['twin', 'twn'],
     'suite': ['suite', 'junior suite'],
   };
   const kws = keywords[roomType] || [roomType];
-  // Try exact match first
   for (const rr of rates) {
     const t = (rr.type || '').toLowerCase();
     if (kws.some(k => t.includes(k))) return parsePrice(rr.rate);
   }
-  // Fallback: return first available rate
   for (const rr of rates) {
     const p = parsePrice(rr.rate);
     if (p) return p;
@@ -1328,7 +1369,6 @@ function findFBPrice(fbOptions, mealType) {
 
 function findMeetingRate(meetingRooms) {
   if (!meetingRooms || !meetingRooms.length) return null;
-  // Return the first meeting room with a parseable rate
   for (const mr of meetingRooms) {
     const p = parsePrice(mr.rate);
     if (p) return p;
@@ -1339,6 +1379,41 @@ function findMeetingRate(meetingRooms) {
 function fmtEur(n) {
   if (n === null || n === undefined) return '—';
   return '€ ' + n.toLocaleString('en-US', {minimumFractionDigits: 0, maximumFractionDigits: 0});
+}
+
+function budgetEditCell(td, hotelKey, field) {
+  const current = budgetOverrides[hotelKey]?.[field] ?? '';
+  const input = document.createElement('input');
+  input.type = 'number';
+  input.value = current;
+  input.placeholder = '€';
+  input.style.cssText = 'width:80px;padding:4px 6px;font-size:13px;text-align:right;border:2px solid var(--primary);border-radius:6px;outline:none';
+  input.onkeydown = (e) => { if (e.key === 'Enter') input.blur(); if (e.key === 'Escape') { calcBudget(); } };
+  input.onblur = () => {
+    const val = parseFloat(input.value);
+    if (!budgetOverrides[hotelKey]) budgetOverrides[hotelKey] = {};
+    if (!isNaN(val) && val > 0) {
+      budgetOverrides[hotelKey][field] = val;
+    } else {
+      delete budgetOverrides[hotelKey][field];
+      if (Object.keys(budgetOverrides[hotelKey]).length === 0) delete budgetOverrides[hotelKey];
+    }
+    saveBudgetOverrides();
+    calcBudget();
+  };
+  td.innerHTML = '';
+  td.appendChild(input);
+  input.focus();
+  input.select();
+}
+
+function editableCell(value, suffix, hotelKey, field, isNA) {
+  const display = isNA
+    ? '<span style="color:var(--error);font-size:11px;cursor:pointer" title="Click to set value">N/A</span>'
+    : `<span style="cursor:pointer" title="Click to edit">${fmtEur(value)}${suffix}</span>`;
+  const overridden = budgetOverrides[hotelKey]?.[field] !== undefined;
+  const style = overridden ? 'background:#fff8e1;' : '';
+  return `<td style="text-align:right;${style}" onclick="budgetEditCell(this,'${hotelKey}','${field}')">${display}</td>`;
 }
 
 function calcBudget() {
@@ -1355,10 +1430,11 @@ function calcBudget() {
   for (const key in HOTELS_DATA) {
     const hotel = HOTELS_DATA[key];
     const best = hotel.versions.reduce((a, b) => a.completeness >= b.completeness ? a : b);
+    const ov = budgetOverrides[key] || {};
 
-    const roomRate = findRate(best.room_rates, roomType);
-    const lunchPP = findFBPrice(best.fb_options, 'lunch');
-    const meetingRate = findMeetingRate(best.meeting_rooms);
+    const roomRate = ov.room_rate ?? findRate(best.room_rates, roomType);
+    const lunchPP = ov.lunch_pp ?? findFBPrice(best.fb_options, 'lunch');
+    const meetingRate = ov.meeting_rate ?? findMeetingRate(best.meeting_rooms);
 
     const roomsCost = roomRate ? rooms * roomRate * nights : null;
     const lunchCost = lunchPP ? pax * lunchPP * lunches : null;
@@ -1373,16 +1449,13 @@ function calcBudget() {
     if (dinnerCost !== null) { total += dinnerCost; hasData = true; }
 
     rows.push({
-      hotel: hotel.hotel,
-      city: hotel.city,
-      stars: hotel.stars,
+      key, hotel: hotel.hotel, city: hotel.city, stars: hotel.stars,
       roomRate, lunchPP, meetingRate,
       roomsCost, lunchCost, meetingCost, dinnerCost,
       total: hasData ? total : null,
     });
   }
 
-  // Sort by total (nulls last)
   rows.sort((a, b) => {
     if (a.total === null && b.total === null) return 0;
     if (a.total === null) return 1;
@@ -1396,11 +1469,11 @@ function calcBudget() {
     return `<tr style="${rankStyle}">
       <td style="font-weight:600">${r.hotel} ${r.stars ? '★'.repeat(r.stars) : ''}</td>
       <td>${r.city}</td>
-      <td style="text-align:right">${r.roomRate !== null ? fmtEur(r.roomRate) + '/night' : '<span style="color:var(--error);font-size:11px">N/A</span>'}</td>
+      ${editableCell(r.roomRate, '/night', r.key, 'room_rate', r.roomRate === null)}
       <td style="text-align:right">${fmtEur(r.roomsCost)}</td>
-      <td style="text-align:right">${r.lunchPP !== null ? fmtEur(r.lunchPP) + '/pax' : '<span style="color:var(--error);font-size:11px">N/A</span>'}</td>
+      ${editableCell(r.lunchPP, '/pax', r.key, 'lunch_pp', r.lunchPP === null)}
       <td style="text-align:right">${fmtEur(r.lunchCost)}</td>
-      <td style="text-align:right">${r.meetingRate !== null ? fmtEur(r.meetingRate) : '<span style="color:var(--error);font-size:11px">N/A</span>'}</td>
+      ${editableCell(r.meetingRate, '', r.key, 'meeting_rate', r.meetingRate === null)}
       <td style="text-align:right">${fmtEur(r.meetingCost)}</td>
       <td style="text-align:right">${fmtEur(r.dinnerCost)}</td>
       <td style="text-align:right;font-weight:700;font-size:14px;color:var(--primary)">${fmtEur(r.total)}</td>

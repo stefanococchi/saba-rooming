@@ -11,7 +11,8 @@ load_dotenv()
 
 from models import (db, Guest, RoomContract, EmailLog,
                      PartiviaQuote, PartiviaRoomRate,
-                     PartiviaMeetingRoom, PartiviaFBOption)
+                     PartiviaMeetingRoom, PartiviaFBOption,
+                     BudgetOverride)
 
 
 def _parse_bool(val):
@@ -1303,6 +1304,25 @@ Per "azione": "update", valorizza "match_id" con l'ID dell'ospite corrispondente
                                stats_stars=stars_count,
                                stats_status=status_count,
                                client_view=client_view)
+
+    # ── Budget overrides ─────────────────────────────────────────────────
+
+    @app.get('/api/partivia/budget-overrides')
+    def get_budget_overrides():
+        row = BudgetOverride.query.first()
+        return jsonify(row.data if row else {})
+
+    @app.post('/api/partivia/budget-overrides')
+    def save_budget_overrides():
+        data = request.get_json()
+        row = BudgetOverride.query.first()
+        if not row:
+            row = BudgetOverride(data=data)
+            db.session.add(row)
+        else:
+            row.data = data
+        db.session.commit()
+        return jsonify(ok=True)
 
     # ── Parse email preventivo ────────────────────────────────────────────
 
