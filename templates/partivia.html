@@ -313,11 +313,8 @@ textarea { resize:vertical; min-height:120px; }
           {% endif %}
         </div>
         {% endif %}
-        {% if q.total_estimate %}
-        <div class="total">Total: {{ q.total_estimate }}</div>
-        {% endif %}
-        {% if q.rooms_available %}
-        <div class="total">Rooms: {{ q.rooms_available }}</div>
+        {% if q.dates_proposed %}
+        <div class="total"><span class="material-icons-round" style="font-size:14px;vertical-align:middle;color:var(--primary)">event</span> {{ q.dates_proposed }}</div>
         {% endif %}
         {% if q.validity_date %}
         <div class="total" style="color:var(--warning);font-weight:600">Deadline: {{ q.validity_date }}</div>
