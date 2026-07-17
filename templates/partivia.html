@@ -311,10 +311,10 @@ textarea { resize:vertical; min-height:120px; }
         <div class="total" style="color:var(--warning);font-weight:600">Deadline: {{ q.validity_date }}</div>
         {% endif %}
       </div>
-      <div class="hotel-card-footer">
+      <!-- <div class="hotel-card-footer">
         <span class="status-badge status-{{ q.quote_status.replace(' ','_') }}"
               onclick="event.stopPropagation();cycleStatus(this,{{ q.id }})">{{ q.quote_status.replace('_',' ') }}</span>
-      </div>
+      </div> -->
     </div>
     {% endfor %}
   </div>
@@ -887,7 +887,7 @@ function renderQuoteSection(q, label) {
   if (q.rooms) h += `<div><strong>Rooms Available:</strong> ${q.rooms}</div>`;
   if (q.total) h += `<div style="font-weight:600;color:var(--primary)"><strong>Total:</strong> ${q.total}</div>`;
   if (q.validity) h += `<div style="color:var(--warning);font-weight:600"><strong>Option Deadline:</strong> ${q.validity}</div>`;
-  h += `<div><span class="status-badge status-${q.status.replace(/ /g,'_')}">${q.status.replace(/_/g,' ')}</span></div>`;
+  /* status badge hidden - not visible to client */
   h += '</div>';
 
   // Room rates

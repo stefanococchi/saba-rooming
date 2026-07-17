@@ -1345,11 +1345,14 @@ For each quote, extract:
 - is_update: true if updating an existing quote (with match_id), false if new
 - match_id: ID of existing quote if updating, null if new
 
-IMPORTANT: ALL text fields MUST be in English. This includes:
+IMPORTANT: ALL text fields MUST be in English. No exceptions. This includes:
 - raw_summary, notes, room_rates[].notes, meeting_rooms[].notes, fb_options[].menu_description
 - cancellation_policy, payment_terms, included_services
+- total_estimate (e.g. "Not provided" instead of "Non fornito")
+- rooms_available (e.g. "50 DSU (to be confirmed)" instead of "50 DSU (da confermare)")
+- rate_per_night notes and descriptions
 - breakfast_included (use "Yes"/"No"/"Not specified" only)
-Always translate from Spanish, Italian, or any other language to English. Never leave any field in its original language.
+Always translate EVERYTHING from Spanish, Italian, or any other language to English. Never leave any field in its original language, even partially. For example: "350€ supplement per night per room" NOT "350€ supplemento per notte per camera".
 
 CRITICAL: Room costs (rate_per_night) and dates_proposed are the MOST important data to extract.
 - Every room_rates entry MUST have a rate_per_night value with € symbol. If the email quotes room prices in ANY format (per night, per stay, per person, package), convert to per-night rate and include it.
