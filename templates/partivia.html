@@ -573,13 +573,23 @@ textarea { resize:vertical; min-height:120px; }
         <table class="cmp-table" id="budgetTable">
           <thead>
             <tr>
-              <th>Hotel</th>
-              <th>City</th>
-              <th style="text-align:right">Room/night</th>
-              <th style="text-align:right">Lunch/pax</th>
-              <th style="text-align:right">Meeting Room</th>
-              <th style="text-align:right">Dinner/pax</th>
-              <th style="text-align:right;font-weight:700;color:var(--primary)">TOTAL</th>
+              <th rowspan="2" style="vertical-align:bottom">Hotel</th>
+              <th rowspan="2" style="vertical-align:bottom">City</th>
+              <th colspan="2" style="text-align:center;border-bottom:none;color:var(--primary);font-size:10px">ROOMS</th>
+              <th colspan="2" style="text-align:center;border-bottom:none;color:var(--primary);font-size:10px">LUNCH</th>
+              <th colspan="2" style="text-align:center;border-bottom:none;color:var(--primary);font-size:10px">MEETING</th>
+              <th colspan="2" style="text-align:center;border-bottom:none;color:var(--primary);font-size:10px">DINNER</th>
+              <th rowspan="2" style="text-align:right;font-weight:700;color:var(--primary);vertical-align:bottom">TOTAL</th>
+            </tr>
+            <tr>
+              <th style="text-align:right;font-size:10px;color:var(--on-surface-variant)">unit</th>
+              <th style="text-align:right;font-size:10px">subtotal</th>
+              <th style="text-align:right;font-size:10px;color:var(--on-surface-variant)">unit</th>
+              <th style="text-align:right;font-size:10px">subtotal</th>
+              <th style="text-align:right;font-size:10px;color:var(--on-surface-variant)">unit</th>
+              <th style="text-align:right;font-size:10px">subtotal</th>
+              <th style="text-align:right;font-size:10px;color:var(--on-surface-variant)">unit</th>
+              <th style="text-align:right;font-size:10px">subtotal</th>
             </tr>
           </thead>
           <tbody id="budgetBody"></tbody>
@@ -1409,8 +1419,8 @@ function editableCell(value, suffix, hotelKey, field, isNA) {
     ? '<span style="color:var(--error);font-size:11px;cursor:pointer" title="Click to set value">N/A</span>'
     : `<span style="cursor:pointer" title="Click to edit">${fmtEur(value)}${suffix}</span>`;
   const overridden = budgetOverrides[hotelKey]?.[field] !== undefined;
-  const style = overridden ? 'background:#fff8e1;' : '';
-  return `<td style="text-align:right;${style}" onclick="budgetEditCell(this,'${hotelKey}','${field}')">${display}</td>`;
+  const bg = overridden ? 'background:#fff8e1;' : '';
+  return `<td style="text-align:right;${bg}color:var(--on-surface-variant);font-size:12px" onclick="budgetEditCell(this,'${hotelKey}','${field}')">${display}</td>`;
 }
 
 function calcBudget() {
@@ -1450,6 +1460,7 @@ function calcBudget() {
     rows.push({
       key, hotel: hotel.hotel, city: hotel.city, stars: hotel.stars,
       roomRate, lunchPP, meetingRate, dinnerRate,
+      roomsCost, lunchCost, meetingCost, dinnerCost,
       total: hasData ? total : null,
     });
   }
@@ -1463,14 +1474,20 @@ function calcBudget() {
 
   const tbody = document.getElementById('budgetBody');
   tbody.innerHTML = rows.map((r, i) => {
-    const rankStyle = i === 0 && r.total !== null ? 'background:#e8f5e9;font-weight:600' : '';
+    const rankStyle = i === 0 && r.total !== null ? 'background:#e8f5e9;' : '';
+    const subStyle = 'text-align:right;font-weight:600;font-size:12px';
+    const unitColor = 'color:var(--on-surface-variant)';
     return `<tr style="${rankStyle}">
       <td style="font-weight:600">${r.hotel} ${r.stars ? '★'.repeat(r.stars) : ''}</td>
       <td>${r.city}</td>
       ${editableCell(r.roomRate, '', r.key, 'room_rate', r.roomRate === null)}
+      <td style="${subStyle}">${fmtEur(r.roomsCost)}</td>
       ${editableCell(r.lunchPP, '', r.key, 'lunch_pp', r.lunchPP === null)}
+      <td style="${subStyle}">${fmtEur(r.lunchCost)}</td>
       ${editableCell(r.meetingRate, '', r.key, 'meeting_rate', r.meetingRate === null)}
+      <td style="${subStyle}">${fmtEur(r.meetingCost)}</td>
       ${editableCell(r.dinnerRate, '', r.key, 'dinner_pp', r.dinnerRate === null || r.dinnerRate === 0)}
+      <td style="${subStyle}">${fmtEur(r.dinnerCost)}</td>
       <td style="text-align:right;font-weight:700;font-size:14px;color:var(--primary)">${fmtEur(r.total)}</td>
     </tr>`;
   }).join('');
