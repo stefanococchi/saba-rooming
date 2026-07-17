@@ -575,13 +575,10 @@ textarea { resize:vertical; min-height:120px; }
             <tr>
               <th>Hotel</th>
               <th>City</th>
-              <th style="text-align:right">Room Rate</th>
-              <th style="text-align:right">Rooms Cost</th>
+              <th style="text-align:right">Room/night</th>
               <th style="text-align:right">Lunch/pax</th>
-              <th style="text-align:right">Lunch Cost</th>
               <th style="text-align:right">Meeting Room</th>
-              <th style="text-align:right">Meeting Cost</th>
-              <th style="text-align:right">Dinner Cost</th>
+              <th style="text-align:right">Dinner/pax</th>
               <th style="text-align:right;font-weight:700;color:var(--primary)">TOTAL</th>
             </tr>
           </thead>
@@ -1436,10 +1433,12 @@ function calcBudget() {
     const lunchPP = ov.lunch_pp ?? findFBPrice(best.fb_options, 'lunch');
     const meetingRate = ov.meeting_rate ?? findMeetingRate(best.meeting_rooms);
 
+    const dinnerRate = ov.dinner_pp ?? dinnerPP;
+
     const roomsCost = roomRate ? rooms * roomRate * nights : null;
     const lunchCost = lunchPP ? pax * lunchPP * lunches : null;
     const meetingCost = meetingRate ? meetings * meetingRate : null;
-    const dinnerCost = dinnerPP ? pax * dinnerPP : null;
+    const dinnerCost = dinnerRate ? pax * dinnerRate : null;
 
     let total = 0;
     let hasData = false;
@@ -1450,8 +1449,7 @@ function calcBudget() {
 
     rows.push({
       key, hotel: hotel.hotel, city: hotel.city, stars: hotel.stars,
-      roomRate, lunchPP, meetingRate,
-      roomsCost, lunchCost, meetingCost, dinnerCost,
+      roomRate, lunchPP, meetingRate, dinnerRate,
       total: hasData ? total : null,
     });
   }
@@ -1469,13 +1467,10 @@ function calcBudget() {
     return `<tr style="${rankStyle}">
       <td style="font-weight:600">${r.hotel} ${r.stars ? '★'.repeat(r.stars) : ''}</td>
       <td>${r.city}</td>
-      ${editableCell(r.roomRate, '/night', r.key, 'room_rate', r.roomRate === null)}
-      <td style="text-align:right">${fmtEur(r.roomsCost)}</td>
-      ${editableCell(r.lunchPP, '/pax', r.key, 'lunch_pp', r.lunchPP === null)}
-      <td style="text-align:right">${fmtEur(r.lunchCost)}</td>
+      ${editableCell(r.roomRate, '', r.key, 'room_rate', r.roomRate === null)}
+      ${editableCell(r.lunchPP, '', r.key, 'lunch_pp', r.lunchPP === null)}
       ${editableCell(r.meetingRate, '', r.key, 'meeting_rate', r.meetingRate === null)}
-      <td style="text-align:right">${fmtEur(r.meetingCost)}</td>
-      <td style="text-align:right">${fmtEur(r.dinnerCost)}</td>
+      ${editableCell(r.dinnerRate, '', r.key, 'dinner_pp', r.dinnerRate === null || r.dinnerRate === 0)}
       <td style="text-align:right;font-weight:700;font-size:14px;color:var(--primary)">${fmtEur(r.total)}</td>
     </tr>`;
   }).join('');
