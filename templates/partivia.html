@@ -185,13 +185,17 @@ textarea { resize:vertical; min-height:120px; }
 
 <!-- ── Topbar ──────────────────────────────────── -->
 <div class="topbar">
+  {% if not client_view %}
   <a href="/" title="Portal"><span class="material-icons-round">arrow_back</span></a>
+  {% endif %}
   <span class="material-icons-round">apartment</span>
   <h1>Partivia Spain</h1>
   <div class="spacer"></div>
+  {% if not client_view %}
   <a href="/api/partivia/export" class="btn-sm" style="background:rgba(255,255,255,.15);border-radius:8px;padding:6px 14px;font-size:12px;font-weight:600">
     <span class="material-icons-round" style="font-size:16px;vertical-align:middle">download</span> XLSX
   </a>
+  {% endif %}
   <span class="badge">{{ quotes|length }} quotes</span>
 </div>
 
@@ -215,12 +219,14 @@ textarea { resize:vertical; min-height:120px; }
   <button class="tab-btn" onclick="switchTab('map')">
     <span class="material-icons-round">map</span><span class="tab-label">Map</span>
   </button>
+  {% if not client_view %}
   <button class="tab-btn" onclick="switchTab('input')">
     <span class="material-icons-round">add_circle</span><span class="tab-label">Input</span>
   </button>
   <button class="tab-btn" onclick="switchTab('email_history')">
     <span class="material-icons-round">history</span><span class="tab-label">Email History</span>
   </button>
+  {% endif %}
 </div>
 
 <div class="container">
@@ -314,7 +320,7 @@ textarea { resize:vertical; min-height:120px; }
         <div class="total" style="color:var(--warning);font-weight:600">Deadline: {{ q.validity_date }}</div>
         {% endif %}
       </div>
-      {% if q.email_log_id %}
+      {% if q.email_log_id and not client_view %}
       <div class="hotel-card-footer" style="display:flex;justify-content:flex-end">
         <button class="icon-btn" onclick="event.stopPropagation();showEmailLog({{ q.email_log_id }})" title="View original email" style="color:var(--info)">
           <span class="material-icons-round" style="font-size:18px">mail</span>
@@ -512,6 +518,7 @@ textarea { resize:vertical; min-height:120px; }
   </div>
 </div>
 
+{% if not client_view %}
 <!-- ══════════════════════════════════════════════ -->
 <!-- ██  TAB 7: INPUT                            ██ -->
 <!-- ══════════════════════════════════════════════ -->
@@ -623,6 +630,7 @@ textarea { resize:vertical; min-height:120px; }
     </div>
   </div>
 </div>
+{% endif %}
 
 </div><!-- /container -->
 
@@ -717,6 +725,7 @@ textarea { resize:vertical; min-height:120px; }
 
 <!-- Grouped data per hotel for the detail modal -->
 <script>
+const CLIENT_VIEW = {{ 'true' if client_view else 'false' }};
 const HOTELS_DATA = {
 {% for h in hotels %}
   {{ h.best.hotel_name|lower|replace("'","")|tojson }}: {
@@ -966,7 +975,7 @@ function renderQuoteSection(q, label) {
     h += `<div style="font-size:12px;line-height:1.5">${q.notes}</div></div>`;
   }
 
-  if (q.email_log_id) {
+  if (q.email_log_id && !CLIENT_VIEW) {
     h += `<div style="margin-top:10px">`;
     h += `<button class="btn btn-outline btn-sm" onclick="event.stopPropagation();showEmailLog(${q.email_log_id})">`;
     h += `<span class="material-icons-round" style="font-size:16px">mail</span> View original email</button></div>`;

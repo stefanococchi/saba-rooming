@@ -1150,8 +1150,12 @@ Per "azione": "update", valorizza "match_id" con l'ID dell'ospite corrispondente
     # ██  PARTIVIA — Preventivi Hotel                                       ██
     # ══════════════════════════════════════════════════════════════════════════
 
+    @app.route('/partivia/client')
+    def partivia_client():
+        return partivia(client_view=True)
+
     @app.route('/partivia')
-    def partivia():
+    def partivia(client_view=False):
         import re
 
         quotes = (PartiviaQuote.query
@@ -1297,7 +1301,8 @@ Per "azione": "update", valorizza "match_id" con l'ID dell'ospite corrispondente
                                meal_cols=MEAL_COLS,
                                stats_cities=cities,
                                stats_stars=stars_count,
-                               stats_status=status_count)
+                               stats_status=status_count,
+                               client_view=client_view)
 
     # ── Parse email preventivo ────────────────────────────────────────────
 
