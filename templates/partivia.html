@@ -219,6 +219,9 @@ textarea { resize:vertical; min-height:120px; }
   <button class="tab-btn" onclick="switchTab('map')">
     <span class="material-icons-round">map</span><span class="tab-label">Map</span>
   </button>
+  <button class="tab-btn" onclick="switchTab('budget')">
+    <span class="material-icons-round">calculate</span><span class="tab-label">Budget</span>
+  </button>
   {% if not client_view %}
   <button class="tab-btn" onclick="switchTab('input')">
     <span class="material-icons-round">add_circle</span><span class="tab-label">Input</span>
@@ -518,6 +521,77 @@ textarea { resize:vertical; min-height:120px; }
   </div>
 </div>
 
+<!-- ══════════════════════════════════════════════ -->
+<!-- ██  TAB: BUDGET CALCULATOR                  ██ -->
+<!-- ══════════════════════════════════════════════ -->
+<div class="tab-content" id="tab-budget">
+  <div class="card">
+    <div class="card-header">
+      <span class="material-icons-round">calculate</span>
+      Budget Calculator
+    </div>
+    <div class="card-body">
+      <!-- Input parameters -->
+      <div style="display:flex;flex-wrap:wrap;gap:16px;margin-bottom:20px;padding:16px;background:var(--surface-variant);border-radius:var(--radius-sm)">
+        <div style="flex:1;min-width:120px">
+          <label style="font-size:11px;font-weight:600;text-transform:uppercase;color:var(--on-surface-variant);display:block;margin-bottom:4px">Rooms</label>
+          <input type="number" id="budgetRooms" value="50" min="1" style="width:100%;padding:8px 10px;font-size:14px;border:1px solid var(--outline);border-radius:8px" oninput="calcBudget()">
+        </div>
+        <div style="flex:1;min-width:120px">
+          <label style="font-size:11px;font-weight:600;text-transform:uppercase;color:var(--on-surface-variant);display:block;margin-bottom:4px">Nights</label>
+          <input type="number" id="budgetNights" value="2" min="1" style="width:100%;padding:8px 10px;font-size:14px;border:1px solid var(--outline);border-radius:8px" oninput="calcBudget()">
+        </div>
+        <div style="flex:1;min-width:120px">
+          <label style="font-size:11px;font-weight:600;text-transform:uppercase;color:var(--on-surface-variant);display:block;margin-bottom:4px">Participants</label>
+          <input type="number" id="budgetPax" value="50" min="1" style="width:100%;padding:8px 10px;font-size:14px;border:1px solid var(--outline);border-radius:8px" oninput="calcBudget()">
+        </div>
+        <div style="flex:1;min-width:120px">
+          <label style="font-size:11px;font-weight:600;text-transform:uppercase;color:var(--on-surface-variant);display:block;margin-bottom:4px">Lunches</label>
+          <input type="number" id="budgetLunches" value="2" min="0" style="width:100%;padding:8px 10px;font-size:14px;border:1px solid var(--outline);border-radius:8px" oninput="calcBudget()">
+        </div>
+        <div style="flex:1;min-width:120px">
+          <label style="font-size:11px;font-weight:600;text-transform:uppercase;color:var(--on-surface-variant);display:block;margin-bottom:4px">Half-day Meeting Rooms</label>
+          <input type="number" id="budgetMeetings" value="2" min="0" style="width:100%;padding:8px 10px;font-size:14px;border:1px solid var(--outline);border-radius:8px" oninput="calcBudget()">
+        </div>
+        <div style="flex:1;min-width:120px">
+          <label style="font-size:11px;font-weight:600;text-transform:uppercase;color:var(--on-surface-variant);display:block;margin-bottom:4px">Dinner €/person</label>
+          <input type="number" id="budgetDinner" value="65" min="0" style="width:100%;padding:8px 10px;font-size:14px;border:1px solid var(--outline);border-radius:8px" oninput="calcBudget()">
+        </div>
+        <div style="flex:1;min-width:120px">
+          <label style="font-size:11px;font-weight:600;text-transform:uppercase;color:var(--on-surface-variant);display:block;margin-bottom:4px">Room Type</label>
+          <select id="budgetRoomType" style="width:100%;padding:8px 10px;font-size:14px;border:1px solid var(--outline);border-radius:8px" onchange="calcBudget()">
+            <option value="double">Double / DUS</option>
+            <option value="single">Single</option>
+            <option value="twin">Twin</option>
+            <option value="suite">Suite</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Budget table -->
+      <div style="overflow-x:auto">
+        <table class="cmp-table" id="budgetTable">
+          <thead>
+            <tr>
+              <th>Hotel</th>
+              <th>City</th>
+              <th style="text-align:right">Room Rate</th>
+              <th style="text-align:right">Rooms Cost</th>
+              <th style="text-align:right">Lunch/pax</th>
+              <th style="text-align:right">Lunch Cost</th>
+              <th style="text-align:right">Meeting Room</th>
+              <th style="text-align:right">Meeting Cost</th>
+              <th style="text-align:right">Dinner Cost</th>
+              <th style="text-align:right;font-weight:700;color:var(--primary)">TOTAL</th>
+            </tr>
+          </thead>
+          <tbody id="budgetBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
 {% if not client_view %}
 <!-- ══════════════════════════════════════════════ -->
 <!-- ██  TAB 7: INPUT                            ██ -->
@@ -790,6 +864,7 @@ function switchTab(name) {
   document.getElementById('tab-' + name).classList.add('active');
   event.currentTarget.classList.add('active');
   if (name === 'map' && !mapInitialized) { initMap(); mapInitialized = true; }
+  if (name === 'budget') { calcBudget(); }
   if (name === 'email_history') { loadEmailHistory(); }
 }
 
@@ -1202,6 +1277,135 @@ async function applyParsed() {
     showSnack(`${added} added, ${updated} updated`);
     setTimeout(()=>location.reload(),800);
   } else showSnack('Error: '+j.error,5000);
+}
+
+// ── Budget Calculator ─────────────────────────
+function parsePrice(str) {
+  if (!str) return null;
+  // Extract number from strings like "€ 180", "€180/night", "€ 2,000/day", "180€", "180"
+  const cleaned = str.replace(/[^\d.,]/g, '').replace(/\.(?=\d{3})/g, '').replace(',', '.');
+  const num = parseFloat(cleaned);
+  return isNaN(num) ? null : num;
+}
+
+function findRate(rates, roomType) {
+  if (!rates || !rates.length) return null;
+  const keywords = {
+    'double': ['double', 'doble', 'doppi', 'dbl', 'dus', 'dus '],
+    'single': ['single', 'singol', 'sgl', 'individual'],
+    'twin': ['twin', 'twn'],
+    'suite': ['suite', 'junior suite'],
+  };
+  const kws = keywords[roomType] || [roomType];
+  // Try exact match first
+  for (const rr of rates) {
+    const t = (rr.type || '').toLowerCase();
+    if (kws.some(k => t.includes(k))) return parsePrice(rr.rate);
+  }
+  // Fallback: return first available rate
+  for (const rr of rates) {
+    const p = parsePrice(rr.rate);
+    if (p) return p;
+  }
+  return null;
+}
+
+function findFBPrice(fbOptions, mealType) {
+  if (!fbOptions || !fbOptions.length) return null;
+  const keywords = {
+    'lunch': ['lunch', 'pranzo', 'almuerzo'],
+    'dinner': ['dinner', 'cena'],
+    'breakfast': ['breakfast', 'colazione', 'desayuno'],
+    'coffee': ['coffee', 'break'],
+  };
+  const kws = keywords[mealType] || [mealType];
+  for (const fb of fbOptions) {
+    const t = (fb.type || '').toLowerCase();
+    if (kws.some(k => t.includes(k))) return parsePrice(fb.price);
+  }
+  return null;
+}
+
+function findMeetingRate(meetingRooms) {
+  if (!meetingRooms || !meetingRooms.length) return null;
+  // Return the first meeting room with a parseable rate
+  for (const mr of meetingRooms) {
+    const p = parsePrice(mr.rate);
+    if (p) return p;
+  }
+  return null;
+}
+
+function fmtEur(n) {
+  if (n === null || n === undefined) return '—';
+  return '€ ' + n.toLocaleString('en-US', {minimumFractionDigits: 0, maximumFractionDigits: 0});
+}
+
+function calcBudget() {
+  const rooms = parseInt(document.getElementById('budgetRooms').value) || 0;
+  const nights = parseInt(document.getElementById('budgetNights').value) || 0;
+  const pax = parseInt(document.getElementById('budgetPax').value) || 0;
+  const lunches = parseInt(document.getElementById('budgetLunches').value) || 0;
+  const meetings = parseInt(document.getElementById('budgetMeetings').value) || 0;
+  const dinnerPP = parseFloat(document.getElementById('budgetDinner').value) || 0;
+  const roomType = document.getElementById('budgetRoomType').value;
+
+  const rows = [];
+
+  for (const key in HOTELS_DATA) {
+    const hotel = HOTELS_DATA[key];
+    const best = hotel.versions.reduce((a, b) => a.completeness >= b.completeness ? a : b);
+
+    const roomRate = findRate(best.room_rates, roomType);
+    const lunchPP = findFBPrice(best.fb_options, 'lunch');
+    const meetingRate = findMeetingRate(best.meeting_rooms);
+
+    const roomsCost = roomRate ? rooms * roomRate * nights : null;
+    const lunchCost = lunchPP ? pax * lunchPP * lunches : null;
+    const meetingCost = meetingRate ? meetings * meetingRate : null;
+    const dinnerCost = dinnerPP ? pax * dinnerPP : null;
+
+    let total = 0;
+    let hasData = false;
+    if (roomsCost !== null) { total += roomsCost; hasData = true; }
+    if (lunchCost !== null) { total += lunchCost; hasData = true; }
+    if (meetingCost !== null) { total += meetingCost; hasData = true; }
+    if (dinnerCost !== null) { total += dinnerCost; hasData = true; }
+
+    rows.push({
+      hotel: hotel.hotel,
+      city: hotel.city,
+      stars: hotel.stars,
+      roomRate, lunchPP, meetingRate,
+      roomsCost, lunchCost, meetingCost, dinnerCost,
+      total: hasData ? total : null,
+    });
+  }
+
+  // Sort by total (nulls last)
+  rows.sort((a, b) => {
+    if (a.total === null && b.total === null) return 0;
+    if (a.total === null) return 1;
+    if (b.total === null) return -1;
+    return a.total - b.total;
+  });
+
+  const tbody = document.getElementById('budgetBody');
+  tbody.innerHTML = rows.map((r, i) => {
+    const rankStyle = i === 0 && r.total !== null ? 'background:#e8f5e9;font-weight:600' : '';
+    return `<tr style="${rankStyle}">
+      <td style="font-weight:600">${r.hotel} ${r.stars ? '★'.repeat(r.stars) : ''}</td>
+      <td>${r.city}</td>
+      <td style="text-align:right">${r.roomRate !== null ? fmtEur(r.roomRate) + '/night' : '<span style="color:var(--error);font-size:11px">N/A</span>'}</td>
+      <td style="text-align:right">${fmtEur(r.roomsCost)}</td>
+      <td style="text-align:right">${r.lunchPP !== null ? fmtEur(r.lunchPP) + '/pax' : '<span style="color:var(--error);font-size:11px">N/A</span>'}</td>
+      <td style="text-align:right">${fmtEur(r.lunchCost)}</td>
+      <td style="text-align:right">${r.meetingRate !== null ? fmtEur(r.meetingRate) : '<span style="color:var(--error);font-size:11px">N/A</span>'}</td>
+      <td style="text-align:right">${fmtEur(r.meetingCost)}</td>
+      <td style="text-align:right">${fmtEur(r.dinnerCost)}</td>
+      <td style="text-align:right;font-weight:700;font-size:14px;color:var(--primary)">${fmtEur(r.total)}</td>
+    </tr>`;
+  }).join('');
 }
 
 // ── Email History ─────────────────────────────
