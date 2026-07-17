@@ -495,9 +495,9 @@ textarea { resize:vertical; min-height:120px; }
           {% endif %}
           <tr>
             <td class="hotel-name">{{ q.hotel_name }}</td>
-            <td class="long-text">{{ q.cancellation_policy or '—' }}</td>
-            <td class="long-text">{{ q.payment_terms or '—' }}</td>
-            <td style="font-weight:600;color:var(--warning)">{{ q.validity_date or '—' }}</td>
+            <td class="long-text editable" data-field="cancellation_policy" data-id="{{ q.id }}" onclick="editTermsCell(this)" style="cursor:pointer">{{ q.cancellation_policy or '—' }}</td>
+            <td class="long-text editable" data-field="payment_terms" data-id="{{ q.id }}" onclick="editTermsCell(this)" style="cursor:pointer">{{ q.payment_terms or '—' }}</td>
+            <td class="editable" data-field="validity_date" data-id="{{ q.id }}" style="font-weight:600;color:var(--warning);cursor:pointer" onclick="editTermsCell(this)">{{ q.validity_date or '—' }}</td>
             <!-- <td>{{ q.commission or '—' }}</td> -->
             <td class="long-text">{{ q.included_services or '—' }}</td>
           </tr>
@@ -575,21 +575,21 @@ textarea { resize:vertical; min-height:120px; }
             <tr>
               <th rowspan="2" style="vertical-align:bottom">Hotel</th>
               <th rowspan="2" style="vertical-align:bottom">City</th>
-              <th colspan="2" style="text-align:center;border-bottom:none;color:var(--primary);font-size:10px">ROOMS</th>
-              <th colspan="2" style="text-align:center;border-bottom:none;color:var(--primary);font-size:10px">LUNCH</th>
-              <th colspan="2" style="text-align:center;border-bottom:none;color:var(--primary);font-size:10px">MEETING</th>
-              <th colspan="2" style="text-align:center;border-bottom:none;color:var(--primary);font-size:10px">DINNER</th>
-              <th rowspan="2" style="text-align:right;font-weight:700;color:var(--primary);vertical-align:bottom">TOTAL</th>
+              <th colspan="2" style="text-align:center;border-bottom:2px solid rgba(255,255,255,.3);font-size:11px;letter-spacing:1px;color:#fff">ROOMS</th>
+              <th colspan="2" style="text-align:center;border-bottom:2px solid rgba(255,255,255,.3);font-size:11px;letter-spacing:1px;color:#fff">LUNCH</th>
+              <th colspan="2" style="text-align:center;border-bottom:2px solid rgba(255,255,255,.3);font-size:11px;letter-spacing:1px;color:#fff">MEETING</th>
+              <th colspan="2" style="text-align:center;border-bottom:2px solid rgba(255,255,255,.3);font-size:11px;letter-spacing:1px;color:#fff">DINNER</th>
+              <th rowspan="2" style="text-align:right;font-weight:700;vertical-align:bottom">TOTAL</th>
             </tr>
             <tr>
-              <th style="text-align:right;font-size:10px;color:var(--on-surface-variant)">unit</th>
-              <th style="text-align:right;font-size:10px">subtotal</th>
-              <th style="text-align:right;font-size:10px;color:var(--on-surface-variant)">unit</th>
-              <th style="text-align:right;font-size:10px">subtotal</th>
-              <th style="text-align:right;font-size:10px;color:var(--on-surface-variant)">unit</th>
-              <th style="text-align:right;font-size:10px">subtotal</th>
-              <th style="text-align:right;font-size:10px;color:var(--on-surface-variant)">unit</th>
-              <th style="text-align:right;font-size:10px">subtotal</th>
+              <th style="text-align:right;font-size:9px;font-weight:400;color:rgba(255,255,255,.6)">unit</th>
+              <th style="text-align:right;font-size:9px;font-weight:400">subtotal</th>
+              <th style="text-align:right;font-size:9px;font-weight:400;color:rgba(255,255,255,.6)">unit</th>
+              <th style="text-align:right;font-size:9px;font-weight:400">subtotal</th>
+              <th style="text-align:right;font-size:9px;font-weight:400;color:rgba(255,255,255,.6)">unit</th>
+              <th style="text-align:right;font-size:9px;font-weight:400">subtotal</th>
+              <th style="text-align:right;font-size:9px;font-weight:400;color:rgba(255,255,255,.6)">unit</th>
+              <th style="text-align:right;font-size:9px;font-weight:400">subtotal</th>
             </tr>
           </thead>
           <tbody id="budgetBody"></tbody>
@@ -966,6 +966,79 @@ function filterCards(city, chip) {
   });
 }
 
+// ── Edit deadline inline (detail modal) ───────
+function editDeadlineInline(span, qid) {
+  const current = span.textContent.trim();
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.value = current;
+  input.style.cssText = 'padding:4px 8px;font-size:12px;font-weight:600;color:var(--warning);border:2px solid var(--warning);border-radius:6px;outline:none;width:180px';
+  input.onblur = async () => {
+    const val = input.value.trim();
+    try {
+      await fetch(`/api/partivia/quote/${qid}`, {
+        method: 'PATCH',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({validity_date: val || null}),
+      });
+      span.textContent = val || current;
+      showSnack('Saved');
+    } catch(e) { span.textContent = current; showSnack('Error saving', 3000); }
+    input.replaceWith(span);
+  };
+  input.onkeydown = (e) => { if (e.key === 'Enter') input.blur(); if (e.key === 'Escape') { input.replaceWith(span); } };
+  span.replaceWith(input);
+  input.focus();
+  input.select();
+}
+
+// ── Edit Terms cells ──────────────────────────
+function editTermsCell(td) {
+  if (td.querySelector('input,textarea')) return;
+  const field = td.dataset.field;
+  const qid = td.dataset.id;
+  const current = td.textContent.trim() === '—' ? '' : td.textContent.trim();
+  const isLong = field === 'cancellation_policy' || field === 'payment_terms';
+
+  if (isLong) {
+    const ta = document.createElement('textarea');
+    ta.value = current;
+    ta.style.cssText = 'width:100%;min-height:60px;padding:6px 8px;font-size:12px;border:2px solid var(--primary);border-radius:6px;outline:none;resize:vertical';
+    ta.onblur = () => saveTermsCell(td, qid, field, ta.value);
+    ta.onkeydown = (e) => { if (e.key === 'Escape') { td.textContent = current || '—'; } };
+    td.innerHTML = '';
+    td.appendChild(ta);
+    ta.focus();
+  } else {
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.value = current;
+    input.style.cssText = 'width:100%;padding:6px 8px;font-size:13px;border:2px solid var(--primary);border-radius:6px;outline:none;font-weight:600;color:var(--warning)';
+    input.onblur = () => saveTermsCell(td, qid, field, input.value);
+    input.onkeydown = (e) => { if (e.key === 'Enter') input.blur(); if (e.key === 'Escape') { td.textContent = current || '—'; } };
+    td.innerHTML = '';
+    td.appendChild(input);
+    input.focus();
+    input.select();
+  }
+}
+
+async function saveTermsCell(td, qid, field, value) {
+  const val = value.trim();
+  try {
+    const r = await fetch(`/api/partivia/quote/${qid}`, {
+      method: 'PATCH',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({[field]: val || null}),
+    });
+    if ((await r.json()).ok) {
+      td.textContent = val || '—';
+      if (field === 'validity_date') td.style.color = 'var(--warning)';
+      showSnack('Saved');
+    }
+  } catch(e) { showSnack('Error saving', 3000); }
+}
+
 // ── Bulk deadline ─────────────────────────────
 async function setBulkDeadline() {
   const deadline = document.getElementById('bulkDeadline').value.trim();
@@ -1000,7 +1073,7 @@ function renderQuoteSection(q, label) {
   if (q.dates) h += `<div><strong>Available Dates:</strong> ${q.dates}</div>`;
   if (q.rooms) h += `<div><strong>Rooms Available:</strong> ${q.rooms}</div>`;
   if (q.total) h += `<div style="font-weight:600;color:var(--primary)"><strong>Total:</strong> ${q.total}</div>`;
-  if (q.validity) h += `<div style="color:var(--warning);font-weight:600"><strong>Option Deadline:</strong> ${q.validity}</div>`;
+  if (q.validity) h += `<div style="color:var(--warning);font-weight:600"><strong>Option Deadline:</strong> <span style="cursor:pointer;border-bottom:1px dashed var(--warning)" onclick="editDeadlineInline(this,${q.id})">${q.validity}</span></div>`;
   /* status badge hidden - not visible to client */
   h += '</div>';
 
