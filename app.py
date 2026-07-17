@@ -2506,9 +2506,9 @@ Notes: {q.notes or 'N/A'}"""
         buf = io.BytesIO()
         wb.save(buf)
         buf.seek(0)
-        return Response(buf.getvalue(),
-                        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                        headers={'Content-Disposition': 'attachment; filename=Partivia_Budget.xlsx'})
+        return send_file(buf, as_attachment=True,
+                         download_name='Partivia_Budget.xlsx',
+                         mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
 
     # ── Export Excel comparativo ──────────────────────────────────────────
 
