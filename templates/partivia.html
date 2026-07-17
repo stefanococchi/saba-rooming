@@ -1438,7 +1438,7 @@ function findFBPrice(fbOptions, mealType) {
   if (!fbOptions || !fbOptions.length) return null;
   const keywords = {
     'lunch': ['lunch', 'pranzo', 'almuerzo'],
-    'dinner': ['dinner', 'cena'],
+    'dinner': ['dinner', 'cena', 'gala', 'cocktail dinner'],
     'breakfast': ['breakfast', 'colazione', 'desayuno'],
     'coffee': ['coffee', 'break'],
   };
@@ -1519,7 +1519,8 @@ function calcBudget() {
     const lunchPP = ov.lunch_pp ?? findFBPrice(best.fb_options, 'lunch');
     const meetingRate = ov.meeting_rate ?? findMeetingRate(best.meeting_rooms);
 
-    const dinnerRate = ov.dinner_pp ?? dinnerPP;
+    const dinnerFromDB = findFBPrice(best.fb_options, 'dinner');
+    const dinnerRate = ov.dinner_pp ?? dinnerFromDB ?? (dinnerPP || null);
 
     const roomsCost = roomRate ? rooms * roomRate * nights : null;
     const lunchCost = lunchPP ? pax * lunchPP * lunches : null;
