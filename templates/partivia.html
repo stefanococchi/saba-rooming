@@ -1532,9 +1532,10 @@ function calcBudget() {
     if (dinnerCost !== null) { total += dinnerCost; hasData = true; }
 
     const vat = best.vat_included || '';
+    const bestId = best.id;
 
     rows.push({
-      key, hotel: hotel.hotel, city: hotel.city, stars: hotel.stars,
+      key, hotel: hotel.hotel, city: hotel.city, stars: hotel.stars, bestId,
       roomRate, lunchPP, meetingRate, dinnerRate,
       roomsCost, lunchCost, meetingCost, dinnerCost,
       total: hasData ? total : null, vat,
@@ -1562,10 +1563,34 @@ function calcBudget() {
       <td style="${subStyle}">${fmtEur(r.meetingCost)}</td>
       ${editableCell(r.dinnerRate, '', r.key, 'dinner_pp', r.dinnerRate === null || r.dinnerRate === 0)}
       <td style="${subStyle}">${fmtEur(r.dinnerCost)}</td>
-      <td style="text-align:center;font-size:11px">${r.vat === 'yes' ? '<span style="color:var(--success)">incl.</span>' : r.vat === 'no' ? '<span style="color:var(--error)">excl.</span>' : '<span style="color:var(--on-surface-variant)">?</span>'}</td>
+      <td style="text-align:center;font-size:11px;cursor:pointer" onclick="cycleVat(this,'${r.key}',${r.bestId})">${r.vat === 'yes' ? '<span style="color:var(--success)">incl.</span>' : r.vat === 'no' ? '<span style="color:var(--error)">excl.</span>' : '<span style="color:var(--on-surface-variant)">?</span>'}</td>
       <td style="text-align:right;font-weight:700;font-size:14px;color:var(--primary)">${fmtEur(r.total)}</td>
     </tr>`;
   }).join('');
+}
+
+// ── Cycle VAT in budget ───────────────────────
+async function cycleVat(td, hotelKey, qid) {
+  const cycle = {'yes': 'no', 'no': 'unknown', 'unknown': 'yes', '': 'yes'};
+  const current = td.textContent.trim() === 'incl.' ? 'yes' : td.textContent.trim() === 'excl.' ? 'no' : '';
+  const next = cycle[current] || 'yes';
+  try {
+    const r = await fetch(`/api/partivia/quote/${qid}`, {
+      method: 'PATCH',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({vat_included: next}),
+    });
+    if ((await r.json()).ok) {
+      // Update HOTELS_DATA so recalc uses new value
+      for (const key in HOTELS_DATA) {
+        if (key === hotelKey) {
+          HOTELS_DATA[key].versions.forEach(v => { if (v.id === qid) v.vat_included = next; });
+        }
+      }
+      calcBudget();
+      showSnack('VAT updated');
+    }
+  } catch(e) { showSnack('Error saving VAT', 3000); }
 }
 
 // ── Email History ─────────────────────────────
