@@ -1693,6 +1693,7 @@ EMAIL TEXT:
         return jsonify(ok=True, results=results)
 
     @app.post('/api/partivia/reparse-all')
+    def partivia_reparse_all():
         """Re-generate raw_summary for ALL quotes using existing DB data.
         Works even without original email text — builds a structured
         description from stored fields and asks the LLM to produce a
