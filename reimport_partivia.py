@@ -11,6 +11,7 @@ Requires:
 import asyncio
 import base64
 import logging
+import os
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -20,6 +21,10 @@ import httpx
 # Add saba-form/mail_digest/src to path for GraphClient
 MAIL_DIGEST = Path(__file__).parent.parent / "saba-form" / "mail_digest"
 sys.path.insert(0, str(MAIL_DIGEST / "src"))
+
+# Load .env from saba-form/mail_digest (MS365 credentials)
+from dotenv import load_dotenv  # noqa: E402
+load_dotenv(MAIL_DIGEST / ".env", override=True)
 
 from mail_digest.graph.client import GraphClient  # noqa: E402
 
@@ -143,26 +148,26 @@ async def fetch_messages(client: GraphClient, folder: FolderInfo) -> list[Messag
 
 
 async def fetch_attachments(client: GraphClient, message: MessageData) -> None:
+    # Fetch full attachment list (no $select filter - causes 400 on inline attachments)
     data = await client.get(
         f"/users/{MAILBOX}/messages/{message.id}/attachments",
-        params={"$select": "id,name,contentType,size"},
     )
+    # Useful extensions for text extraction
+    USEFUL_EXT = {".pdf", ".txt", ".csv", ".html", ".htm", ".xlsx", ".xls", ".doc", ".docx"}
+
     for att in data.get("value", []):
         name = att.get("name", "unknown")
-        att_id = att.get("id", "")
-        if not att_id or name.endswith(".ics"):
+        ext = Path(name).suffix.lower()
+
+        # Skip inline images, calendar invites, and non-useful files
+        if att.get("isInline", False):
+            continue
+        if name.endswith(".ics"):
+            continue
+        if ext not in USEFUL_EXT:
             continue
 
-        try:
-            att_full = await client.get(
-                f"/users/{MAILBOX}/messages/{message.id}/attachments/{att_id}",
-                params={"$select": "contentBytes"},
-            )
-            content_b64 = att_full.get("contentBytes", "")
-        except Exception as e:
-            logger.warning("Error downloading attachment %s: %s", name, e)
-            continue
-
+        content_b64 = att.get("contentBytes", "")
         if not content_b64:
             continue
 
