@@ -579,6 +579,8 @@ textarea { resize:vertical; min-height:120px; }
               <th colspan="2" style="text-align:center;border-bottom:2px solid rgba(255,255,255,.3);font-size:11px;letter-spacing:1px;color:#fff">MEETING</th>
               <th colspan="2" style="text-align:center;border-bottom:2px solid rgba(255,255,255,.3);font-size:11px;letter-spacing:1px;color:#fff">DINNER</th>
               <th rowspan="2" style="text-align:center;vertical-align:bottom">VAT</th>
+              <th rowspan="2" style="text-align:right;vertical-align:bottom">NET</th>
+              <th rowspan="2" style="text-align:right;vertical-align:bottom">VAT €</th>
               <th rowspan="2" style="text-align:right;font-weight:700;vertical-align:bottom">TOTAL</th>
             </tr>
             <tr>
@@ -1534,11 +1536,38 @@ function calcBudget() {
     const vat = best.vat_included || '';
     const bestId = best.id;
 
+    // VAT calculation: rooms 10%, meeting 21%, lunch/dinner 10%
+    let netTotal = null, vatAmount = null;
+    if (hasData) {
+      if (vat === 'yes') {
+        // Prices include VAT — scorporate
+        const rNet = roomsCost ? roomsCost / 1.10 : 0;
+        const mNet = meetingCost ? meetingCost / 1.21 : 0;
+        const lNet = lunchCost ? lunchCost / 1.10 : 0;
+        const dNet = dinnerCost ? dinnerCost / 1.10 : 0;
+        netTotal = rNet + mNet + lNet + dNet;
+        vatAmount = total - netTotal;
+      } else if (vat === 'no') {
+        // Prices exclude VAT — add it
+        netTotal = total;
+        const rVat = roomsCost ? roomsCost * 0.10 : 0;
+        const mVat = meetingCost ? meetingCost * 0.21 : 0;
+        const lVat = lunchCost ? lunchCost * 0.10 : 0;
+        const dVat = dinnerCost ? dinnerCost * 0.10 : 0;
+        vatAmount = rVat + mVat + lVat + dVat;
+        total = netTotal + vatAmount;
+      } else {
+        // Unknown — show total as-is, no VAT split
+        netTotal = total;
+        vatAmount = null;
+      }
+    }
+
     rows.push({
       key, hotel: hotel.hotel, city: hotel.city, stars: hotel.stars, bestId,
       roomRate, lunchPP, meetingRate, dinnerRate,
       roomsCost, lunchCost, meetingCost, dinnerCost,
-      total: hasData ? total : null, vat,
+      total: hasData ? total : null, vat, netTotal, vatAmount,
     });
   }
 
@@ -1563,16 +1592,19 @@ function calcBudget() {
       <td style="${subStyle}">${fmtEur(r.meetingCost)}</td>
       ${editableCell(r.dinnerRate, '', r.key, 'dinner_pp', r.dinnerRate === null || r.dinnerRate === 0)}
       <td style="${subStyle}">${fmtEur(r.dinnerCost)}</td>
-      <td style="text-align:center;font-size:11px;cursor:pointer" onclick="cycleVat(this,'${r.key}',${r.bestId})">${r.vat === 'yes' ? '<span style="color:var(--success)">incl.</span>' : r.vat === 'no' ? '<span style="color:var(--error)">excl.</span>' : '<span style="color:var(--on-surface-variant)">?</span>'}</td>
-      <td style="text-align:right;font-weight:700;font-size:14px;color:var(--primary)">${fmtEur(r.total)}</td>
+      <td style="text-align:center;font-size:12px;font-weight:600;cursor:pointer" onclick="cycleVat(this,'${r.key}',${r.bestId})">${r.vat === 'yes' ? '<span style="color:var(--success)">Y</span>' : r.vat === 'no' ? '<span style="color:var(--error)">N</span>' : '<span style="color:var(--on-surface-variant)">?</span>'}</td>
+      <td style="text-align:right;font-size:12px;color:var(--on-surface-variant)">${fmtEur(r.netTotal)}</td>
+      <td style="text-align:right;font-size:12px;color:${r.vat === 'no' ? 'var(--error)' : 'var(--on-surface-variant)'}">${r.vatAmount !== null ? fmtEur(Math.round(r.vatAmount)) : '—'}</td>
+      <td style="text-align:right;font-weight:700;font-size:14px;color:var(--primary)">${fmtEur(r.total !== null ? Math.round(r.total) : null)}</td>
     </tr>`;
   }).join('');
 }
 
 // ── Cycle VAT in budget ───────────────────────
 async function cycleVat(td, hotelKey, qid) {
-  const cycle = {'yes': 'no', 'no': 'unknown', 'unknown': 'yes', '': 'yes'};
-  const current = td.textContent.trim() === 'incl.' ? 'yes' : td.textContent.trim() === 'excl.' ? 'no' : '';
+  const cycle = {'yes': 'no', 'no': 'yes', '': 'yes', 'unknown': 'yes'};
+  const txt = td.textContent.trim();
+  const current = txt === 'Y' ? 'yes' : txt === 'N' ? 'no' : '';
   const next = cycle[current] || 'yes';
   try {
     const r = await fetch(`/api/partivia/quote/${qid}`, {
