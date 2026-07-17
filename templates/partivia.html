@@ -482,6 +482,7 @@ textarea { resize:vertical; min-height:120px; }
             <th>Cancellation</th>
             <th>Payment</th>
             <th>Option Deadline</th>
+            <th>Notes</th>
             <!-- <th>Commission</th> -->
             <th>Included Services</th>
           </tr>
@@ -491,13 +492,14 @@ textarea { resize:vertical; min-height:120px; }
           {% for q in quotes %}
           {% if q.city != current_city.val %}
           {% if current_city.update({'val': q.city}) %}{% endif %}
-          <tr class="city-header"><td colspan="5">{{ q.city }}</td></tr>
+          <tr class="city-header"><td colspan="6">{{ q.city }}</td></tr>
           {% endif %}
           <tr>
             <td class="hotel-name">{{ q.hotel_name }}</td>
             <td class="long-text editable" data-field="cancellation_policy" data-id="{{ q.id }}" onclick="editTermsCell(this)" style="cursor:pointer">{{ q.cancellation_policy or '—' }}</td>
             <td class="long-text editable" data-field="payment_terms" data-id="{{ q.id }}" onclick="editTermsCell(this)" style="cursor:pointer">{{ q.payment_terms or '—' }}</td>
             <td class="editable" data-field="validity_date" data-id="{{ q.id }}" style="font-weight:600;color:var(--warning);cursor:pointer" onclick="editTermsCell(this)">{{ q.validity_date or '—' }}</td>
+            <td class="long-text editable" data-field="notes" data-id="{{ q.id }}" onclick="editTermsCell(this)" style="cursor:pointer">{{ q.notes or '—' }}</td>
             <!-- <td>{{ q.commission or '—' }}</td> -->
             <td class="long-text">{{ q.included_services or '—' }}</td>
           </tr>
