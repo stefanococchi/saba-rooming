@@ -2039,6 +2039,217 @@ Notes: {q.notes or 'N/A'}"""
         db.session.commit()
         return jsonify(ok=True, count=len(quotes))
 
+    # ── Export Budget Excel with formulas ────────────────────────────────
+
+    @app.get('/api/partivia/budget-export')
+    def partivia_budget_export():
+        import io
+        import re
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side, numbers
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = 'Budget'
+
+        # Styles
+        hdr_font = Font(bold=True, color='FFFFFF', size=11)
+        hdr_fill = PatternFill(start_color='A44227', end_color='A44227', fill_type='solid')
+        param_fill = PatternFill(start_color='FFF3E0', end_color='FFF3E0', fill_type='solid')
+        param_font = Font(bold=True, size=11)
+        thin_border = Border(
+            left=Side(style='thin'), right=Side(style='thin'),
+            top=Side(style='thin'), bottom=Side(style='thin'))
+        eur_fmt = '#,##0'
+        pct_fmt = '0%'
+
+        # ── Parameters section (rows 1-7) ──
+        # Load saved params from budget overrides
+        ov_row = BudgetOverride.query.first()
+        ov_data = ov_row.data if ov_row else {}
+        params = ov_data.get('_params', {})
+
+        param_labels = [
+            ('Rooms', int(params.get('rooms', 50))),
+            ('Nights', int(params.get('nights', 2))),
+            ('Participants', int(params.get('pax', 50))),
+            ('Lunches', int(params.get('lunches', 2))),
+            ('Half-day Meetings', int(params.get('meetings', 2))),
+            ('VAT Rooms & F&B', 0.10),
+            ('VAT Meeting Rooms', 0.21),
+        ]
+        for i, (label, val) in enumerate(param_labels, 1):
+            ws.cell(row=i, column=1, value=label).font = param_font
+            ws.cell(row=i, column=1).fill = param_fill
+            c = ws.cell(row=i, column=2, value=val)
+            c.fill = param_fill
+            c.font = Font(bold=True, size=12, color='A44227')
+            if isinstance(val, float):
+                c.number_format = pct_fmt
+
+        # Parameter cell references
+        P_ROOMS = '$B$1'
+        P_NIGHTS = '$B$2'
+        P_PAX = '$B$3'
+        P_LUNCHES = '$B$4'
+        P_MEETINGS = '$B$5'
+        P_VAT_FB = '$B$6'
+        P_VAT_MTG = '$B$7'
+
+        # ── Header row (row 9) ──
+        HDR_ROW = 9
+        headers = ['Hotel', 'City', 'Room/night', 'Rooms Subtotal',
+                   'Lunch/pax', 'Lunch Subtotal',
+                   'Meeting Room', 'Meeting Subtotal',
+                   'Dinner/pax', 'Dinner Subtotal',
+                   'VAT incl.', 'NET', 'VAT €', 'TOTAL']
+        for col, h in enumerate(headers, 1):
+            c = ws.cell(row=HDR_ROW, column=col, value=h)
+            c.font = hdr_font
+            c.fill = hdr_fill
+            c.alignment = Alignment(horizontal='center', wrap_text=True)
+            c.border = thin_border
+
+        # ── Hotel rows ──
+        quotes = (PartiviaQuote.query
+                  .order_by(PartiviaQuote.city, PartiviaQuote.hotel_name)
+                  .all())
+
+        # Group by hotel (best = most complete)
+        hotels_seen = {}
+        for q in quotes:
+            key = q.hotel_name.lower().replace("'", "")
+            if key not in hotels_seen:
+                hotels_seen[key] = q
+            else:
+                existing = hotels_seen[key]
+                if len(q.room_rates) + len(q.meeting_rooms) + len(q.fb_options) > \
+                   len(existing.room_rates) + len(existing.meeting_rooms) + len(existing.fb_options):
+                    hotels_seen[key] = q
+
+        def parse_price(s):
+            if not s:
+                return None
+            cleaned = re.sub(r'[^\d.,]', '', s).replace('.', '', s.count('.') - 1).replace(',', '.')
+            try:
+                return float(cleaned)
+            except ValueError:
+                return None
+
+        def find_rate(rates):
+            # Entry-level: return lowest available rate
+            lowest = None
+            for rr in rates:
+                p = parse_price(rr.rate_per_night)
+                if p is not None and (lowest is None or p < lowest):
+                    lowest = p
+            return lowest
+
+        def find_fb(fb_opts, meal):
+            kws = {'lunch': ['lunch', 'pranzo', 'almuerzo'],
+                   'dinner': ['dinner', 'cena', 'gala', 'cocktail dinner']}
+            keywords = kws.get(meal, [meal])
+            for fb in fb_opts:
+                if any(k in (fb.meal_type or '').lower() for k in keywords):
+                    p = parse_price(fb.price_per_person)
+                    if p:
+                        return p
+            return None
+
+        def find_meeting(mrs):
+            for mr in mrs:
+                p = parse_price(mr.rate)
+                if p:
+                    return p
+            return None
+
+        row = HDR_ROW + 1
+        for key, q in sorted(hotels_seen.items(), key=lambda x: (x[1].city, x[1].hotel_name)):
+            hotel_ov = ov_data.get(key, {})
+
+            room_rate = hotel_ov.get('room_rate') or find_rate(q.room_rates)
+            lunch_pp = hotel_ov.get('lunch_pp') or find_fb(q.fb_options, 'lunch')
+            meeting_rate = hotel_ov.get('meeting_rate') or find_meeting(q.meeting_rooms)
+            dinner_pp = hotel_ov.get('dinner_pp') or find_fb(q.fb_options, 'dinner')
+            vat = q.vat_included or 'unknown'
+
+            # Col A: Hotel
+            ws.cell(row=row, column=1, value=q.hotel_name).font = Font(bold=True)
+            # Col B: City
+            ws.cell(row=row, column=2, value=q.city)
+            # Col C: Room/night (editable value)
+            ws.cell(row=row, column=3, value=room_rate).number_format = eur_fmt
+            # Col D: Rooms Subtotal = C * Rooms * Nights
+            ws.cell(row=row, column=4).value = f'=IF(C{row}="","",C{row}*{P_ROOMS}*{P_NIGHTS})'
+            ws.cell(row=row, column=4).number_format = eur_fmt
+            # Col E: Lunch/pax
+            ws.cell(row=row, column=5, value=lunch_pp).number_format = eur_fmt
+            # Col F: Lunch Subtotal = E * Pax * Lunches
+            ws.cell(row=row, column=6).value = f'=IF(E{row}="","",E{row}*{P_PAX}*{P_LUNCHES})'
+            ws.cell(row=row, column=6).number_format = eur_fmt
+            # Col G: Meeting Room
+            ws.cell(row=row, column=7, value=meeting_rate).number_format = eur_fmt
+            # Col H: Meeting Subtotal = G * Meetings
+            ws.cell(row=row, column=8).value = f'=IF(G{row}="","",G{row}*{P_MEETINGS})'
+            ws.cell(row=row, column=8).number_format = eur_fmt
+            # Col I: Dinner/pax
+            ws.cell(row=row, column=9, value=dinner_pp).number_format = eur_fmt
+            # Col J: Dinner Subtotal = I * Pax
+            ws.cell(row=row, column=10).value = f'=IF(I{row}="","",I{row}*{P_PAX})'
+            ws.cell(row=row, column=10).number_format = eur_fmt
+            # Col K: VAT included (Y/N)
+            vat_label = 'Y' if vat == 'yes' else 'N' if vat == 'no' else '?'
+            ws.cell(row=row, column=11, value=vat_label).alignment = Alignment(horizontal='center')
+            # Col L: NET
+            # If Y: sum of subtotals/(1+vat_rate)
+            # If N: sum of subtotals as-is
+            net_formula = (
+                f'=IF(K{row}="Y",'
+                f'IF(D{row}<>"",D{row}/(1+{P_VAT_FB}),0)+IF(F{row}<>"",F{row}/(1+{P_VAT_FB}),0)'
+                f'+IF(H{row}<>"",H{row}/(1+{P_VAT_MTG}),0)+IF(J{row}<>"",J{row}/(1+{P_VAT_FB}),0),'
+                f'IF(D{row}<>"",D{row},0)+IF(F{row}<>"",F{row},0)+IF(H{row}<>"",H{row},0)+IF(J{row}<>"",J{row},0))'
+            )
+            ws.cell(row=row, column=12).value = net_formula
+            ws.cell(row=row, column=12).number_format = eur_fmt
+            # Col M: VAT €
+            # If Y: gross - net
+            # If N: each subtotal * vat_rate
+            vat_formula = (
+                f'=IF(K{row}="Y",'
+                f'(IF(D{row}<>"",D{row},0)+IF(F{row}<>"",F{row},0)+IF(H{row}<>"",H{row},0)+IF(J{row}<>"",J{row},0))-L{row},'
+                f'IF(K{row}="N",'
+                f'IF(D{row}<>"",D{row}*{P_VAT_FB},0)+IF(F{row}<>"",F{row}*{P_VAT_FB},0)'
+                f'+IF(H{row}<>"",H{row}*{P_VAT_MTG},0)+IF(J{row}<>"",J{row}*{P_VAT_FB},0),'
+                f'""))'
+            )
+            ws.cell(row=row, column=13).value = vat_formula
+            ws.cell(row=row, column=13).number_format = eur_fmt
+            # Col N: TOTAL = NET + VAT
+            ws.cell(row=row, column=14).value = f'=IF(M{row}="",L{row},L{row}+M{row})'
+            ws.cell(row=row, column=14).number_format = eur_fmt
+            ws.cell(row=row, column=14).font = Font(bold=True, size=12, color='A44227')
+
+            # Apply borders
+            for col in range(1, 15):
+                ws.cell(row=row, column=col).border = thin_border
+
+            row += 1
+
+        # Column widths
+        col_widths = [28, 14, 12, 14, 12, 14, 14, 14, 12, 14, 10, 14, 14, 14]
+        for i, w in enumerate(col_widths, 1):
+            from openpyxl.utils import get_column_letter
+            ws.column_dimensions[get_column_letter(i)].width = w
+
+        ws.freeze_panes = f'C{HDR_ROW + 1}'
+
+        buf = io.BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+        return Response(buf.getvalue(),
+                        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                        headers={'Content-Disposition': 'attachment; filename=Partivia_Budget.xlsx'})
+
     # ── Export Excel comparativo ──────────────────────────────────────────
 
     @app.get('/api/partivia/export')

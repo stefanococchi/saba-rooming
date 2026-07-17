@@ -556,15 +556,14 @@ textarea { resize:vertical; min-height:120px; }
           <label style="font-size:11px;font-weight:600;text-transform:uppercase;color:var(--on-surface-variant);display:block;margin-bottom:4px">Dinner €/person</label>
           <input type="number" id="budgetDinner" value="65" min="0" style="width:100%;padding:8px 10px;font-size:14px;border:1px solid var(--outline);border-radius:8px" oninput="saveBudgetParams();calcBudget()">
         </div>
-        <div style="flex:1;min-width:120px">
-          <label style="font-size:11px;font-weight:600;text-transform:uppercase;color:var(--on-surface-variant);display:block;margin-bottom:4px">Room Type</label>
-          <select id="budgetRoomType" style="width:100%;padding:8px 10px;font-size:14px;border:1px solid var(--outline);border-radius:8px" onchange="saveBudgetParams();calcBudget()">
-            <option value="double">Double / DUS</option>
-            <option value="single">Single</option>
-            <option value="twin">Twin</option>
-            <option value="suite">Suite</option>
-          </select>
-        </div>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+        <span style="font-size:12px;color:var(--on-surface-variant);font-style:italic">Budget calculated on entry-level room rates. Click any value to override.</span>
+        {% if not client_view %}
+        <a href="/api/partivia/budget-export" class="btn btn-sm" style="background:#A44227;color:#fff;border:none;display:flex;align-items:center;gap:6px;text-decoration:none">
+          <span class="material-icons-round" style="font-size:16px">download</span> Export XLSX
+        </a>
+        {% endif %}
       </div>
 
       <!-- Budget table -->
@@ -1390,7 +1389,7 @@ function saveBudgetParams() {
     lunches: document.getElementById('budgetLunches').value,
     meetings: document.getElementById('budgetMeetings').value,
     dinner: document.getElementById('budgetDinner').value,
-    roomType: document.getElementById('budgetRoomType').value,
+    roomType: 'entry',
   };
   saveBudgetOverrides();
 }
@@ -1404,7 +1403,7 @@ function restoreBudgetParams() {
   if (p.lunches) document.getElementById('budgetLunches').value = p.lunches;
   if (p.meetings) document.getElementById('budgetMeetings').value = p.meetings;
   if (p.dinner) document.getElementById('budgetDinner').value = p.dinner;
-  if (p.roomType) document.getElementById('budgetRoomType').value = p.roomType;
+  // roomType removed - always entry level
 }
 
 function parsePrice(str) {
@@ -1414,24 +1413,15 @@ function parsePrice(str) {
   return isNaN(num) ? null : num;
 }
 
-function findRate(rates, roomType) {
+function findRate(rates) {
+  // Entry-level: return the lowest available rate
   if (!rates || !rates.length) return null;
-  const keywords = {
-    'double': ['double', 'doble', 'doppi', 'dbl', 'dus'],
-    'single': ['single', 'singol', 'sgl', 'individual'],
-    'twin': ['twin', 'twn'],
-    'suite': ['suite', 'junior suite'],
-  };
-  const kws = keywords[roomType] || [roomType];
-  for (const rr of rates) {
-    const t = (rr.type || '').toLowerCase();
-    if (kws.some(k => t.includes(k))) return parsePrice(rr.rate);
-  }
+  let lowest = null;
   for (const rr of rates) {
     const p = parsePrice(rr.rate);
-    if (p) return p;
+    if (p !== null && (lowest === null || p < lowest)) lowest = p;
   }
-  return null;
+  return lowest;
 }
 
 function findFBPrice(fbOptions, mealType) {
@@ -1506,7 +1496,7 @@ function calcBudget() {
   const lunches = parseInt(document.getElementById('budgetLunches').value) || 0;
   const meetings = parseInt(document.getElementById('budgetMeetings').value) || 0;
   const dinnerPP = parseFloat(document.getElementById('budgetDinner').value) || 0;
-  const roomType = document.getElementById('budgetRoomType').value;
+  // Entry-level rates (no room type filter)
 
   const rows = [];
 
@@ -1515,7 +1505,7 @@ function calcBudget() {
     const best = hotel.versions.reduce((a, b) => a.completeness >= b.completeness ? a : b);
     const ov = budgetOverrides[key] || {};
 
-    const roomRate = ov.room_rate ?? findRate(best.room_rates, roomType);
+    const roomRate = ov.room_rate ?? findRate(best.room_rates);
     const lunchPP = ov.lunch_pp ?? findFBPrice(best.fb_options, 'lunch');
     const meetingRate = ov.meeting_rate ?? findMeetingRate(best.meeting_rooms);
 
