@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 MAILBOX = "info@sabae20.it"
 TARGET_FOLDER = "PARTIVIA SPAGNA"
-API_BASE = "http://localhost:5000"
+API_BASE = "https://web-production-394e6.up.railway.app"
 
 
 # ── Data structures ──────────────────────────────────────────────
