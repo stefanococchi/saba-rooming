@@ -311,10 +311,13 @@ textarea { resize:vertical; min-height:120px; }
         <div class="total" style="color:var(--warning);font-weight:600">Deadline: {{ q.validity_date }}</div>
         {% endif %}
       </div>
-      <!-- <div class="hotel-card-footer">
-        <span class="status-badge status-{{ q.quote_status.replace(' ','_') }}"
-              onclick="event.stopPropagation();cycleStatus(this,{{ q.id }})">{{ q.quote_status.replace('_',' ') }}</span>
-      </div> -->
+      {% if q.email_log_id %}
+      <div class="hotel-card-footer" style="display:flex;justify-content:flex-end">
+        <button class="icon-btn" onclick="event.stopPropagation();showEmailLog({{ q.email_log_id }})" title="View original email" style="color:var(--info)">
+          <span class="material-icons-round" style="font-size:18px">mail</span>
+        </button>
+      </div>
+      {% endif %}
     </div>
     {% endfor %}
   </div>
@@ -725,6 +728,7 @@ const HOTELS_DATA = {
         notes: {{ (q.notes or '')|tojson }},
         summary: {{ (q.raw_summary or '')|tojson }},
         status: {{ q.quote_status|tojson }},
+        email_log_id: {{ q.email_log_id or 'null' }},
         website: {{ (q.website_url or '')|tojson }},
         room_rates: [
           {% for rr in q.room_rates %}
@@ -941,6 +945,12 @@ function renderQuoteSection(q, label) {
   if (q.notes) {
     h += `<div><h4 style="${h4Style}">Notes</h4>`;
     h += `<div style="font-size:12px;line-height:1.5">${q.notes}</div></div>`;
+  }
+
+  if (q.email_log_id) {
+    h += `<div style="margin-top:10px">`;
+    h += `<button class="btn btn-outline btn-sm" onclick="event.stopPropagation();showEmailLog(${q.email_log_id})">`;
+    h += `<span class="material-icons-round" style="font-size:16px">mail</span> View original email</button></div>`;
   }
 
   return h;
