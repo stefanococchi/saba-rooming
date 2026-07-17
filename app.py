@@ -1138,6 +1138,14 @@ Per "azione": "update", valorizza "match_id" con l'ID dell'ospite corrispondente
         db.session.commit()
         return jsonify(ok=True)
 
+    @app.delete('/api/partivia/quotes-all')
+    def delete_all_partivia():
+        """Delete all Partivia quotes and their partivia email logs."""
+        PartiviaQuote.query.delete()
+        EmailLog.query.filter_by(log_type='partivia').delete()
+        db.session.commit()
+        return jsonify(ok=True)
+
     # ══════════════════════════════════════════════════════════════════════════
     # ██  PARTIVIA — Preventivi Hotel                                       ██
     # ══════════════════════════════════════════════════════════════════════════
