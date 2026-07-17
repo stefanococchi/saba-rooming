@@ -558,7 +558,7 @@ textarea { resize:vertical; min-height:120px; }
         </div>
       </div>
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-        <span style="font-size:12px;color:var(--on-surface-variant);font-style:italic">Budget calculated on entry-level room rates. Click any value to override.</span>
+        <span style="font-size:12px;color:var(--on-surface-variant);font-style:italic">Budget calculated on single-use room rates (DUS). Click any value to override.</span>
         {% if not client_view %}
         <a href="/api/partivia/budget-export" class="btn btn-sm" style="background:#A44227;color:#fff;border:none;display:flex;align-items:center;gap:6px;text-decoration:none">
           <span class="material-icons-round" style="font-size:16px">download</span> Export XLSX
@@ -1414,8 +1414,18 @@ function parsePrice(str) {
 }
 
 function findRate(rates) {
-  // Entry-level: return the lowest available rate
+  // Single use / DUS room rate
   if (!rates || !rates.length) return null;
+  const singleKws = ['single', 'singol', 'sgl', 'dus', 'individual', 'single use', 'single occupancy'];
+  // Try single use first
+  for (const rr of rates) {
+    const t = (rr.type || '').toLowerCase();
+    if (singleKws.some(k => t.includes(k))) {
+      const p = parsePrice(rr.rate);
+      if (p) return p;
+    }
+  }
+  // Fallback: lowest available
   let lowest = null;
   for (const rr of rates) {
     const p = parsePrice(rr.rate);

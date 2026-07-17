@@ -2137,7 +2137,15 @@ Notes: {q.notes or 'N/A'}"""
                 return None
 
         def find_rate(rates):
-            # Entry-level: return lowest available rate
+            # Single use / DUS room rate
+            single_kws = ['single', 'singol', 'sgl', 'dus', 'individual',
+                          'single use', 'single occupancy']
+            for rr in rates:
+                if any(k in (rr.room_type or '').lower() for k in single_kws):
+                    p = parse_price(rr.rate_per_night)
+                    if p:
+                        return p
+            # Fallback: lowest available
             lowest = None
             for rr in rates:
                 p = parse_price(rr.rate_per_night)
