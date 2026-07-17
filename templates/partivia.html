@@ -578,6 +578,7 @@ textarea { resize:vertical; min-height:120px; }
               <th colspan="2" style="text-align:center;border-bottom:2px solid rgba(255,255,255,.3);font-size:11px;letter-spacing:1px;color:#fff">LUNCH</th>
               <th colspan="2" style="text-align:center;border-bottom:2px solid rgba(255,255,255,.3);font-size:11px;letter-spacing:1px;color:#fff">MEETING</th>
               <th colspan="2" style="text-align:center;border-bottom:2px solid rgba(255,255,255,.3);font-size:11px;letter-spacing:1px;color:#fff">DINNER</th>
+              <th rowspan="2" style="text-align:center;vertical-align:bottom">VAT</th>
               <th rowspan="2" style="text-align:right;font-weight:700;vertical-align:bottom">TOTAL</th>
             </tr>
             <tr>
@@ -831,6 +832,7 @@ const HOTELS_DATA = {
         payment: {{ (q.payment_terms or '')|tojson }},
         validity: {{ (q.validity_date or '')|tojson }},
         /* commission: {{ (q.commission or '')|tojson }}, */
+        vat_included: {{ (q.vat_included or '')|tojson }},
         services: {{ (q.included_services or '')|tojson }},
         notes: {{ (q.notes or '')|tojson }},
         summary: {{ (q.raw_summary or '')|tojson }},
@@ -1529,11 +1531,13 @@ function calcBudget() {
     if (meetingCost !== null) { total += meetingCost; hasData = true; }
     if (dinnerCost !== null) { total += dinnerCost; hasData = true; }
 
+    const vat = best.vat_included || '';
+
     rows.push({
       key, hotel: hotel.hotel, city: hotel.city, stars: hotel.stars,
       roomRate, lunchPP, meetingRate, dinnerRate,
       roomsCost, lunchCost, meetingCost, dinnerCost,
-      total: hasData ? total : null,
+      total: hasData ? total : null, vat,
     });
   }
 
@@ -1558,6 +1562,7 @@ function calcBudget() {
       <td style="${subStyle}">${fmtEur(r.meetingCost)}</td>
       ${editableCell(r.dinnerRate, '', r.key, 'dinner_pp', r.dinnerRate === null || r.dinnerRate === 0)}
       <td style="${subStyle}">${fmtEur(r.dinnerCost)}</td>
+      <td style="text-align:center;font-size:11px">${r.vat === 'yes' ? '<span style="color:var(--success)">incl.</span>' : r.vat === 'no' ? '<span style="color:var(--error)">excl.</span>' : '<span style="color:var(--on-surface-variant)">?</span>'}</td>
       <td style="text-align:right;font-weight:700;font-size:14px;color:var(--primary)">${fmtEur(r.total)}</td>
     </tr>`;
   }).join('');

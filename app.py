@@ -39,12 +39,16 @@ def create_app():
     with app.app_context():
         db.create_all()
 
-        # Add log_type column to email_logs if missing
+        # Auto-migrate missing columns
         with db.engine.connect() as conn:
             from sqlalchemy import text, inspect
-            cols = [c['name'] for c in inspect(db.engine).get_columns('email_logs')]
-            if 'log_type' not in cols:
+            email_cols = [c['name'] for c in inspect(db.engine).get_columns('email_logs')]
+            if 'log_type' not in email_cols:
                 conn.execute(text("ALTER TABLE email_logs ADD COLUMN log_type VARCHAR(20) DEFAULT 'rooming'"))
+                conn.commit()
+            quote_cols = [c['name'] for c in inspect(db.engine).get_columns('partivia_quotes')]
+            if 'vat_included' not in quote_cols:
+                conn.execute(text("ALTER TABLE partivia_quotes ADD COLUMN vat_included VARCHAR(20)"))
                 conn.commit()
 
         # Migrate Italian statuses to English (one-time)
@@ -1590,7 +1594,105 @@ Reply ONLY with valid JSON (no markdown):
     # ── Re-parse all quotes from original emails ────────────────────────
 
     @app.post('/api/partivia/reparse-all')
-    def partivia_reparse_all():
+    @app.post('/api/partivia/extract-missing')
+    def partivia_extract_missing():
+        """Re-analyze saved emails to extract dinner prices and VAT info."""
+        import anthropic
+
+        client = anthropic.Anthropic()
+        results = []
+
+        # Get all quotes that have an email_log
+        quotes = PartiviaQuote.query.filter(
+            PartiviaQuote.email_log_id.isnot(None)
+        ).order_by(PartiviaQuote.city, PartiviaQuote.hotel_name).all()
+
+        for q in quotes:
+            log = EmailLog.query.get(q.email_log_id)
+            if not log:
+                results.append({'hotel': q.hotel_name, 'status': 'no email log'})
+                continue
+
+            # Check what's missing
+            has_dinner = any(
+                'dinner' in fb.meal_type.lower() or 'cena' in fb.meal_type.lower() or 'gala' in fb.meal_type.lower()
+                for fb in q.fb_options
+            )
+            has_vat = q.vat_included is not None
+
+            if has_dinner and has_vat:
+                results.append({'hotel': q.hotel_name, 'status': 'already complete'})
+                continue
+
+            prompt = f"""Analyze this hotel quote email and extract ONLY the following information:
+
+1. DINNER: Is there any dinner option offered? If yes, what is the price per person?
+   Look for: dinner, cena, gala dinner, cocktail dinner, evening meal, supper.
+   Also check any attached menus or F&B proposals.
+
+2. VAT: Are the ROOM rates VAT included or excluded?
+   Look for: VAT, IVA, tax included, tax excluded, +VAT, +IVA, impuestos.
+   Check room rate notes, general conditions, and fine print.
+
+Reply ONLY with valid JSON (no markdown):
+{{
+  "dinner_options": [
+    {{"meal_type": "Dinner", "price_per_person": "€ 65", "description": "3-course menu"}},
+  ],
+  "vat_included": "yes" or "no" or "unknown"
+}}
+
+If no dinner is offered at all, return empty list for dinner_options.
+If VAT status cannot be determined, use "unknown".
+
+HOTEL: {q.hotel_name} ({q.city})
+EMAIL TEXT:
+{log.testo[:6000]}"""
+
+            try:
+                response = client.messages.create(
+                    model='claude-haiku-4-5-20251001',
+                    max_tokens=1024,
+                    messages=[{'role': 'user', 'content': prompt}],
+                )
+                raw = response.content[0].text.strip()
+                if raw.startswith('```'):
+                    raw = raw.split('\n', 1)[1].rsplit('```', 1)[0].strip()
+
+                import json
+                parsed = json.loads(raw)
+
+                # Update VAT
+                vat = parsed.get('vat_included', 'unknown')
+                if vat in ('yes', 'no', 'unknown'):
+                    q.vat_included = vat
+
+                # Add dinner options if missing
+                dinner_opts = parsed.get('dinner_options', [])
+                if not has_dinner and dinner_opts:
+                    for d in dinner_opts:
+                        fb = PartiviaFBOption(
+                            quote_id=q.id,
+                            meal_type=d.get('meal_type', 'Dinner'),
+                            price_per_person=d.get('price_per_person'),
+                            menu_description=d.get('description'),
+                        )
+                        db.session.add(fb)
+
+                db.session.commit()
+                results.append({
+                    'hotel': q.hotel_name,
+                    'status': 'updated',
+                    'vat': vat,
+                    'dinners_added': len(dinner_opts) if not has_dinner else 0,
+                })
+
+            except Exception as e:
+                results.append({'hotel': q.hotel_name, 'status': f'error: {str(e)}'})
+
+        return jsonify(ok=True, results=results)
+
+    @app.post('/api/partivia/reparse-all')
         """Re-generate raw_summary for ALL quotes using existing DB data.
         Works even without original email text — builds a structured
         description from stored fields and asks the LLM to produce a
@@ -1874,7 +1976,7 @@ Notes: {q.notes or 'N/A'}"""
                       'payment_terms', 'validity_date', 'commission',
                       'total_estimate', 'included_services', 'notes',
                       'raw_summary', 'quote_status', 'image_url',
-                      'website_url', 'address'):
+                      'website_url', 'address', 'vat_included'):
             if field in data:
                 val = data[field]
                 if field == 'stars' and val is not None:
