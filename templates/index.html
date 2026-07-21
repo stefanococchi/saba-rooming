@@ -606,8 +606,8 @@ textarea { resize: vertical; min-height: 120px; }
               <!-- <th>Bus Rit.</th> -->
               <th>P.Linate</th>
               <th>P.Hotel</th>
-              <th>Camera Rich.</th>
-              <!-- <th>Camera Ass.</th> -->
+              <!-- <th>Camera Rich.</th> -->
+              <th>Camera Ass.</th>
               <th>Divide con</th>
               <th>Restr. Alim.</th>
               <th>Note Form</th>
@@ -638,8 +638,8 @@ textarea { resize: vertical; min-height: 120px; }
               <!-- <td class="{{ 'editable' if not client_view else '' }}" {% if not client_view %}data-field="pickup_bus_ritorno"{% endif %}>{{ g.pickup_bus_ritorno or '' }}</td> -->
               <td class="{{ 'editable bool-cell' if not client_view else '' }}" {% if not client_view %}data-field="parcheggio_linate"{% endif %}>{{ 'Sì' if g.parcheggio_linate else 'No' }}</td>
               <td class="{{ 'editable bool-cell' if not client_view else '' }}" {% if not client_view %}data-field="parcheggio_hotel"{% endif %}>{{ 'Sì' if g.parcheggio_hotel else 'No' }}</td>
-              <td class="{{ 'editable' if not client_view else '' }}" {% if not client_view %}data-field="tipo_camera"{% endif %}>{{ g.tipo_camera or '' }}</td>
-              <!-- <td class="{{ 'editable' if not client_view else '' }}" {% if not client_view %}data-field="camera_assegnata"{% endif %}>{{ g.camera_assegnata or '' }}</td> -->
+              <!-- <td class="{{ 'editable' if not client_view else '' }}" {% if not client_view %}data-field="tipo_camera"{% endif %}>{{ g.tipo_camera or '' }}</td> -->
+              <td class="{{ 'editable' if not client_view else '' }}" {% if not client_view %}data-field="camera_assegnata"{% endif %}>{{ g.camera_assegnata or '' }}</td>
               <td class="{{ 'editable' if not client_view else '' }}" {% if not client_view %}data-field="divide_stanza_con"{% endif %}>{{ g.divide_stanza_con or '' }}</td>
               <td class="{{ 'editable' if not client_view else '' }}" {% if not client_view %}data-field="restrizioni_alimentari"{% endif %}>{{ g.restrizioni_alimentari or '' }}</td>
               <td class="{{ 'editable' if not client_view else '' }}" {% if not client_view %}data-field="note_form"{% endif %}>{{ g.note_form or '' }}</td>
