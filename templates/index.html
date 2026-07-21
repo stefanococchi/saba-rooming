@@ -597,7 +597,7 @@ textarea { resize: vertical; min-height: 120px; }
               <th>Email</th>
               <th>Telefono</th>
               <th>Sede</th>
-              <th>8</th><th>9</th><th>10</th><th>11</th>
+              <th>8</th><th>9</th><th>10</th><!-- <th>11</th> -->
               <th>Volo And.</th>
               <th>Volo Rit.</th>
               <!-- <th>Aer. Part.</th> -->
@@ -629,7 +629,7 @@ textarea { resize: vertical; min-height: 120px; }
               <td class="{{ 'editable bool-cell' if not client_view else '' }}" {% if not client_view %}data-field="presenza_8"{% endif %}>{{ 'Sì' if g.presenza_8 else 'No' }}</td>
               <td class="{{ 'editable bool-cell' if not client_view else '' }}" {% if not client_view %}data-field="presenza_9"{% endif %}>{{ 'Sì' if g.presenza_9 else 'No' }}</td>
               <td class="{{ 'editable bool-cell' if not client_view else '' }}" {% if not client_view %}data-field="presenza_10"{% endif %}>{{ 'Sì' if g.presenza_10 else 'No' }}</td>
-              <td class="{{ 'editable bool-cell' if not client_view else '' }}" {% if not client_view %}data-field="presenza_11"{% endif %}>{{ 'Sì' if g.presenza_11 else 'No' }}</td>
+              <!-- <td class="{{ 'editable bool-cell' if not client_view else '' }}" {% if not client_view %}data-field="presenza_11"{% endif %}>{{ 'Sì' if g.presenza_11 else 'No' }}</td> -->
               <td class="{{ 'editable' if not client_view else '' }}" {% if not client_view %}data-field="volo_arrivo"{% endif %}>{{ g.volo_arrivo or '' }}</td>
               <td class="{{ 'editable' if not client_view else '' }}" {% if not client_view %}data-field="volo_partenza"{% endif %}>{{ g.volo_partenza or '' }}</td>
               <!-- <td class="{{ 'editable' if not client_view else '' }}" {% if not client_view %}data-field="aeroporto_partenza"{% endif %}>{{ g.aeroporto_partenza or '' }}</td> -->
