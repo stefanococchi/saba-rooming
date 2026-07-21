@@ -499,6 +499,7 @@ textarea { resize: vertical; min-height: 120px; }
         Importa XLSX
         <input type="file" accept=".xlsx,.xls" id="importFile" hidden>
       </label>
+      {% endif %}
       <a class="btn btn-outline btn-sm" href="/api/export">
         <span class="material-icons-round">download</span>
         Esporta XLSX
@@ -508,7 +509,6 @@ textarea { resize: vertical; min-height: 120px; }
         Aggiungi
       </button>
       <span style="width:1px;height:24px;background:var(--outline-variant);margin:0 4px"></span>
-      {% endif %}
       <button class="btn btn-outline btn-sm" onclick="showStanze(8)">
         <span class="material-icons-round">bed</span>
         Stanze 8
@@ -600,14 +600,14 @@ textarea { resize: vertical; min-height: 120px; }
               <th>8</th><th>9</th><th>10</th><th>11</th>
               <th>Volo And.</th>
               <th>Volo Rit.</th>
-              <th>Aer. Part.</th>
-              <th>Aer. Arr.</th>
-              <th>Bus And.</th>
-              <th>Bus Rit.</th>
+              <!-- <th>Aer. Part.</th> -->
+              <!-- <th>Aer. Arr.</th> -->
+              <!-- <th>Bus And.</th> -->
+              <!-- <th>Bus Rit.</th> -->
               <th>P.Linate</th>
               <th>P.Hotel</th>
               <th>Camera Rich.</th>
-              <th>Camera Ass.</th>
+              <!-- <th>Camera Ass.</th> -->
               <th>Divide con</th>
               <th>Restr. Alim.</th>
               <th>Note Form</th>
@@ -632,14 +632,14 @@ textarea { resize: vertical; min-height: 120px; }
               <td class="{{ 'editable bool-cell' if not client_view else '' }}" {% if not client_view %}data-field="presenza_11"{% endif %}>{{ 'Sì' if g.presenza_11 else 'No' }}</td>
               <td class="{{ 'editable' if not client_view else '' }}" {% if not client_view %}data-field="volo_arrivo"{% endif %}>{{ g.volo_arrivo or '' }}</td>
               <td class="{{ 'editable' if not client_view else '' }}" {% if not client_view %}data-field="volo_partenza"{% endif %}>{{ g.volo_partenza or '' }}</td>
-              <td class="{{ 'editable' if not client_view else '' }}" {% if not client_view %}data-field="aeroporto_partenza"{% endif %}>{{ g.aeroporto_partenza or '' }}</td>
-              <td class="{{ 'editable' if not client_view else '' }}" {% if not client_view %}data-field="aeroporto_arrivo"{% endif %}>{{ g.aeroporto_arrivo or '' }}</td>
-              <td class="{{ 'editable' if not client_view else '' }}" {% if not client_view %}data-field="pickup_bus_andata"{% endif %}>{{ g.pickup_bus_andata or '' }}</td>
-              <td class="{{ 'editable' if not client_view else '' }}" {% if not client_view %}data-field="pickup_bus_ritorno"{% endif %}>{{ g.pickup_bus_ritorno or '' }}</td>
+              <!-- <td class="{{ 'editable' if not client_view else '' }}" {% if not client_view %}data-field="aeroporto_partenza"{% endif %}>{{ g.aeroporto_partenza or '' }}</td> -->
+              <!-- <td class="{{ 'editable' if not client_view else '' }}" {% if not client_view %}data-field="aeroporto_arrivo"{% endif %}>{{ g.aeroporto_arrivo or '' }}</td> -->
+              <!-- <td class="{{ 'editable' if not client_view else '' }}" {% if not client_view %}data-field="pickup_bus_andata"{% endif %}>{{ g.pickup_bus_andata or '' }}</td> -->
+              <!-- <td class="{{ 'editable' if not client_view else '' }}" {% if not client_view %}data-field="pickup_bus_ritorno"{% endif %}>{{ g.pickup_bus_ritorno or '' }}</td> -->
               <td class="{{ 'editable bool-cell' if not client_view else '' }}" {% if not client_view %}data-field="parcheggio_linate"{% endif %}>{{ 'Sì' if g.parcheggio_linate else 'No' }}</td>
               <td class="{{ 'editable bool-cell' if not client_view else '' }}" {% if not client_view %}data-field="parcheggio_hotel"{% endif %}>{{ 'Sì' if g.parcheggio_hotel else 'No' }}</td>
               <td class="{{ 'editable' if not client_view else '' }}" {% if not client_view %}data-field="tipo_camera"{% endif %}>{{ g.tipo_camera or '' }}</td>
-              <td class="{{ 'editable' if not client_view else '' }}" {% if not client_view %}data-field="camera_assegnata"{% endif %}>{{ g.camera_assegnata or '' }}</td>
+              <!-- <td class="{{ 'editable' if not client_view else '' }}" {% if not client_view %}data-field="camera_assegnata"{% endif %}>{{ g.camera_assegnata or '' }}</td> -->
               <td class="{{ 'editable' if not client_view else '' }}" {% if not client_view %}data-field="divide_stanza_con"{% endif %}>{{ g.divide_stanza_con or '' }}</td>
               <td class="{{ 'editable' if not client_view else '' }}" {% if not client_view %}data-field="restrizioni_alimentari"{% endif %}>{{ g.restrizioni_alimentari or '' }}</td>
               <td class="{{ 'editable' if not client_view else '' }}" {% if not client_view %}data-field="note_form"{% endif %}>{{ g.note_form or '' }}</td>
