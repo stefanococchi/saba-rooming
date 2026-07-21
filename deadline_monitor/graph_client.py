@@ -88,3 +88,39 @@ def fetch_recent_emails(
 
     logger.info("Fetched %d emails from %s since %s", len(messages), mailbox, since_iso)
     return messages
+
+
+CATEGORY_NAME = "Deadline Processed"
+
+
+def _ensure_category(mailbox: str) -> None:
+    """Create the 'Deadline Processed' category if it doesn't exist."""
+    url = f"{GRAPH_BASE}/users/{mailbox}/outlook/masterCategories"
+    with httpx.Client(timeout=15.0) as client:
+        resp = client.get(url, headers=_headers())
+        resp.raise_for_status()
+        existing = [c.get("displayName", "") for c in resp.json().get("value", [])]
+        if CATEGORY_NAME not in existing:
+            client.post(url, headers=_headers(), json={
+                "displayName": CATEGORY_NAME,
+                "color": "preset2",  # green
+            }).raise_for_status()
+            logger.info("Created category '%s'", CATEGORY_NAME)
+
+
+def tag_email(mailbox: str, message_id: str) -> None:
+    """Add 'Deadline Processed' category to a message."""
+    _ensure_category(mailbox)
+    url = f"{GRAPH_BASE}/users/{mailbox}/messages/{message_id}"
+    with httpx.Client(timeout=15.0) as client:
+        # Get current categories
+        resp = client.get(url, headers=_headers(), params={"$select": "categories"})
+        resp.raise_for_status()
+        categories = resp.json().get("categories", [])
+        if CATEGORY_NAME in categories:
+            return
+        categories.append(CATEGORY_NAME)
+        # Update
+        resp = client.patch(url, headers=_headers(), json={"categories": categories})
+        resp.raise_for_status()
+        logger.info("Tagged message %s with '%s'", message_id[:20], CATEGORY_NAME)

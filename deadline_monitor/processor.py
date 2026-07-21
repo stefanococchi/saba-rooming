@@ -19,24 +19,59 @@ You will receive:
 
 Your task: determine if this email confirms an extension of the option deadline for one of the hotels.
 
-Reply ONLY with valid JSON (no markdown):
+Reply ONLY with valid JSON (no markdown, no ```json blocks):
 {
-  "is_deadline_extension": true/false,
+  "is_deadline_extension": true,
   "hotel_name": "exact hotel name as in the email",
   "new_deadline": "DD/MM/YYYY",
   "notes": "brief summary in English of what was confirmed",
-  "confidence": "high" or "medium" or "low",
-  "match_hotel_id": <id from the list if you can match, else null>
+  "confidence": "high",
+  "match_hotel_id": 123
 }
 
-If the email is NOT about a deadline extension (e.g. it's a new quote, a cancellation, etc.), set is_deadline_extension to false and leave other fields null.
+If the email is NOT about a deadline extension (e.g. it's a new quote, a cancellation, a newsletter, spam, auto-reply, etc.), reply with exactly:
+{"is_deadline_extension": false}
 
 IMPORTANT:
 - Extract the NEW deadline date, not the old one
 - Match the hotel by name, being flexible with spelling variations
 - If the email mentions multiple hotels, return an array of objects under "results" key
 - Dates must be in DD/MM/YYYY format
+- You MUST always reply with valid JSON, nothing else
 """
+
+# Domains/senders to skip entirely (newsletters, spam, auto-replies)
+SKIP_SENDERS = {
+    "no-reply@", "noreply@", "newsletter@", "marketing@",
+    "commerciale@veratour", "info@7796726", "no-reply@m1.email.samsung",
+    "no-reply@info.costa.it", "no-reply@indeed.com",
+}
+
+# Subject patterns to skip
+SKIP_SUBJECTS = [
+    r"respuesta\s+autom[áa]tica",
+    r"out\s+of\s+office",
+    r"fuori\s+ufficio",
+    r"riepilogo\s+settimanale",
+    r"apertura\s+vendite",
+    r"prova\s+a\s+vincere",
+]
+
+
+def should_skip_email(sender: str, subject: str) -> bool:
+    """Pre-filter: skip obvious non-relevant emails."""
+    sender_lower = sender.lower()
+    subject_lower = subject.lower()
+
+    for skip in SKIP_SENDERS:
+        if skip in sender_lower:
+            return True
+
+    for pattern in SKIP_SUBJECTS:
+        if re.search(pattern, subject_lower, re.IGNORECASE):
+            return True
+
+    return False
 
 
 def _strip_html(html: str) -> str:
@@ -59,7 +94,39 @@ def extract_email_text(msg: dict) -> str:
     content = body.get("content", "")
     if body.get("contentType", "").lower() == "html":
         content = _strip_html(content)
+    # Truncate very long emails to avoid token waste
+    if len(content) > 8000:
+        content = content[:8000] + "\n\n[... truncated ...]"
     return content.strip() or msg.get("bodyPreview", "")
+
+
+def _extract_json(raw: str) -> dict | None:
+    """Try to extract JSON from LLM response, handling markdown wrapping."""
+    raw = raw.strip()
+
+    # Try direct parse first
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        pass
+
+    # Try extracting from ```json ... ``` blocks
+    m = re.search(r'```(?:json)?\s*\n?(.*?)\n?\s*```', raw, re.DOTALL)
+    if m:
+        try:
+            return json.loads(m.group(1).strip())
+        except json.JSONDecodeError:
+            pass
+
+    # Try finding first { ... } block
+    m = re.search(r'\{.*\}', raw, re.DOTALL)
+    if m:
+        try:
+            return json.loads(m.group(0))
+        except json.JSONDecodeError:
+            pass
+
+    return None
 
 
 def parse_deadline_email(email_text: str, sender: str, subject: str,
@@ -89,7 +156,10 @@ def parse_deadline_email(email_text: str, sender: str, subject: str,
             messages=[{"role": "user", "content": user_message}],
         )
         raw = response.content[0].text.strip()
-        return json.loads(raw)
+        result = _extract_json(raw)
+        if result is None:
+            logger.warning("Could not parse LLM response as JSON: %s", raw[:200])
+        return result
     except Exception:
-        logger.exception("LLM parsing failed")
+        logger.exception("LLM call failed")
         return None

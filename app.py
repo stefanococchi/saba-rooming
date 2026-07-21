@@ -62,6 +62,15 @@ def create_app():
             if 'vat_included' not in quote_cols:
                 conn.execute(text("ALTER TABLE partivia_quotes ADD COLUMN vat_included VARCHAR(20)"))
                 conn.commit()
+            if 'address' not in quote_cols:
+                conn.execute(text("ALTER TABLE partivia_quotes ADD COLUMN address TEXT"))
+                conn.commit()
+            if 'image_url' not in quote_cols:
+                conn.execute(text("ALTER TABLE partivia_quotes ADD COLUMN image_url TEXT"))
+                conn.commit()
+            if 'website_url' not in quote_cols:
+                conn.execute(text("ALTER TABLE partivia_quotes ADD COLUMN website_url TEXT"))
+                conn.commit()
 
         # Migrate Italian statuses to English (one-time)
         _status_map = {

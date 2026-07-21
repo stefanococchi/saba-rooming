@@ -22,8 +22,8 @@ load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 # Add project root to path for models import
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from deadline_monitor.graph_client import fetch_recent_emails
-from deadline_monitor.processor import extract_email_text, parse_deadline_email
+from deadline_monitor.graph_client import fetch_recent_emails, tag_email
+from deadline_monitor.processor import extract_email_text, parse_deadline_email, should_skip_email
 
 logging.basicConfig(
     level=logging.INFO,
@@ -33,6 +33,17 @@ logger = logging.getLogger(__name__)
 
 MAILBOX = "info@sabae20.it"
 STATE_FILE = Path(__file__).resolve().parent / ".last_check"
+
+
+def _parse_date(date_str: str):
+    """Try to parse a date string in DD/MM/YYYY or other common formats."""
+    from datetime import datetime as dt
+    for fmt in ("%d/%m/%Y", "%d.%m.%Y", "%Y-%m-%d", "%d-%m-%Y"):
+        try:
+            return dt.strptime(date_str.strip(), fmt)
+        except (ValueError, AttributeError):
+            continue
+    return None
 
 
 def _load_last_check() -> str | None:
@@ -109,6 +120,16 @@ def _update_deadline(app, result: dict, email_text: str,
             return False
 
         old_deadline = quote.validity_date
+
+        # Only update if new deadline is later than current
+        if old_deadline and _parse_date(new_deadline) and _parse_date(old_deadline):
+            if _parse_date(new_deadline) < _parse_date(old_deadline):
+                logger.info(
+                    "Skipping %s: new deadline %s is earlier than current %s",
+                    quote.hotel_name, new_deadline, old_deadline,
+                )
+                return False
+
         quote.validity_date = new_deadline
         logger.info(
             "Updated %s deadline: %s -> %s",
@@ -159,12 +180,21 @@ def run(days: int = 3, dry_run: bool = False) -> dict:
 
     hotels_context = _get_hotels_context(app)
 
+    # Sort oldest first so newer deadlines always win
+    messages.sort(key=lambda m: m.get("receivedDateTime", ""))
+
     for msg in messages:
         msg_id = msg.get("internetMessageId", "")
         subject = msg.get("subject", "")
         sender = (
             msg.get("from", {}).get("emailAddress", {}).get("address", "unknown")
         )
+
+        # Pre-filter: skip spam/newsletters/auto-replies
+        if should_skip_email(sender, subject):
+            logger.debug("Skipping (pre-filter): '%s' from %s", subject, sender)
+            stats["skipped"] += 1
+            continue
 
         # Skip already processed
         if msg_id and _is_already_processed(app, msg_id):
@@ -210,6 +240,13 @@ def run(days: int = 3, dry_run: bool = False) -> dict:
 
             if _update_deadline(app, r, email_text, msg_id):
                 stats["updated"] += 1
+                # Tag the email in Outlook (disabled: needs MailboxSettings.ReadWrite permission)
+                # graph_msg_id = msg.get("id", "")
+                # if graph_msg_id:
+                #     try:
+                #         tag_email(MAILBOX, graph_msg_id)
+                #     except Exception:
+                #         logger.warning("Failed to tag email, continuing", exc_info=True)
             else:
                 stats["errors"] += 1
 
