@@ -248,6 +248,11 @@ textarea { resize:vertical; min-height:120px; }
       <span class="material-icons-round" style="font-size:16px">update</span> Set for All Hotels
     </button>
     <span id="deadlineStatus" style="font-size:12px;color:var(--on-surface-variant)"></span>
+    <span style="margin-left:auto"></span>
+    <button class="btn btn-sm" style="background:var(--tertiary);color:var(--on-tertiary)" onclick="runDeadlineMonitor()">
+      <span class="material-icons-round" style="font-size:16px">mail</span> Check Extension Emails
+    </button>
+    <span id="monitorStatus" style="font-size:12px;color:var(--on-surface-variant)"></span>
   </div>
 
   <!-- Stats -->
@@ -1038,6 +1043,39 @@ async function saveTermsCell(td, qid, field, value) {
       showSnack('Saved');
     }
   } catch(e) { showSnack('Error saving', 3000); }
+}
+
+// ── Deadline monitor ──────────────────────────
+async function runDeadlineMonitor() {
+  const statusEl = document.getElementById('monitorStatus');
+  statusEl.textContent = 'Checking emails...';
+  try {
+    const r = await fetch('/api/deadline-monitor/run', {method:'POST'});
+    const j = await r.json();
+    if (j.ok) {
+      statusEl.textContent = 'Running in background...';
+      // Poll logs after a few seconds to show results
+      setTimeout(async () => {
+        const lr = await fetch('/api/deadline-monitor/logs');
+        const logs = await lr.json();
+        if (logs.length > 0) {
+          const latest = logs[0];
+          statusEl.textContent = latest.summary || 'Done';
+          showSnack('Deadline check complete — ' + (latest.summary || 'no updates'));
+        } else {
+          statusEl.textContent = 'Done — no deadline extensions found';
+          showSnack('No deadline extension emails found');
+        }
+        setTimeout(()=>location.reload(), 2000);
+      }, 8000);
+    } else {
+      statusEl.textContent = 'Error';
+      showSnack('Failed to start deadline monitor');
+    }
+  } catch(e) {
+    statusEl.textContent = 'Error';
+    showSnack('Error: ' + e.message);
+  }
 }
 
 // ── Bulk deadline ─────────────────────────────

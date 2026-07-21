@@ -483,7 +483,7 @@ textarea { resize: vertical; min-height: 120px; }
     <span class="material-icons-round">arrow_back</span>
   </a>
   <span class="material-icons-round">hotel</span>
-  <h1>Saba Rooming</h1>
+  <h1>Saba Rooming{% if client_view %} — Client View{% endif %}</h1>
   <div class="spacer"></div>
   <span class="badge" id="countBadge">{{ guests|length }} ospiti</span>
 </div>
@@ -493,6 +493,7 @@ textarea { resize: vertical; min-height: 120px; }
   <!-- Toolbar compatta -->
   <div class="card" style="margin-bottom:16px">
     <div class="card-body" style="padding:12px 20px;display:flex;flex-wrap:wrap;align-items:center;gap:8px">
+      {% if not client_view %}
       <label class="btn btn-outline btn-sm" style="cursor:pointer">
         <span class="material-icons-round">upload_file</span>
         Importa XLSX
@@ -507,6 +508,7 @@ textarea { resize: vertical; min-height: 120px; }
         Aggiungi
       </button>
       <span style="width:1px;height:24px;background:var(--outline-variant);margin:0 4px"></span>
+      {% endif %}
       <button class="btn btn-outline btn-sm" onclick="showStanze(8)">
         <span class="material-icons-round">bed</span>
         Stanze 8
@@ -537,6 +539,7 @@ textarea { resize: vertical; min-height: 120px; }
         <span class="material-icons-round">meeting_room</span>
         Camere 9
       </button>
+      {% if not client_view %}
       <span style="width:1px;height:24px;background:var(--outline-variant);margin:0 4px"></span>
       <button class="btn btn-outline btn-sm" onclick="showEmailLogs()">
         <span class="material-icons-round">history</span>
@@ -547,9 +550,11 @@ textarea { resize: vertical; min-height: 120px; }
         <span class="material-icons-round">delete_sweep</span>
         Svuota lista
       </button>
+      {% endif %}
     </div>
   </div>
 
+  {% if not client_view %}
   <!-- Email Parser Card -->
   <div class="card" style="margin-bottom:16px">
       <div class="card-header">
@@ -568,6 +573,7 @@ textarea { resize: vertical; min-height: 120px; }
         <div id="parseResults"></div>
       </div>
     </div>
+  {% endif %}
 
   <!-- Main Table Card -->
   <div class="card">
@@ -606,36 +612,39 @@ textarea { resize: vertical; min-height: 120px; }
               <th>Restr. Alim.</th>
               <th>Note Form</th>
               <th>Note</th>
+              {% if not client_view %}
               <th>Fonte</th>
               <th style="width:60px"></th>
+              {% endif %}
             </tr>
           </thead>
           <tbody>
             {% for g in guests %}
             <tr data-id="{{ g.id }}">
-              <td class="editable" data-field="cognome">{{ g.cognome }}</td>
-              <td class="editable" data-field="nome">{{ g.nome }}</td>
-              <td class="editable" data-field="email">{{ g.email or '' }}</td>
-              <td class="editable" data-field="telefono">{{ g.telefono or '' }}</td>
-              <td class="editable" data-field="sede_lavoro">{{ g.sede_lavoro or '' }}</td>
-              <td class="editable bool-cell" data-field="presenza_8">{{ 'Sì' if g.presenza_8 else 'No' }}</td>
-              <td class="editable bool-cell" data-field="presenza_9">{{ 'Sì' if g.presenza_9 else 'No' }}</td>
-              <td class="editable bool-cell" data-field="presenza_10">{{ 'Sì' if g.presenza_10 else 'No' }}</td>
-              <td class="editable bool-cell" data-field="presenza_11">{{ 'Sì' if g.presenza_11 else 'No' }}</td>
-              <td class="editable" data-field="volo_arrivo">{{ g.volo_arrivo or '' }}</td>
-              <td class="editable" data-field="volo_partenza">{{ g.volo_partenza or '' }}</td>
-              <td class="editable" data-field="aeroporto_partenza">{{ g.aeroporto_partenza or '' }}</td>
-              <td class="editable" data-field="aeroporto_arrivo">{{ g.aeroporto_arrivo or '' }}</td>
-              <td class="editable" data-field="pickup_bus_andata">{{ g.pickup_bus_andata or '' }}</td>
-              <td class="editable" data-field="pickup_bus_ritorno">{{ g.pickup_bus_ritorno or '' }}</td>
-              <td class="editable bool-cell" data-field="parcheggio_linate">{{ 'Sì' if g.parcheggio_linate else 'No' }}</td>
-              <td class="editable bool-cell" data-field="parcheggio_hotel">{{ 'Sì' if g.parcheggio_hotel else 'No' }}</td>
-              <td class="editable" data-field="tipo_camera">{{ g.tipo_camera or '' }}</td>
-              <td class="editable" data-field="camera_assegnata">{{ g.camera_assegnata or '' }}</td>
-              <td class="editable" data-field="divide_stanza_con">{{ g.divide_stanza_con or '' }}</td>
-              <td class="editable" data-field="restrizioni_alimentari">{{ g.restrizioni_alimentari or '' }}</td>
-              <td class="editable" data-field="note_form">{{ g.note_form or '' }}</td>
-              <td class="editable" data-field="note">{{ g.note or '' }}</td>
+              <td class="{{ 'editable' if not client_view else '' }}" {% if not client_view %}data-field="cognome"{% endif %}>{{ g.cognome }}</td>
+              <td class="{{ 'editable' if not client_view else '' }}" {% if not client_view %}data-field="nome"{% endif %}>{{ g.nome }}</td>
+              <td class="{{ 'editable' if not client_view else '' }}" {% if not client_view %}data-field="email"{% endif %}>{{ g.email or '' }}</td>
+              <td class="{{ 'editable' if not client_view else '' }}" {% if not client_view %}data-field="telefono"{% endif %}>{{ g.telefono or '' }}</td>
+              <td class="{{ 'editable' if not client_view else '' }}" {% if not client_view %}data-field="sede_lavoro"{% endif %}>{{ g.sede_lavoro or '' }}</td>
+              <td class="{{ 'editable bool-cell' if not client_view else '' }}" {% if not client_view %}data-field="presenza_8"{% endif %}>{{ 'Sì' if g.presenza_8 else 'No' }}</td>
+              <td class="{{ 'editable bool-cell' if not client_view else '' }}" {% if not client_view %}data-field="presenza_9"{% endif %}>{{ 'Sì' if g.presenza_9 else 'No' }}</td>
+              <td class="{{ 'editable bool-cell' if not client_view else '' }}" {% if not client_view %}data-field="presenza_10"{% endif %}>{{ 'Sì' if g.presenza_10 else 'No' }}</td>
+              <td class="{{ 'editable bool-cell' if not client_view else '' }}" {% if not client_view %}data-field="presenza_11"{% endif %}>{{ 'Sì' if g.presenza_11 else 'No' }}</td>
+              <td class="{{ 'editable' if not client_view else '' }}" {% if not client_view %}data-field="volo_arrivo"{% endif %}>{{ g.volo_arrivo or '' }}</td>
+              <td class="{{ 'editable' if not client_view else '' }}" {% if not client_view %}data-field="volo_partenza"{% endif %}>{{ g.volo_partenza or '' }}</td>
+              <td class="{{ 'editable' if not client_view else '' }}" {% if not client_view %}data-field="aeroporto_partenza"{% endif %}>{{ g.aeroporto_partenza or '' }}</td>
+              <td class="{{ 'editable' if not client_view else '' }}" {% if not client_view %}data-field="aeroporto_arrivo"{% endif %}>{{ g.aeroporto_arrivo or '' }}</td>
+              <td class="{{ 'editable' if not client_view else '' }}" {% if not client_view %}data-field="pickup_bus_andata"{% endif %}>{{ g.pickup_bus_andata or '' }}</td>
+              <td class="{{ 'editable' if not client_view else '' }}" {% if not client_view %}data-field="pickup_bus_ritorno"{% endif %}>{{ g.pickup_bus_ritorno or '' }}</td>
+              <td class="{{ 'editable bool-cell' if not client_view else '' }}" {% if not client_view %}data-field="parcheggio_linate"{% endif %}>{{ 'Sì' if g.parcheggio_linate else 'No' }}</td>
+              <td class="{{ 'editable bool-cell' if not client_view else '' }}" {% if not client_view %}data-field="parcheggio_hotel"{% endif %}>{{ 'Sì' if g.parcheggio_hotel else 'No' }}</td>
+              <td class="{{ 'editable' if not client_view else '' }}" {% if not client_view %}data-field="tipo_camera"{% endif %}>{{ g.tipo_camera or '' }}</td>
+              <td class="{{ 'editable' if not client_view else '' }}" {% if not client_view %}data-field="camera_assegnata"{% endif %}>{{ g.camera_assegnata or '' }}</td>
+              <td class="{{ 'editable' if not client_view else '' }}" {% if not client_view %}data-field="divide_stanza_con"{% endif %}>{{ g.divide_stanza_con or '' }}</td>
+              <td class="{{ 'editable' if not client_view else '' }}" {% if not client_view %}data-field="restrizioni_alimentari"{% endif %}>{{ g.restrizioni_alimentari or '' }}</td>
+              <td class="{{ 'editable' if not client_view else '' }}" {% if not client_view %}data-field="note_form"{% endif %}>{{ g.note_form or '' }}</td>
+              <td class="{{ 'editable' if not client_view else '' }}" {% if not client_view %}data-field="note"{% endif %}>{{ g.note or '' }}</td>
+              {% if not client_view %}
               <td><span class="source-badge source-{{ g.source }}">{{ g.source }}</span></td>
               <td>
                 <div class="action-btns">
@@ -649,6 +658,7 @@ textarea { resize: vertical; min-height: 120px; }
                   </button>
                 </div>
               </td>
+              {% endif %}
             </tr>
             {% endfor %}
           </tbody>
@@ -802,6 +812,8 @@ textarea { resize: vertical; min-height: 120px; }
 <div class="snackbar" id="snackbar"></div>
 
 <script>
+const CLIENT_VIEW = {{ 'true' if client_view else 'false' }};
+
 // ── Column Resize (con persistenza in localStorage) ─────────────────────
 (function() {
   const STORAGE_KEY = 'guestTableColWidths';
@@ -1257,20 +1269,28 @@ function renderCamere(data) {
   </div>`;
 
   // Bottoni azione
-  html += `<div class="btn-group" style="margin-bottom:14px">
-    <button class="btn btn-success btn-sm" onclick="autoAssegna(${data.notte})">
-      <span class="material-icons-round">auto_awesome</span> Auto-assegna
-    </button>
-    <button class="btn btn-danger btn-sm" onclick="resetAssegnazioni(${data.notte})">
-      <span class="material-icons-round">restart_alt</span> Reset
-    </button>
-  </div>`;
+  if (!CLIENT_VIEW) {
+    html += `<div class="btn-group" style="margin-bottom:14px">
+      <button class="btn btn-success btn-sm" onclick="autoAssegna(${data.notte})">
+        <span class="material-icons-round">auto_awesome</span> Auto-assegna
+      </button>
+      <button class="btn btn-danger btn-sm" onclick="resetAssegnazioni(${data.notte})">
+        <span class="material-icons-round">restart_alt</span> Reset
+      </button>
+    </div>`;
+  }
 
   // Tabella contratti
   html += `<div style="border:1px solid var(--outline-variant);border-radius:var(--radius-sm);overflow:hidden;margin-bottom:16px">`;
-  html += `<div class="contratto-row header">
-    <div>Tipologia</div><div>Disponibili</div><div>Assegnate</div><div>Libere</div><div>€ Netta</div><div>Occupazione</div>
-  </div>`;
+  if (CLIENT_VIEW) {
+    html += `<div class="contratto-row header" style="grid-template-columns:2fr 1fr 1fr 1fr 1fr">
+      <div>Tipologia</div><div>Disponibili</div><div>Assegnate</div><div>Libere</div><div>Occupazione</div>
+    </div>`;
+  } else {
+    html += `<div class="contratto-row header">
+      <div>Tipologia</div><div>Disponibili</div><div>Assegnate</div><div>Libere</div><div>€ Netta</div><div>Occupazione</div>
+    </div>`;
+  }
 
   let totDisp = 0, totAss = 0;
   data.contratti.forEach(c => {
@@ -1278,20 +1298,36 @@ function renderCamere(data) {
     totAss += c.assegnate;
     const pct = c.disponibili > 0 ? Math.round(c.assegnate / c.disponibili * 100) : 0;
     const barClass = pct >= 100 ? 'bar-full' : pct >= 80 ? 'bar-warn' : 'bar-ok';
-    html += `<div class="contratto-row">
-      <div class="tipo">${c.tipo}</div>
-      <div>${c.disponibili}</div>
-      <div><strong>${c.assegnate}</strong></div>
-      <div>${c.libere}</div>
-      <div>€${c.tariffa_netta.toFixed(2)}</div>
-      <div><div class="bar-container"><div class="bar-fill ${barClass}" style="width:${Math.min(pct,100)}%"></div></div></div>
-    </div>`;
+    if (CLIENT_VIEW) {
+      html += `<div class="contratto-row" style="grid-template-columns:2fr 1fr 1fr 1fr 1fr">
+        <div class="tipo">${c.tipo}</div>
+        <div>${c.disponibili}</div>
+        <div><strong>${c.assegnate}</strong></div>
+        <div>${c.libere}</div>
+        <div><div class="bar-container"><div class="bar-fill ${barClass}" style="width:${Math.min(pct,100)}%"></div></div></div>
+      </div>`;
+    } else {
+      html += `<div class="contratto-row">
+        <div class="tipo">${c.tipo}</div>
+        <div>${c.disponibili}</div>
+        <div><strong>${c.assegnate}</strong></div>
+        <div>${c.libere}</div>
+        <div>€${c.tariffa_netta.toFixed(2)}</div>
+        <div><div class="bar-container"><div class="bar-fill ${barClass}" style="width:${Math.min(pct,100)}%"></div></div></div>
+      </div>`;
+    }
   });
 
   // Totali
-  html += `<div class="contratto-row" style="font-weight:700;background:var(--surface-variant)">
-    <div>TOTALE</div><div>${totDisp}</div><div>${totAss}</div><div>${totDisp - totAss}</div><div></div><div></div>
-  </div>`;
+  if (CLIENT_VIEW) {
+    html += `<div class="contratto-row" style="font-weight:700;background:var(--surface-variant);grid-template-columns:2fr 1fr 1fr 1fr 1fr">
+      <div>TOTALE</div><div>${totDisp}</div><div>${totAss}</div><div>${totDisp - totAss}</div><div></div>
+    </div>`;
+  } else {
+    html += `<div class="contratto-row" style="font-weight:700;background:var(--surface-variant)">
+      <div>TOTALE</div><div>${totDisp}</div><div>${totAss}</div><div>${totDisp - totAss}</div><div></div><div></div>
+    </div>`;
+  }
   html += `</div>`;
 
   // Non assegnati
@@ -1312,10 +1348,10 @@ function renderCamere(data) {
       html += `<div class="non-assegnato-card">
         <span class="nome">${nomi}</span>
         ${richiesta ? `<span style="font-size:10px;color:var(--info)">rich: ${richiesta}</span>` : ''}
-        <select onchange="assegnaCamera(${firstId}, this.value)">
+        ${CLIENT_VIEW ? '' : `<select onchange="assegnaCamera(${firstId}, this.value)">
           <option value="">— Assegna —</option>
           ${tipiOptions}
-        </select>
+        </select>`}
       </div>`;
     });
     html += `</div></details>`;

@@ -5,3 +5,5 @@ anthropic
 python-dotenv
 gunicorn
 psycopg2-binary
+msal
+httpx

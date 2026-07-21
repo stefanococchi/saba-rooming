@@ -103,10 +103,14 @@ def create_app():
 
     # ── PAGINA ROOMING ──────────────────────────────────────────────────────
 
+    @app.route('/rooming/client')
+    def rooming_client():
+        return index(client_view=True)
+
     @app.route('/rooming')
-    def index():
+    def index(client_view=False):
         guests = Guest.query.order_by(Guest.cognome, Guest.nome).all()
-        return render_template('index.html', guests=guests)
+        return render_template('index.html', guests=guests, client_view=client_view)
 
     # ── CRUD API ─────────────────────────────────────────────────────────────
 
@@ -2766,6 +2770,35 @@ Notes: {q.notes or 'N/A'}"""
         db.session.add(q)
         db.session.commit()
         return jsonify(ok=True, id=q.id)
+
+    # ── Deadline monitor ─────────────────────────────────────────────
+
+    @app.post('/api/deadline-monitor/run')
+    def deadline_monitor_run():
+        """Run the deadline monitor: fetch emails, parse, update deadlines."""
+        import threading
+
+        dry_run = request.args.get('dry_run', '').lower() in ('1', 'true')
+        days = int(request.args.get('days', '3'))
+
+        def _run():
+            from deadline_monitor.run import run as monitor_run
+            monitor_run(days=days, dry_run=dry_run)
+
+        t = threading.Thread(target=_run, daemon=True)
+        t.start()
+        return jsonify(ok=True, message='Deadline monitor started in background')
+
+    @app.get('/api/deadline-monitor/logs')
+    def deadline_monitor_logs():
+        """Get deadline-related email logs."""
+        logs = EmailLog.query.filter_by(log_type='deadline') \
+            .order_by(EmailLog.created_at.desc()).limit(50).all()
+        return jsonify([{
+            'id': l.id,
+            'summary': l.summary,
+            'created_at': l.created_at.isoformat() if l.created_at else None,
+        } for l in logs])
 
     return app
 
