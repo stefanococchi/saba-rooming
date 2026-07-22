@@ -586,9 +586,8 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
                     nome_lower = p.nome.lower()
                     # Match flessibile: nome completo, solo cognome, o solo nome
                     for cn in compagni_nomi:
-                        if (cn in nome_completo or cn in cognome_lower
-                                or cn in nome_lower or cognome_lower in cn
-                                or nome_lower in cn):
+                        if cn and (cn in nome_completo or cn in cognome_lower
+                                or cn in nome_lower):
                             stanza.append(p)
                             assegnati.add(p.id)
                             break
@@ -698,7 +697,7 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
                     cl = p.cognome.lower()
                     nl = p.nome.lower()
                     for cn in compagni:
-                        if cn in nc or cn in cl or cn in nl or cl in cn or nl in cn:
+                        if cn and (cn in nc or cn in cl or cn in nl):
                             stanza.append(p)
                             assegnati_ids.add(p.id)
                             break
@@ -771,7 +770,7 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
                 cl = p.cognome.lower()
                 nl = p.nome.lower()
                 for cn in compagni:
-                    if cn in nc or cn in cl or cn in nl or cl in cn or nl in cn:
+                    if cn and (cn in nc or cn in cl or cn in nl):
                         p.camera_assegnata = tipo_camera
                         p.updated_at = datetime.utcnow()
                         assegnati.append(p.id)
@@ -810,7 +809,7 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
                     cl = p.cognome.lower()
                     nl = p.nome.lower()
                     for cn in compagni:
-                        if cn in nc or cn in cl or cn in nl or cl in cn or nl in cn:
+                        if cn and (cn in nc or cn in cl or cn in nl):
                             stanza.append(p)
                             assegnati_ids.add(p.id)
                             break
@@ -959,7 +958,7 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
                     nc = f'{p.nome} {p.cognome}'.lower()
                     cl, nl = p.cognome.lower(), p.nome.lower()
                     for cn in compagni:
-                        if cn in nc or cn in cl or cn in nl or cl in cn or nl in cn:
+                        if cn and (cn in nc or cn in cl or cn in nl):
                             stanza.append(p)
                             assegnati.add(p.id)
                             break
@@ -1080,7 +1079,7 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
                     nc = f'{p.nome} {p.cognome}'.lower()
                     cl, nl = p.cognome.lower(), p.nome.lower()
                     for cn in compagni:
-                        if cn in nc or cn in cl or cn in nl or cl in cn or nl in cn:
+                        if cn and (cn in nc or cn in cl or cn in nl):
                             stanza.append(p)
                             assegnati_ids.add(p.id)
                             break
