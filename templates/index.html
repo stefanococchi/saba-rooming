@@ -579,6 +579,10 @@ textarea { resize: vertical; min-height: 120px; }
         <span class="material-icons-round">flight_takeoff</span>
         Voli Ritorno
       </button>
+      <button class="btn btn-outline btn-sm" onclick="showPNR()" style="background:var(--primary);color:white;border-color:var(--primary)">
+        <span class="material-icons-round">connecting_airports</span>
+        PNR
+      </button>
       <span style="width:1px;height:24px;background:var(--outline-variant);margin:0 4px"></span>
       <button class="btn btn-outline btn-sm" onclick="showCamere(8)">
         <span class="material-icons-round">meeting_room</span>
@@ -783,6 +787,23 @@ textarea { resize: vertical; min-height: 120px; }
         <span class="material-icons-round" style="font-size:16px">download</span> XLSX
       </a>
       <button class="btn btn-outline" onclick="document.getElementById('voliModal').classList.remove('active')">Chiudi</button>
+    </div>
+  </div>
+</div>
+
+<!-- PNR Modal -->
+<div class="modal-overlay" id="pnrModal">
+  <div class="modal modal-lg">
+    <h3>
+      <span class="material-icons-round" style="vertical-align:middle;margin-right:6px">connecting_airports</span>
+      PNR — Cluster Andata + Ritorno
+    </h3>
+    <div id="pnrContent"></div>
+    <div class="btn-group">
+      <a href="/api/export/pnr" class="btn btn-outline btn-sm" style="display:flex;align-items:center;gap:4px;text-decoration:none">
+        <span class="material-icons-round" style="font-size:16px">download</span> XLSX
+      </a>
+      <button class="btn btn-outline" onclick="document.getElementById('pnrModal').classList.remove('active')">Chiudi</button>
     </div>
   </div>
 </div>
@@ -1270,6 +1291,64 @@ async function showVoli(tipo) {
           <span class="nome">${p.cognome} ${p.nome}</span>
           ${p.sede_lavoro ? `<span class="sede">${p.sede_lavoro}</span>` : ''}
           ${p.aeroporto ? `<span class="sede">${p.aeroporto}</span>` : ''}
+        </div>`;
+      });
+
+      html += `</div></div>`;
+    });
+
+    html += `</div>`;
+    content.innerHTML = html;
+
+  } catch (err) {
+    content.innerHTML = `<p style="color:var(--error)">Errore: ${err.message}</p>`;
+  }
+}
+
+// ── PNR Clusters ─────────────────────────────────────────────────────────
+async function showPNR() {
+  const modal = document.getElementById('pnrModal');
+  const content = document.getElementById('pnrContent');
+  content.innerHTML = '<div style="text-align:center;padding:16px"><span class="spinner"></span></div>';
+  modal.classList.add('active');
+
+  try {
+    const r = await fetch('/api/pnr');
+    const j = await r.json();
+    if (!j.ok) { content.innerHTML = `<p style="color:var(--error)">Errore: ${j.error}</p>`; return; }
+
+    let html = `<div class="stanze-summary">
+      <div><strong>${j.totale_clusters}</strong> cluster</div>
+      <div><strong>${j.totale_passeggeri}</strong> passeggeri</div>
+      <div><strong>${j.senza_voli}</strong> senza voli</div>
+      ${j.solo_andata ? `<div><strong>${j.solo_andata}</strong> solo andata</div>` : ''}
+      ${j.solo_ritorno ? `<div><strong>${j.solo_ritorno}</strong> solo ritorno</div>` : ''}
+    </div>`;
+
+    html += `<div style="max-height:60vh;overflow-y:auto">`;
+
+    j.clusters.forEach((cl, idx) => {
+      const andataLabel = cl.andata === '—' ? '<em style="opacity:.5">nessuno</em>' : `<span class="volo-code">${cl.andata}</span>`;
+      const ritornoLabel = cl.ritorno === '—' ? '<em style="opacity:.5">nessuno</em>' : `<span class="volo-code">${cl.ritorno}</span>`;
+
+      html += `<div class="volo-group">
+        <div class="volo-header" onclick="this.nextElementSibling.style.display = this.nextElementSibling.style.display === 'none' ? '' : 'none'">
+          <span class="material-icons-round" style="font-size:18px;color:var(--primary)">flight_land</span>
+          ${andataLabel}
+          <span style="margin:0 6px;color:var(--on-surface-variant)">→</span>
+          <span class="material-icons-round" style="font-size:18px;color:var(--primary)">flight_takeoff</span>
+          ${ritornoLabel}
+          <span class="volo-count">${cl.totale}</span>
+          <span style="flex:1"></span>
+          <span class="material-icons-round" style="font-size:16px;color:var(--on-surface-variant)">expand_more</span>
+        </div>
+        <div class="volo-passengers">`;
+
+      cl.passeggeri.forEach(p => {
+        html += `<div class="volo-pax">
+          <span class="nome">${p.cognome} ${p.nome}</span>
+          ${p.sede_lavoro ? `<span class="sede">${p.sede_lavoro}</span>` : ''}
+          ${p.aeroporto_partenza ? `<span class="sede">${p.aeroporto_partenza}</span>` : ''}
         </div>`;
       });
 

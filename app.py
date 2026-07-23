@@ -666,6 +666,64 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
             totale_voli=len(result),
         )
 
+    # ── PNR (coppie andata + ritorno) ────────────────────────────────────────
+
+    @app.get('/api/pnr')
+    def pnr_clusters():
+        """Raggruppa ospiti per coppia volo andata + ritorno (PNR cluster)."""
+        guests = Guest.query.order_by(Guest.cognome, Guest.nome).all()
+
+        clusters = {}
+        senza_voli = 0
+        solo_andata = 0
+        solo_ritorno = 0
+
+        for g in guests:
+            andata = (g.volo_arrivo or '').strip()
+            ritorno = (g.volo_partenza or '').strip()
+
+            if not andata and not ritorno:
+                senza_voli += 1
+                continue
+            if andata and not ritorno:
+                solo_andata += 1
+            elif ritorno and not andata:
+                solo_ritorno += 1
+
+            key = (andata or '—', ritorno or '—')
+            if key not in clusters:
+                clusters[key] = []
+            clusters[key].append({
+                'id': g.id,
+                'cognome': g.cognome,
+                'nome': g.nome,
+                'sede_lavoro': g.sede_lavoro or '',
+                'aeroporto_partenza': g.aeroporto_partenza or '',
+                'aeroporto_arrivo': g.aeroporto_arrivo or '',
+            })
+
+        # Ordina cluster: prima per andata, poi per ritorno
+        result = []
+        for (andata, ritorno) in sorted(clusters.keys()):
+            result.append({
+                'andata': andata,
+                'ritorno': ritorno,
+                'passeggeri': clusters[(andata, ritorno)],
+                'totale': len(clusters[(andata, ritorno)]),
+            })
+
+        totale_passeggeri = sum(c['totale'] for c in result)
+
+        return jsonify(
+            ok=True,
+            clusters=result,
+            totale_clusters=len(result),
+            totale_passeggeri=totale_passeggeri,
+            senza_voli=senza_voli,
+            solo_andata=solo_andata,
+            solo_ritorno=solo_ritorno,
+        )
+
     # ── ASSEGNAZIONE CAMERE ─────────────────────────────────────────────────
 
     @app.get('/api/camere/<int:notte>')
@@ -1047,6 +1105,66 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
         buf.seek(0)
         return send_file(buf, as_attachment=True,
                          download_name=f'voli_{tipo}.xlsx',
+                         mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
+    @app.get('/api/export/pnr')
+    def export_pnr():
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+
+        guests = Guest.query.order_by(Guest.cognome, Guest.nome).all()
+
+        clusters = {}
+        for g in guests:
+            andata = (g.volo_arrivo or '').strip()
+            ritorno = (g.volo_partenza or '').strip()
+            if not andata and not ritorno:
+                continue
+            key = (andata or '—', ritorno or '—')
+            if key not in clusters:
+                clusters[key] = []
+            clusters[key].append(g)
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = 'PNR Clusters'
+        hfont = Font(bold=True, color='FFFFFF', size=11)
+        hfill = PatternFill('solid', fgColor='6D4C41')
+        cluster_fill = PatternFill('solid', fgColor='EFEBE9')
+        border = Border(left=Side(style='thin'), right=Side(style='thin'),
+                        top=Side(style='thin'), bottom=Side(style='thin'))
+
+        headers = ['Volo Andata', 'Volo Ritorno', 'Cognome', 'Nome', 'Sede Lavoro',
+                    'Aeroporto Partenza', 'Aeroporto Arrivo']
+        for c, h in enumerate(headers, 1):
+            cell = ws.cell(row=1, column=c, value=h)
+            cell.font = hfont
+            cell.fill = hfill
+            cell.alignment = Alignment(horizontal='center')
+            cell.border = border
+
+        row = 2
+        for (andata, ritorno) in sorted(clusters.keys()):
+            for i, g in enumerate(clusters[(andata, ritorno)]):
+                vals = [andata if i == 0 else '', ritorno if i == 0 else '',
+                        g.cognome, g.nome, g.sede_lavoro or '',
+                        g.aeroporto_partenza or '', g.aeroporto_arrivo or '']
+                for c, v in enumerate(vals, 1):
+                    cell = ws.cell(row=row, column=c, value=v)
+                    cell.border = border
+                    if i == 0:
+                        cell.fill = cluster_fill
+                row += 1
+
+        for col in ws.columns:
+            mx = max(len(str(c.value or '')) for c in col)
+            ws.column_dimensions[col[0].column_letter].width = min(mx + 4, 40)
+
+        buf = BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+        return send_file(buf, as_attachment=True,
+                         download_name='pnr_clusters.xlsx',
                          mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
 
     @app.get('/api/export/camere/<int:notte>')
