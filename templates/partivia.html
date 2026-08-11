@@ -982,9 +982,19 @@ function initMap() {
     'The Westin Valencia': [39.4752, -0.3656],
   };
 
+  function findCoords(name) {
+    if (coords[name]) return coords[name];
+    const nl = name.toLowerCase();
+    for (const [k, v] of Object.entries(coords)) {
+      const kl = k.toLowerCase();
+      if (kl.includes(nl) || nl.includes(kl)) return v;
+    }
+    return null;
+  }
+
   const markers = [];
   hotels.forEach(h => {
-    const ll = coords[h.name];
+    const ll = findCoords(h.name);
     if (!ll) return;
     const color = cityColors[h.city] || '#757575';
     const icon = L.divIcon({
