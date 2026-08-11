@@ -2379,13 +2379,14 @@ Notes: {q.notes or 'N/A'}"""
 
     @app.post('/api/partivia/toggle-hotel')
     def partivia_toggle_hotel():
+        """Bulk update hotel visibility. Body: {hotels: {hotel_key: bool(hidden), ...}}"""
         data = request.get_json()
-        hotel_key = data.get('hotel_key', '').lower().strip()
-        hidden = data.get('hidden', True)
+        visibility = data.get('hotels', {})
         updated = 0
         for q in PartiviaQuote.query.all():
-            if q.hotel_name.lower().strip() == hotel_key:
-                q.hidden = hidden
+            key = q.hotel_name.lower().strip()
+            if key in visibility:
+                q.hidden = visibility[key]
                 updated += 1
         db.session.commit()
         return jsonify(ok=True, updated=updated)

@@ -179,6 +179,13 @@ textarea { resize:vertical; min-height:120px; }
   .tab-btn { padding:10px 14px; font-size:12px; }
   .tab-btn span.tab-label { display:none; }
 }
+/* Setup toggle switch */
+.setup-switch { position:relative; display:inline-block; width:44px; height:24px; cursor:pointer; }
+.setup-switch input { opacity:0; width:0; height:0; }
+.setup-track { position:absolute; inset:0; background:#ccc; border-radius:12px; transition:background .2s; }
+.setup-switch input:checked + .setup-track { background:var(--primary); }
+.setup-thumb { position:absolute; top:2px; left:2px; width:20px; height:20px; background:#fff; border-radius:50%; transition:left .2s; box-shadow:0 1px 3px rgba(0,0,0,.3); }
+.setup-switch input:checked ~ .setup-thumb { left:22px; }
 </style>
 </head>
 <body>
@@ -728,29 +735,42 @@ textarea { resize:vertical; min-height:120px; }
 <!-- ── Add Modal ──────────────────────────────── -->
 <!-- ── Setup Modal: show/hide hotels ─────────── -->
 {% if not client_view %}
-<div class="modal-overlay" id="setupModal" onclick="if(event.target===this)this.style.display='none'">
+<div class="modal-overlay" id="setupModal" onclick="if(event.target===this)closeSetup()">
   <div class="modal" style="max-width:480px">
     <div class="modal-header">
       <span><span class="material-icons-round" style="vertical-align:middle;margin-right:6px">settings</span>Hotel Visibility</span>
-      <button class="icon-btn" onclick="document.getElementById('setupModal').style.display='none'"><span class="material-icons-round">close</span></button>
+      <button class="icon-btn" onclick="closeSetup()"><span class="material-icons-round">close</span></button>
     </div>
     <div class="modal-body" style="padding:16px 24px">
-      <p style="color:var(--on-surface-variant);font-size:13px;margin:0 0 16px">Toggle hotels on/off. Hidden hotels won't appear in any tab or export.</p>
+      <p style="color:var(--on-surface-variant);font-size:13px;margin:0 0 12px">Disable all, then enable only the hotels you need.</p>
+      <div style="display:flex;gap:8px;margin-bottom:16px">
+        <button class="btn btn-outline btn-sm" onclick="setupToggleAll(false)" style="flex:1">
+          <span class="material-icons-round" style="font-size:16px;vertical-align:middle">visibility_off</span> Disable All
+        </button>
+        <button class="btn btn-outline btn-sm" onclick="setupToggleAll(true)" style="flex:1">
+          <span class="material-icons-round" style="font-size:16px;vertical-align:middle">visibility</span> Enable All
+        </button>
+      </div>
+      <div id="setupHotelList">
       {% for h in all_hotels %}
-      <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--outline-variant)">
+      <div class="setup-hotel-row" data-key="{{ h.best.hotel_name|lower|replace("'","") }}" style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--outline-variant)">
         <div>
           <strong>{{ h.best.hotel_name }}</strong>
           <span style="color:var(--on-surface-variant);font-size:12px;margin-left:6px">{{ h.best.city }} {{ '★' * (h.best.stars or 0) }}</span>
         </div>
-        <label style="position:relative;display:inline-block;width:44px;height:24px;cursor:pointer">
-          <input type="checkbox" {% if not h.hidden %}checked{% endif %}
-                 onchange="toggleHotel('{{ h.best.hotel_name|lower|replace("'","") }}', this.checked)"
-                 style="opacity:0;width:0;height:0">
-          <span style="position:absolute;inset:0;background:{% if not h.hidden %}var(--primary){% else %}#ccc{% endif %};border-radius:12px;transition:background .2s"></span>
-          <span style="position:absolute;top:2px;left:{% if not h.hidden %}22px{% else %}2px{% endif %};width:20px;height:20px;background:#fff;border-radius:50%;transition:left .2s;box-shadow:0 1px 3px rgba(0,0,0,.3)"></span>
+        <label class="setup-switch">
+          <input type="checkbox" {% if not h.hidden %}checked{% endif %}>
+          <span class="setup-track"></span>
+          <span class="setup-thumb"></span>
         </label>
       </div>
       {% endfor %}
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-primary" onclick="saveSetup()">
+        <span class="material-icons-round" style="font-size:16px;vertical-align:middle">save</span> Apply
+      </button>
     </div>
   </div>
 </div>
@@ -998,18 +1018,35 @@ function showSnack(msg, ms=3000) {
   setTimeout(() => el.classList.remove('show'), ms);
 }
 
-// ── Toggle hotel visibility ───────────────────
-async function toggleHotel(hotelKey, visible) {
+// ── Setup: hotel visibility ───────────────────
+let setupDirty = false;
+
+function setupToggleAll(on) {
+  document.querySelectorAll('#setupHotelList input[type=checkbox]').forEach(cb => { cb.checked = on; });
+  setupDirty = true;
+}
+
+async function saveSetup() {
+  const hotels = {};
+  document.querySelectorAll('.setup-hotel-row').forEach(row => {
+    const key = row.dataset.key;
+    const checked = row.querySelector('input[type=checkbox]').checked;
+    hotels[key] = !checked;  // hidden = !visible
+  });
   const r = await fetch('/api/partivia/toggle-hotel', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({hotel_key: hotelKey, hidden: !visible}),
+    body: JSON.stringify({hotels}),
   });
   const data = await r.json();
   if (data.ok) {
-    showSnack(visible ? 'Hotel shown' : 'Hotel hidden');
-    setTimeout(() => location.reload(), 600);
+    showSnack('Visibility updated');
+    setTimeout(() => location.reload(), 400);
   }
+}
+
+function closeSetup() {
+  document.getElementById('setupModal').style.display = 'none';
 }
 
 // ── Card filter ───────────────────────────────
