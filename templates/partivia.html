@@ -616,6 +616,44 @@ textarea { resize:vertical; min-height:120px; }
           <tbody id="budgetBody"></tbody>
         </table>
       </div>
+
+      {% if not client_view %}
+      <!-- Extra cost items -->
+      <div style="margin-top:24px;padding:16px;background:var(--surface-variant);border-radius:var(--radius-sm)">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+          <span style="font-size:13px;font-weight:600;color:var(--on-surface)">
+            <span class="material-icons-round" style="font-size:16px;vertical-align:middle">add_shopping_cart</span> Extra Cost Items
+          </span>
+          <button class="btn btn-outline btn-sm" onclick="addExtraItem()">
+            <span class="material-icons-round" style="font-size:14px">add</span> Add Item
+          </button>
+        </div>
+        <table style="width:100%;border-collapse:collapse;font-size:13px" id="extraItemsTable">
+          <thead>
+            <tr style="border-bottom:2px solid var(--outline-variant)">
+              <th style="text-align:left;padding:6px 8px;font-size:11px;text-transform:uppercase;color:var(--on-surface-variant)">Description</th>
+              <th style="text-align:right;padding:6px 8px;font-size:11px;text-transform:uppercase;color:var(--on-surface-variant)">Qty</th>
+              <th style="text-align:right;padding:6px 8px;font-size:11px;text-transform:uppercase;color:var(--on-surface-variant)">Unit Cost €</th>
+              <th style="text-align:center;padding:6px 8px;font-size:11px;text-transform:uppercase;color:var(--on-surface-variant)">VAT %</th>
+              <th style="text-align:right;padding:6px 8px;font-size:11px;text-transform:uppercase;color:var(--on-surface-variant)">Subtotal</th>
+              <th style="text-align:right;padding:6px 8px;font-size:11px;text-transform:uppercase;color:var(--on-surface-variant)">VAT €</th>
+              <th style="text-align:right;padding:6px 8px;font-size:11px;text-transform:uppercase;color:var(--on-surface-variant);font-weight:700">Total</th>
+              <th style="width:30px"></th>
+            </tr>
+          </thead>
+          <tbody id="extraItemsBody"></tbody>
+          <tfoot>
+            <tr style="border-top:2px solid var(--outline);font-weight:700">
+              <td colspan="4" style="padding:8px;text-align:right">Extra Items Total</td>
+              <td style="text-align:right;padding:8px" id="extraNetTotal">—</td>
+              <td style="text-align:right;padding:8px" id="extraVatTotal">—</td>
+              <td style="text-align:right;padding:8px;color:var(--primary);font-size:14px" id="extraGrandTotal">—</td>
+              <td></td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+      {% endif %}
     </div>
   </div>
 </div>
@@ -941,7 +979,7 @@ function switchTab(name) {
   document.getElementById('tab-' + name).classList.add('active');
   event.currentTarget.classList.add('active');
   if (name === 'map' && !mapInitialized) { initMap(); mapInitialized = true; }
-  if (name === 'budget') { loadBudgetOverrides().then(() => { restoreBudgetParams(); calcBudget(); }); }
+  if (name === 'budget') { loadBudgetOverrides().then(() => { restoreBudgetParams(); calcBudget(); renderExtraItems(); }); }
   if (name === 'email_history') { loadEmailHistory(); }
 }
 
@@ -1842,6 +1880,72 @@ function calcBudget() {
       <td style="text-align:right;font-weight:700;font-size:14px;color:var(--primary)">${fmtEur(r.total !== null ? Math.round(r.total) : null)}</td>
     </tr>`;
   }).join('');
+}
+
+// ── Extra cost items ──────────────────────────
+function getExtraItems() {
+  return budgetOverrides._extraItems || [];
+}
+
+function saveExtraItems(items) {
+  budgetOverrides._extraItems = items;
+  saveBudgetOverrides();
+  renderExtraItems();
+}
+
+function addExtraItem() {
+  const items = getExtraItems();
+  items.push({ name: '', qty: 1, unit_cost: 0, vat_pct: 22 });
+  saveExtraItems(items);
+}
+
+function removeExtraItem(idx) {
+  const items = getExtraItems();
+  items.splice(idx, 1);
+  saveExtraItems(items);
+}
+
+function updateExtraItem(idx, field, value) {
+  const items = getExtraItems();
+  if (field === 'name') items[idx].name = value;
+  else items[idx][field] = parseFloat(value) || 0;
+  budgetOverrides._extraItems = items;
+  saveBudgetOverrides();
+  renderExtraItems();
+}
+
+function renderExtraItems() {
+  const items = getExtraItems();
+  const tbody = document.getElementById('extraItemsBody');
+  if (!tbody) return;
+  let netSum = 0, vatSum = 0;
+  tbody.innerHTML = items.map((it, i) => {
+    const net = it.qty * it.unit_cost;
+    const vat = net * (it.vat_pct / 100);
+    const total = net + vat;
+    netSum += net; vatSum += vat;
+    return `<tr style="border-bottom:1px solid var(--outline-variant)">
+      <td style="padding:4px 8px"><input value="${(it.name||'').replace(/"/g,'&quot;')}" onchange="updateExtraItem(${i},'name',this.value)" style="width:100%;border:1px solid var(--outline-variant);border-radius:4px;padding:4px 6px;font-size:12px" placeholder="e.g. Segreteria organizzativa"></td>
+      <td style="padding:4px 8px"><input type="number" value="${it.qty}" onchange="updateExtraItem(${i},'qty',this.value)" style="width:60px;text-align:right;border:1px solid var(--outline-variant);border-radius:4px;padding:4px 6px;font-size:12px" min="0"></td>
+      <td style="padding:4px 8px"><input type="number" value="${it.unit_cost}" onchange="updateExtraItem(${i},'unit_cost',this.value)" style="width:90px;text-align:right;border:1px solid var(--outline-variant);border-radius:4px;padding:4px 6px;font-size:12px" min="0" step="0.01"></td>
+      <td style="padding:4px 8px;text-align:center">
+        <select onchange="updateExtraItem(${i},'vat_pct',this.value)" style="border:1px solid var(--outline-variant);border-radius:4px;padding:4px;font-size:12px">
+          <option value="0" ${it.vat_pct===0?'selected':''}>0%</option>
+          <option value="4" ${it.vat_pct===4?'selected':''}>4%</option>
+          <option value="10" ${it.vat_pct===10?'selected':''}>10%</option>
+          <option value="21" ${it.vat_pct===21?'selected':''}>21%</option>
+          <option value="22" ${it.vat_pct===22?'selected':''}>22%</option>
+        </select>
+      </td>
+      <td style="text-align:right;padding:4px 8px;font-size:12px">${fmtEur(net)}</td>
+      <td style="text-align:right;padding:4px 8px;font-size:12px">${fmtEur(Math.round(vat))}</td>
+      <td style="text-align:right;padding:4px 8px;font-weight:600;font-size:12px">${fmtEur(Math.round(total))}</td>
+      <td style="padding:4px"><button onclick="removeExtraItem(${i})" style="background:none;border:none;color:var(--error);cursor:pointer;padding:2px"><span class="material-icons-round" style="font-size:16px">delete</span></button></td>
+    </tr>`;
+  }).join('');
+  document.getElementById('extraNetTotal').textContent = fmtEur(Math.round(netSum));
+  document.getElementById('extraVatTotal').textContent = fmtEur(Math.round(vatSum));
+  document.getElementById('extraGrandTotal').textContent = fmtEur(Math.round(netSum + vatSum));
 }
 
 // ── Cycle VAT in budget ───────────────────────
