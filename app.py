@@ -71,6 +71,9 @@ def create_app():
             if 'website_url' not in quote_cols:
                 conn.execute(text("ALTER TABLE partivia_quotes ADD COLUMN website_url TEXT"))
                 conn.commit()
+            if 'hidden' not in quote_cols:
+                conn.execute(text("ALTER TABLE partivia_quotes ADD COLUMN hidden BOOLEAN DEFAULT 0"))
+                conn.commit()
 
         # Migrate Italian statuses to English (one-time)
         _status_map = {
@@ -1598,9 +1601,15 @@ Per "azione": "update", valorizza "match_id" con l'ID dell'ospite corrispondente
         MEAL_COLS = ['Colazione', 'Coffee Break', 'Pranzo', 'Cena',
                      'Cocktail', 'Gala Dinner', 'DDR']
 
+        # Set of hidden hotel keys for filtering pivots
+        hidden_hotel_keys = {q.hotel_name.lower().strip()
+                             for q in quotes if q.hidden}
+
         room_pivot = []  # lista di dict per ogni quote
         fb_pivot = []
         for q in quotes:
+            if q.hotel_name.lower().strip() in hidden_hotel_keys:
+                continue
             # Room pivot
             rates_map = {}
             for rr in q.room_rates:
@@ -1638,35 +1647,42 @@ Per "azione": "update", valorizza "match_id" con l'ID dell'ospite corrispondente
             hotels_grouped.setdefault(key, []).append(q)
 
         # Per ogni gruppo, scegli il "best" (più dati) e tieni le versioni
-        hotels = []  # lista di dict con best + versions
+        all_hotels = []  # lista di dict con best + versions (include hidden)
         for key, group in hotels_grouped.items():
             # Ordina per completezza: più room_rates + meeting_rooms + fb_options
             scored = sorted(group, key=lambda q: (
                 len(q.room_rates) + len(q.meeting_rooms) + len(q.fb_options)
             ), reverse=True)
             best = scored[0]
-            hotels.append({
+            all_hotels.append({
                 'best': best,
                 'versions': group,
                 'count': len(group),
+                'hidden': best.hidden or False,
             })
 
         # Ordina hotels per città + nome
-        hotels.sort(key=lambda h: (h['best'].city, h['best'].hotel_name))
+        all_hotels.sort(key=lambda h: (h['best'].city, h['best'].hotel_name))
 
-        # Stats
+        # Visible hotels (non-hidden) for display
+        hotels = [h for h in all_hotels if not h['hidden']]
+
+        # Stats (only visible quotes)
+        visible_quotes = [q for q in quotes
+                          if q.hotel_name.lower().strip() not in hidden_hotel_keys]
         cities = {}
         stars_count = {}
         status_count = {}
-        for q in quotes:
+        for q in visible_quotes:
             cities[q.city] = cities.get(q.city, 0) + 1
             s = q.stars or 0
             stars_count[s] = stars_count.get(s, 0) + 1
             status_count[q.quote_status] = status_count.get(q.quote_status, 0) + 1
 
         return render_template('partivia.html',
-                               quotes=quotes,
+                               quotes=visible_quotes,
                                hotels=hotels,
+                               all_hotels=all_hotels,
                                room_pivot=room_pivot,
                                room_cols=ROOM_COLS,
                                fb_pivot=fb_pivot,
@@ -2344,7 +2360,7 @@ Notes: {q.notes or 'N/A'}"""
                       'payment_terms', 'validity_date', 'commission',
                       'total_estimate', 'included_services', 'notes',
                       'raw_summary', 'quote_status', 'image_url',
-                      'website_url', 'address', 'vat_included'):
+                      'website_url', 'address', 'vat_included', 'hidden'):
             if field in data:
                 val = data[field]
                 if field == 'stars' and val is not None:
@@ -2360,6 +2376,19 @@ Notes: {q.notes or 'N/A'}"""
         db.session.delete(q)
         db.session.commit()
         return jsonify(ok=True)
+
+    @app.post('/api/partivia/toggle-hotel')
+    def partivia_toggle_hotel():
+        data = request.get_json()
+        hotel_key = data.get('hotel_key', '').lower().strip()
+        hidden = data.get('hidden', True)
+        updated = 0
+        for q in PartiviaQuote.query.all():
+            if q.hotel_name.lower().strip() == hotel_key:
+                q.hidden = hidden
+                updated += 1
+        db.session.commit()
+        return jsonify(ok=True, updated=updated)
 
     # ── Edit inline sotto-tabelle ─────────────────────────────────────────
 

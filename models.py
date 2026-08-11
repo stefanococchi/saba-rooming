@@ -90,6 +90,7 @@ class PartiviaQuote(db.Model):
     image_url           = db.Column(db.Text)
     website_url         = db.Column(db.Text)
     vat_included        = db.Column(db.String(20))  # 'yes', 'no', 'unknown'
+    hidden              = db.Column(db.Boolean, default=False)
     source              = db.Column(db.String(20), default='email')
     email_log_id        = db.Column(db.Integer, db.ForeignKey('email_logs.id'))
     created_at          = db.Column(db.DateTime, default=datetime.utcnow)
