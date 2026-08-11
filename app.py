@@ -72,7 +72,7 @@ def create_app():
                 conn.execute(text("ALTER TABLE partivia_quotes ADD COLUMN website_url TEXT"))
                 conn.commit()
             if 'hidden' not in quote_cols:
-                conn.execute(text("ALTER TABLE partivia_quotes ADD COLUMN hidden BOOLEAN DEFAULT 0"))
+                conn.execute(text("ALTER TABLE partivia_quotes ADD COLUMN hidden BOOLEAN DEFAULT FALSE"))
                 conn.commit()
 
         # Migrate Italian statuses to English (one-time)
