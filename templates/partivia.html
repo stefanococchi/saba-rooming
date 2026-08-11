@@ -948,8 +948,9 @@ function initMap() {
   };
 
   const hotels = [
-    {% for q in quotes %}
-    { id:{{q.id}}, name:{{q.hotel_name|tojson}}, city:{{q.city|tojson}}, stars:{{q.stars or 0}},
+    {% for h in hotels %}
+    {% set q = h.best %}
+    { name:{{q.hotel_name|tojson}}, city:{{q.city|tojson}}, stars:{{q.stars or 0}},
       address:{{(q.address or '')|tojson}}, website:{{(q.website_url or '')|tojson}},
       rates: "{{ q.room_rates|map(attribute='rate_per_night')|select|join(', ') }}" },
     {% endfor %}
