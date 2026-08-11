@@ -1155,6 +1155,31 @@ function editDeadlineInline(span, qid) {
   input.onkeydown = (e) => { if (e.key === 'Enter') input.blur(); if (e.key === 'Escape') { input.replaceWith(span); } };
   span.replaceWith(input);
   input.focus();
+}
+
+function editFieldInline(span, qid, field) {
+  const current = span.textContent.trim();
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.value = current;
+  input.style.cssText = 'padding:4px 8px;font-size:12px;border:2px solid var(--primary);border-radius:6px;outline:none;width:200px';
+  input.onblur = async () => {
+    const val = input.value.trim();
+    try {
+      await fetch(`/api/partivia/quote/${qid}`, {
+        method: 'PATCH',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({[field]: val || null}),
+      });
+      span.textContent = val || current;
+      showSnack('Saved');
+    } catch(e) { span.textContent = current; showSnack('Error saving', 3000); }
+    input.replaceWith(span);
+  };
+  input.onkeydown = (e) => { if (e.key === 'Enter') input.blur(); if (e.key === 'Escape') { input.replaceWith(span); } };
+  span.replaceWith(input);
+  input.focus();
+  input.focus();
   input.select();
 }
 
@@ -1269,9 +1294,9 @@ function renderQuoteSection(q, label) {
     if (q.contact_email) h += ` <a href="mailto:${q.contact_email}" style="color:var(--primary)">&lt;${q.contact_email}&gt;</a>`;
     h += '</div>';
   }
-  if (q.dates) h += `<div><strong>Available Dates:</strong> ${q.dates}</div>`;
-  if (q.rooms) h += `<div><strong>Rooms Available:</strong> ${q.rooms}</div>`;
-  if (q.total) h += `<div style="font-weight:600;color:var(--primary)"><strong>Total:</strong> ${q.total}</div>`;
+  if (q.dates) h += `<div><strong>Available Dates:</strong> ${CLIENT_VIEW ? q.dates : `<span style="cursor:pointer;border-bottom:1px dashed var(--on-surface-variant)" onclick="editFieldInline(this,${q.id},'dates_proposed')">${q.dates}</span>`}</div>`;
+  if (q.rooms) h += `<div><strong>Rooms Available:</strong> ${CLIENT_VIEW ? q.rooms : `<span style="cursor:pointer;border-bottom:1px dashed var(--on-surface-variant)" onclick="editFieldInline(this,${q.id},'rooms_available')">${q.rooms}</span>`}</div>`;
+  if (q.total) h += `<div style="font-weight:600;color:var(--primary)"><strong>Total:</strong> ${CLIENT_VIEW ? q.total : `<span style="cursor:pointer;border-bottom:1px dashed var(--primary)" onclick="editFieldInline(this,${q.id},'total_estimate')">${q.total}</span>`}</div>`;
   if (q.validity) h += `<div style="color:var(--warning);font-weight:600"><strong>Option Deadline:</strong> <span style="cursor:pointer;border-bottom:1px dashed var(--warning)" onclick="editDeadlineInline(this,${q.id})">${q.validity}</span></div>`;
   /* status badge hidden - not visible to client */
   h += '</div>';
