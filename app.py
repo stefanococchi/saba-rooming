@@ -2377,6 +2377,18 @@ Notes: {q.notes or 'N/A'}"""
         db.session.commit()
         return jsonify(ok=True)
 
+    @app.post('/api/partivia/delete-hotel')
+    def partivia_delete_hotel():
+        data = request.get_json()
+        hotel_key = data.get('hotel_key', '').lower().strip()
+        deleted = 0
+        for q in PartiviaQuote.query.all():
+            if q.hotel_name.lower().strip() == hotel_key:
+                db.session.delete(q)
+                deleted += 1
+        db.session.commit()
+        return jsonify(ok=True, deleted=deleted)
+
     @app.post('/api/partivia/toggle-hotel')
     def partivia_toggle_hotel():
         """Bulk update hotel visibility. Body: {hotels: {hotel_key: bool(hidden), ...}}"""

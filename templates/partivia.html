@@ -762,11 +762,16 @@ textarea { resize:vertical; min-height:120px; }
           <strong>{{ h.best.hotel_name }}</strong>
           <span style="color:var(--on-surface-variant);font-size:12px;margin-left:6px">{{ h.best.city }} {{ '★' * (h.best.stars or 0) }}</span>
         </div>
-        <label class="setup-switch">
-          <input type="checkbox" {% if not h.hidden %}checked{% endif %}>
-          <span class="setup-track"></span>
-          <span class="setup-thumb"></span>
-        </label>
+        <div style="display:flex;align-items:center;gap:8px">
+          <button onclick="deleteHotel('{{ h.best.hotel_name|lower|replace("'","") }}','{{ h.best.hotel_name|replace("'","") }}')" style="background:none;border:none;color:var(--error);cursor:pointer;padding:4px" title="Delete all quotes for this hotel">
+            <span class="material-icons-round" style="font-size:18px">delete</span>
+          </button>
+          <label class="setup-switch">
+            <input type="checkbox" {% if not h.hidden %}checked{% endif %}>
+            <span class="setup-track"></span>
+            <span class="setup-thumb"></span>
+          </label>
+        </div>
       </div>
       {% endfor %}
       </div>
@@ -1052,6 +1057,22 @@ async function saveSetup() {
 
 function closeSetup() {
   document.getElementById('setupModal').style.display = 'none';
+}
+
+async function deleteHotel(hotelKey, hotelName) {
+  if (!confirm(`Delete ALL quotes for "${hotelName}"? This cannot be undone.`)) return;
+  const r = await fetch('/api/partivia/delete-hotel', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({hotel_key: hotelKey}),
+  });
+  const data = await r.json();
+  if (data.ok) {
+    showSnack(`${data.deleted} quotes deleted`);
+    // Remove row from setup list
+    const row = document.querySelector(`.setup-hotel-row[data-key="${hotelKey}"]`);
+    if (row) row.remove();
+  }
 }
 
 // ── Card filter ───────────────────────────────
