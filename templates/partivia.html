@@ -617,16 +617,17 @@ textarea { resize:vertical; min-height:120px; }
         </table>
       </div>
 
-      {% if not client_view %}
       <!-- Extra cost items -->
       <div style="margin-top:24px;padding:16px;background:var(--surface-variant);border-radius:var(--radius-sm)">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
           <span style="font-size:13px;font-weight:600;color:var(--on-surface)">
             <span class="material-icons-round" style="font-size:16px;vertical-align:middle">add_shopping_cart</span> Extra Cost Items
           </span>
+          {% if not client_view %}
           <button class="btn btn-outline btn-sm" onclick="addExtraItem()">
             <span class="material-icons-round" style="font-size:14px">add</span> Add Item
           </button>
+          {% endif %}
         </div>
         <table style="width:100%;border-collapse:collapse;font-size:13px" id="extraItemsTable">
           <thead>
@@ -638,7 +639,7 @@ textarea { resize:vertical; min-height:120px; }
               <th style="text-align:right;padding:6px 8px;font-size:11px;text-transform:uppercase;color:var(--on-surface-variant)">Subtotal</th>
               <th style="text-align:right;padding:6px 8px;font-size:11px;text-transform:uppercase;color:var(--on-surface-variant)">VAT €</th>
               <th style="text-align:right;padding:6px 8px;font-size:11px;text-transform:uppercase;color:var(--on-surface-variant);font-weight:700">Total</th>
-              <th style="width:30px"></th>
+              {% if not client_view %}<th style="width:30px"></th>{% endif %}
             </tr>
           </thead>
           <tbody id="extraItemsBody"></tbody>
@@ -648,12 +649,11 @@ textarea { resize:vertical; min-height:120px; }
               <td style="text-align:right;padding:8px" id="extraNetTotal">—</td>
               <td style="text-align:right;padding:8px" id="extraVatTotal">—</td>
               <td style="text-align:right;padding:8px;color:var(--primary);font-size:14px" id="extraGrandTotal">—</td>
-              <td></td>
+              {% if not client_view %}<td></td>{% endif %}
             </tr>
           </tfoot>
         </table>
       </div>
-      {% endif %}
     </div>
   </div>
 </div>
@@ -1319,8 +1319,8 @@ function renderQuoteSection(q, label) {
   if (q.services) h += `<div><strong>Included Services:</strong> ${q.services}</div>`;
   h += '</div></div>';
 
-  // Summary
-  if (q.summary) {
+  // Summary (admin only)
+  if (q.summary && !CLIENT_VIEW) {
     h += `<div style="${sectionStyle}"><h4 style="${h4Style}">Email Summary</h4>`;
     h += `<div style="font-size:12px;line-height:1.5;color:var(--on-surface-variant);font-style:italic">${q.summary}</div></div>`;
   }
@@ -1919,11 +1919,23 @@ function renderExtraItems() {
   const tbody = document.getElementById('extraItemsBody');
   if (!tbody) return;
   let netSum = 0, vatSum = 0;
+  const ro = CLIENT_VIEW;
   tbody.innerHTML = items.map((it, i) => {
     const net = it.qty * it.unit_cost;
     const vat = net * (it.vat_pct / 100);
     const total = net + vat;
     netSum += net; vatSum += vat;
+    if (ro) {
+      return `<tr style="border-bottom:1px solid var(--outline-variant)">
+        <td style="padding:6px 8px">${it.name||''}</td>
+        <td style="text-align:right;padding:6px 8px">${it.qty}</td>
+        <td style="text-align:right;padding:6px 8px">${fmtEur(it.unit_cost)}</td>
+        <td style="text-align:center;padding:6px 8px">${it.vat_pct}%</td>
+        <td style="text-align:right;padding:6px 8px">${fmtEur(net)}</td>
+        <td style="text-align:right;padding:6px 8px">${fmtEur(Math.round(vat))}</td>
+        <td style="text-align:right;padding:6px 8px;font-weight:600">${fmtEur(Math.round(total))}</td>
+      </tr>`;
+    }
     return `<tr style="border-bottom:1px solid var(--outline-variant)">
       <td style="padding:4px 8px"><input value="${(it.name||'').replace(/"/g,'&quot;')}" onchange="updateExtraItem(${i},'name',this.value)" style="width:100%;border:1px solid var(--outline-variant);border-radius:4px;padding:4px 6px;font-size:12px" placeholder="e.g. Segreteria organizzativa"></td>
       <td style="padding:4px 8px"><input type="number" value="${it.qty}" onchange="updateExtraItem(${i},'qty',this.value)" style="width:60px;text-align:right;border:1px solid var(--outline-variant);border-radius:4px;padding:4px 6px;font-size:12px" min="0"></td>
