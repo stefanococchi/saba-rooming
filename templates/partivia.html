@@ -186,6 +186,10 @@ textarea { resize:vertical; min-height:120px; }
 .setup-switch input:checked + .setup-track { background:var(--primary); }
 .setup-thumb { position:absolute; top:2px; left:2px; width:20px; height:20px; background:#fff; border-radius:50%; transition:left .2s; box-shadow:0 1px 3px rgba(0,0,0,.3); }
 .setup-switch input:checked ~ .setup-thumb { left:22px; }
+/* Parsed-result editable inputs */
+.pe { border:1px solid var(--outline-variant); border-radius:4px; padding:3px 6px; font-size:12px; font-family:inherit; background:var(--surface); }
+.pe:focus { outline:none; border-color:var(--primary); background:#fff; }
+.pe-sub { font-size:11px; }
 </style>
 </head>
 <body>
@@ -1422,32 +1426,61 @@ async function parseEmail() {
       html += `<div style="padding:20px;text-align:center;color:var(--on-surface-variant)">Type: <strong>${parsed.message_type}</strong> — no quote found.</div>`;
     } else {
       (parsed.quotes||[]).forEach((q,i) => {
-        html += `<div class="parsed-quote">
-          <div style="display:flex;align-items:center;gap:8px">
+        html += `<div class="parsed-quote" data-qi="${i}">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
             <input type="checkbox" class="parsed-check" data-index="${i}" checked>
-            <span class="hotel-name">${q.hotel_name||'?'}</span>
-            <span class="stars">${'\u2605'.repeat(q.stars||0)}</span>
+            <input class="pe" data-qi="${i}" data-f="hotel_name" value="${(q.hotel_name||'').replace(/"/g,'&quot;')}" style="font-weight:700;font-size:14px;width:220px">
+            <input class="pe" data-qi="${i}" data-f="city" value="${(q.city||'').replace(/"/g,'&quot;')}" style="width:100px">
+            <input class="pe" data-qi="${i}" data-f="stars" value="${q.stars||''}" style="width:40px;text-align:center" type="number" min="0" max="5">
             <span class="action-tag ${q.is_update?'action-update':'action-add'}">${q.is_update?'UPDATE':'NEW'}</span>
           </div>
-          <div class="detail">${q.city||''} — ${q.dates_proposed||''} — ${q.rooms_available||'?'} rooms</div>
-          <div class="detail-grid">`;
+          <div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap">
+            <label style="font-size:12px;color:var(--on-surface-variant)">Dates <input class="pe" data-qi="${i}" data-f="dates_proposed" value="${(q.dates_proposed||'').replace(/"/g,'&quot;')}" style="width:180px"></label>
+            <label style="font-size:12px;color:var(--on-surface-variant)">Rooms <input class="pe" data-qi="${i}" data-f="rooms_available" value="${(q.rooms_available||'').replace(/"/g,'&quot;')}" style="width:60px"></label>
+            <label style="font-size:12px;color:var(--on-surface-variant)">Total <input class="pe" data-qi="${i}" data-f="total_estimate" value="${(q.total_estimate||'').replace(/"/g,'&quot;')}" style="width:120px"></label>
+            <label style="font-size:12px;color:var(--on-surface-variant)">Deadline <input class="pe" data-qi="${i}" data-f="validity_date" value="${(q.validity_date||'').replace(/"/g,'&quot;')}" style="width:120px"></label>
+          </div>
+          <div class="detail-grid" style="margin-top:8px">`;
         if (q.room_rates&&q.room_rates.length) {
-          html+='<div><span class="label">Rooms:</span><br>';
-          q.room_rates.forEach(rr=>{html+=`${rr.room_type}: ${rr.rate_per_night||'?'}<br>`;});
+          html+='<div><span class="label">Rooms:</span>';
+          q.room_rates.forEach((rr,ri)=>{
+            html+=`<div style="display:flex;align-items:center;gap:4px;margin:3px 0" data-qi="${i}" data-ri="${ri}">
+              <input class="pe pe-sub" data-qi="${i}" data-arr="room_rates" data-ri="${ri}" data-sf="room_type" value="${(rr.room_type||'').replace(/"/g,'&quot;')}" style="width:130px">
+              <input class="pe pe-sub" data-qi="${i}" data-arr="room_rates" data-ri="${ri}" data-sf="rate_per_night" value="${(rr.rate_per_night||'').replace(/"/g,'&quot;')}" style="width:90px">
+              <button onclick="removeSubRow(this,${i},'room_rates',${ri})" style="background:none;border:none;color:var(--error);cursor:pointer;padding:2px" title="Remove">
+                <span class="material-icons-round" style="font-size:16px">close</span>
+              </button>
+            </div>`;
+          });
           html+='</div>';
         }
         if (q.meeting_rooms&&q.meeting_rooms.length) {
-          html+='<div><span class="label">Meeting Rooms:</span><br>';
-          q.meeting_rooms.forEach(mr=>{html+=`${mr.name}: ${mr.capacity||'?'} — ${mr.rate||'?'}<br>`;});
+          html+='<div><span class="label">Meeting Rooms:</span>';
+          q.meeting_rooms.forEach((mr,ri)=>{
+            html+=`<div style="display:flex;align-items:center;gap:4px;margin:3px 0">
+              <input class="pe pe-sub" data-qi="${i}" data-arr="meeting_rooms" data-ri="${ri}" data-sf="name" value="${(mr.name||'').replace(/"/g,'&quot;')}" style="width:110px">
+              <input class="pe pe-sub" data-qi="${i}" data-arr="meeting_rooms" data-ri="${ri}" data-sf="capacity" value="${(mr.capacity||'').replace(/"/g,'&quot;')}" style="width:50px">
+              <input class="pe pe-sub" data-qi="${i}" data-arr="meeting_rooms" data-ri="${ri}" data-sf="rate" value="${(mr.rate||'').replace(/"/g,'&quot;')}" style="width:80px">
+              <button onclick="removeSubRow(this,${i},'meeting_rooms',${ri})" style="background:none;border:none;color:var(--error);cursor:pointer;padding:2px" title="Remove">
+                <span class="material-icons-round" style="font-size:16px">close</span>
+              </button>
+            </div>`;
+          });
           html+='</div>';
         }
         if (q.fb_options&&q.fb_options.length) {
-          html+='<div><span class="label">F&B:</span><br>';
-          q.fb_options.forEach(fb=>{html+=`${fb.meal_type}: ${fb.price_per_person||'?'}<br>`;});
+          html+='<div><span class="label">F&B:</span>';
+          q.fb_options.forEach((fb,ri)=>{
+            html+=`<div style="display:flex;align-items:center;gap:4px;margin:3px 0">
+              <input class="pe pe-sub" data-qi="${i}" data-arr="fb_options" data-ri="${ri}" data-sf="meal_type" value="${(fb.meal_type||'').replace(/"/g,'&quot;')}" style="width:110px">
+              <input class="pe pe-sub" data-qi="${i}" data-arr="fb_options" data-ri="${ri}" data-sf="price_per_person" value="${(fb.price_per_person||'').replace(/"/g,'&quot;')}" style="width:80px">
+              <button onclick="removeSubRow(this,${i},'fb_options',${ri})" style="background:none;border:none;color:var(--error);cursor:pointer;padding:2px" title="Remove">
+                <span class="material-icons-round" style="font-size:16px">close</span>
+              </button>
+            </div>`;
+          });
           html+='</div>';
         }
-        html+=`<div><span class="label">Total:</span> ${q.total_estimate||'-'}<br>
-          <span class="label">Option Deadline:</span> ${q.validity_date||'-'}</div>`;
         html+='</div>';
         if (q.raw_summary) html+=`<div class="detail" style="margin-top:8px;font-style:italic">${q.raw_summary}</div>`;
         html+='</div>';
@@ -1465,8 +1498,34 @@ async function parseEmail() {
   finally { btn.disabled=false; btn.innerHTML='<span class="material-icons-round">auto_fix_high</span> Analyze'; }
 }
 
+function removeSubRow(btn, qi, arr, ri) {
+  window._parsedQuotes[qi][arr].splice(ri, 1);
+  // Re-render just this quote's sub-rows by removing the DOM row
+  btn.parentElement.remove();
+  showSnack('Removed');
+}
+
+function syncParsedEdits() {
+  // Sync top-level fields
+  document.querySelectorAll('.pe:not(.pe-sub)').forEach(inp => {
+    const qi = inp.dataset.qi, f = inp.dataset.f;
+    if (qi === undefined || !f) return;
+    let val = inp.value.trim();
+    if (f === 'stars') val = val ? parseInt(val) : null;
+    window._parsedQuotes[qi][f] = val;
+  });
+  // Sync sub-table fields
+  document.querySelectorAll('.pe.pe-sub').forEach(inp => {
+    const qi = inp.dataset.qi, arr = inp.dataset.arr, ri = inp.dataset.ri, sf = inp.dataset.sf;
+    if (window._parsedQuotes[qi] && window._parsedQuotes[qi][arr] && window._parsedQuotes[qi][arr][ri]) {
+      window._parsedQuotes[qi][arr][ri][sf] = inp.value.trim();
+    }
+  });
+}
+
 async function applyParsed() {
   if (!window._parsedQuotes) return;
+  syncParsedEdits();
   const selected = [];
   document.querySelectorAll('.parsed-check').forEach(cb => {
     if (cb.checked) selected.push(window._parsedQuotes[cb.dataset.index]);
