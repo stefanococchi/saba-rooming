@@ -890,6 +890,18 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
     def pnr_auto_assign():
         """Auto-assegna ospiti ai PNR in base ai voli indicati.
         Se confirm=true applica, altrimenti restituisce solo preview."""
+        import re
+
+        def normalize_flight(s):
+            """Estrae codice volo puro: 'AZ 1773 - 08:25' → 'AZ1773'."""
+            if not s:
+                return ''
+            # Rimuovi tutto dopo il trattino/spazio con orario
+            s = re.split(r'\s*[-–]\s*\d{2}[.:]\d{2}', s)[0]
+            # Rimuovi spazi interni e normalizza
+            s = re.sub(r'\s+', '', s).upper()
+            return s
+
         data = request.get_json() or {}
         confirm = data.get('confirm', False)
 
@@ -897,8 +909,8 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
         # Indice: (volo_andata, volo_ritorno) → lista PnrGroup ordinata per posti
         pnr_index = {}
         for pg in groups:
-            key = ((pg.volo_andata or '').strip().upper(),
-                   (pg.volo_ritorno or '').strip().upper())
+            key = (normalize_flight(pg.volo_andata),
+                   normalize_flight(pg.volo_ritorno))
             pnr_index.setdefault(key, []).append(pg)
 
         # Conta posti già occupati per PNR
@@ -918,8 +930,8 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
         overflow = []      # matchato ma PNR pieno
 
         for g in unassigned:
-            andata = (g.volo_arrivo or '').strip().upper()
-            ritorno = (g.volo_partenza or '').strip().upper()
+            andata = normalize_flight(g.volo_arrivo)
+            ritorno = normalize_flight(g.volo_partenza)
 
             if not andata and not ritorno:
                 no_flights.append({
