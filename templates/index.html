@@ -793,7 +793,7 @@ textarea { resize: vertical; min-height: 120px; }
 
 <!-- PNR Modal -->
 <div class="modal-overlay" id="pnrModal">
-  <div class="modal modal-lg">
+  <div class="modal modal-lg" style="max-width:95vw;width:95vw">
     <h3>
       <span class="material-icons-round" style="vertical-align:middle;margin-right:6px">connecting_airports</span>
       PNR Groups
@@ -1638,12 +1638,25 @@ async function pnrAutoAssign(confirm) {
     </div>`;
 
     // PNR capacity summary
+    const fmtT = t => t ? t.slice(0,2)+':'+t.slice(2) : '';
+    const fmtRoute = r => r && r.length >= 6 ? r.slice(0,3)+'→'+r.slice(3) : r || '';
+    const fmtOra = o => {
+      if (!o) return '';
+      const parts = o.split('-');
+      return parts.map(fmtT).join('-');
+    };
     html += `<h4 style="margin:12px 0 6px;font-size:14px">Riepilogo PNR</h4>`;
     html += `<table style="width:100%;font-size:13px;border-collapse:collapse;margin-bottom:12px">
       <tr style="background:var(--surface-variant)">
         <th style="padding:4px 8px;text-align:left">PNR</th>
         <th style="padding:4px 8px;text-align:left">Andata</th>
+        <th style="padding:4px 8px;text-align:left">Rotta</th>
+        <th style="padding:4px 8px;text-align:left">Data</th>
+        <th style="padding:4px 8px;text-align:left">Orario</th>
         <th style="padding:4px 8px;text-align:left">Ritorno</th>
+        <th style="padding:4px 8px;text-align:left">Rotta</th>
+        <th style="padding:4px 8px;text-align:left">Data</th>
+        <th style="padding:4px 8px;text-align:left">Orario</th>
         <th style="padding:4px 8px;text-align:right">Occupati</th>
         <th style="padding:4px 8px;text-align:right">Posti</th>
         <th style="padding:4px 8px;text-align:right">Liberi</th>
@@ -1653,7 +1666,13 @@ async function pnrAutoAssign(confirm) {
       html += `<tr style="border-bottom:1px solid var(--outline-variant);${rowStyle}">
         <td style="padding:4px 8px;font-family:monospace;font-weight:600">${p.pnr_code}</td>
         <td style="padding:4px 8px">${p.volo_andata}</td>
+        <td style="padding:4px 8px">${fmtRoute(p.rotta_andata)}</td>
+        <td style="padding:4px 8px">${p.data_andata || ''}</td>
+        <td style="padding:4px 8px">${fmtOra(p.orario_andata)}</td>
         <td style="padding:4px 8px">${p.volo_ritorno}</td>
+        <td style="padding:4px 8px">${fmtRoute(p.rotta_ritorno)}</td>
+        <td style="padding:4px 8px">${p.data_ritorno || ''}</td>
+        <td style="padding:4px 8px">${fmtOra(p.orario_ritorno)}</td>
         <td style="padding:4px 8px;text-align:right">${p.used}</td>
         <td style="padding:4px 8px;text-align:right">${p.seats}</td>
         <td style="padding:4px 8px;text-align:right;font-weight:600;color:${p.overbooking ? '#d32f2f' : p.available === 0 ? '#2e7d32' : ''}">${p.available}${p.overbooking ? ' ⚠' : ''}</td>
@@ -1667,11 +1686,16 @@ async function pnrAutoAssign(confirm) {
     if (j.matched.length) {
       html += `<h4 style="margin:12px 0 6px;font-size:14px;color:#2e7d32">✓ Match esatti (${j.matched.length})</h4>`;
       j.matched.forEach(m => {
-        html += `<div style="padding:4px 8px;font-size:13px;border-bottom:1px solid var(--outline-variant)">
-          <strong>${m.cognome} ${m.nome}</strong>
-          <span style="margin-left:8px;font-family:monospace;background:#e8f5e9;padding:1px 6px;border-radius:4px">${m.pnr_code}</span>
-          <span style="color:var(--on-surface-variant);margin-left:4px">${m.volo_andata} → ${m.volo_ritorno}</span>
-          ${m.sede_lavoro ? `<span style="float:right;font-size:12px;color:var(--on-surface-variant)">${m.sede_lavoro}</span>` : ''}
+        const oraA = m.orario_andata ? fmtOra(m.orario_andata) : '';
+        const oraR = m.orario_ritorno ? fmtOra(m.orario_ritorno) : '';
+        html += `<div style="padding:4px 8px;font-size:13px;border-bottom:1px solid var(--outline-variant);display:flex;align-items:center;gap:8px">
+          <strong style="min-width:180px">${m.cognome} ${m.nome}</strong>
+          <span style="font-family:monospace;background:#e8f5e9;padding:1px 6px;border-radius:4px">${m.pnr_code}</span>
+          <span>${m.volo_andata} ${m.rotta_andata} ${oraA}</span>
+          <span style="color:var(--on-surface-variant)">→</span>
+          <span>${m.volo_ritorno} ${m.rotta_ritorno} ${oraR}</span>
+          <span style="flex:1"></span>
+          ${m.sede_lavoro ? `<span style="font-size:12px;color:var(--on-surface-variant)">${m.sede_lavoro}</span>` : ''}
         </div>`;
       });
     }

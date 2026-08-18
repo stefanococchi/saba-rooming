@@ -952,12 +952,20 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
                     break
 
             if assigned_pg:
+                orig_a = assigned_pg.rotta_andata[:3] if assigned_pg.rotta_andata and len(assigned_pg.rotta_andata) >= 6 else ''
+                dest_a = assigned_pg.rotta_andata[3:] if assigned_pg.rotta_andata and len(assigned_pg.rotta_andata) >= 6 else ''
+                orig_r = assigned_pg.rotta_ritorno[:3] if assigned_pg.rotta_ritorno and len(assigned_pg.rotta_ritorno) >= 6 else ''
+                dest_r = assigned_pg.rotta_ritorno[3:] if assigned_pg.rotta_ritorno and len(assigned_pg.rotta_ritorno) >= 6 else ''
                 matched.append({
                     'id': g.id, 'cognome': g.cognome, 'nome': g.nome,
                     'sede_lavoro': g.sede_lavoro or '',
                     'pnr_id': assigned_pg.id, 'pnr_code': assigned_pg.pnr_code,
                     'volo_andata': assigned_pg.volo_andata,
                     'volo_ritorno': assigned_pg.volo_ritorno,
+                    'rotta_andata': f'{orig_a}→{dest_a}' if orig_a else '',
+                    'rotta_ritorno': f'{orig_r}→{dest_r}' if orig_r else '',
+                    'orario_andata': assigned_pg.orario_andata or '',
+                    'orario_ritorno': assigned_pg.orario_ritorno or '',
                 })
                 seats_used[assigned_pg.id] = seats_used.get(assigned_pg.id, 0) + 1
                 continue
@@ -1038,6 +1046,12 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
                 'overbooking': used > pg.seats,
                 'volo_andata': pg.volo_andata,
                 'volo_ritorno': pg.volo_ritorno,
+                'rotta_andata': pg.rotta_andata or '',
+                'rotta_ritorno': pg.rotta_ritorno or '',
+                'data_andata': pg.data_andata or '',
+                'data_ritorno': pg.data_ritorno or '',
+                'orario_andata': pg.orario_andata or '',
+                'orario_ritorno': pg.orario_ritorno or '',
             })
 
         return jsonify(
