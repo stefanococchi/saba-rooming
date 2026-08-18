@@ -1073,6 +1073,35 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
             },
         )
 
+    @app.post('/api/pnr/assign-by-code')
+    def pnr_assign_by_code():
+        """Assegna un singolo ospite a un PNR tramite pnr_code."""
+        data = request.get_json()
+        pnr_code = (data.get('pnr_code') or '').strip()
+        guest_id = data.get('guest_id')
+        if not pnr_code or not guest_id:
+            return jsonify(ok=False, error='Dati mancanti'), 400
+
+        pg = PnrGroup.query.filter_by(pnr_code=pnr_code).first()
+        if not pg:
+            return jsonify(ok=False, error=f'PNR {pnr_code} non trovato'), 404
+
+        guest = Guest.query.get(guest_id)
+        if not guest:
+            return jsonify(ok=False, error='Ospite non trovato'), 404
+
+        guest.pnr_group_id = pg.id
+        guest.volo_arrivo = pg.volo_andata
+        guest.volo_partenza = pg.volo_ritorno
+        origin = pg.rotta_andata[:3] if pg.rotta_andata and len(pg.rotta_andata) >= 6 else ''
+        dest = pg.rotta_ritorno[3:] if pg.rotta_ritorno and len(pg.rotta_ritorno) >= 6 else ''
+        if origin:
+            guest.aeroporto_partenza = origin
+        if dest:
+            guest.aeroporto_arrivo = dest
+        db.session.commit()
+        return jsonify(ok=True)
+
     @app.get('/api/pnr/unassigned')
     def pnr_unassigned():
         """Lista ospiti non assegnati a nessun PNR."""
