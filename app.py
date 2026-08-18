@@ -1952,10 +1952,67 @@ Reply ONLY with valid JSON (no markdown):
                 results.append({'hotel': q.hotel_name, 'ok': True,
                                 'action': 'updated', 'id': q.id})
             else:
+                # Controllo duplicati case-insensitive per hotel_name + city
+                hotel_name_raw = (qd.get('hotel_name') or '').strip()
+                city_raw = (qd.get('city') or '').strip()
+                existing_q = None
+                if hotel_name_raw:
+                    eq = PartiviaQuote.query.filter(
+                        db.func.upper(PartiviaQuote.hotel_name) == hotel_name_raw.upper()
+                    )
+                    if city_raw:
+                        eq = eq.filter(
+                            db.func.upper(PartiviaQuote.city) == city_raw.upper()
+                        )
+                    existing_q = eq.first()
+                if existing_q:
+                    # Esiste già: aggiorna invece di duplicare
+                    for fld in ('contact_name', 'contact_email', 'dates_proposed',
+                                'rooms_available', 'min_rooms_required',
+                                'cancellation_policy', 'payment_terms',
+                                'validity_date', 'commission', 'total_estimate',
+                                'notes', 'raw_summary', 'website_url', 'address'):
+                        if qd.get(fld) is not None:
+                            setattr(existing_q, fld, qd[fld])
+                    if qd.get('stars') is not None:
+                        existing_q.stars = qd['stars']
+                    if qd.get('included_services'):
+                        existing_q.included_services = ', '.join(qd['included_services'])
+                    existing_q.updated_at = datetime.utcnow()
+                    if email_log_id:
+                        existing_q.email_log_id = email_log_id
+                    # Sostituisci sotto-tabelle se fornite
+                    if qd.get('room_rates'):
+                        PartiviaRoomRate.query.filter_by(quote_id=existing_q.id).delete()
+                        for rr in qd['room_rates']:
+                            db.session.add(PartiviaRoomRate(
+                                quote_id=existing_q.id, room_type=rr.get('room_type', ''),
+                                rate_per_night=rr.get('rate_per_night'),
+                                breakfast_included=rr.get('breakfast_included'),
+                                notes=rr.get('notes')))
+                    if qd.get('meeting_rooms'):
+                        PartiviaMeetingRoom.query.filter_by(quote_id=existing_q.id).delete()
+                        for mr in qd['meeting_rooms']:
+                            db.session.add(PartiviaMeetingRoom(
+                                quote_id=existing_q.id, name=mr.get('name', ''),
+                                capacity=mr.get('capacity'),
+                                rate=mr.get('rate'), notes=mr.get('notes')))
+                    if qd.get('fb_options'):
+                        PartiviaFBOption.query.filter_by(quote_id=existing_q.id).delete()
+                        for fb in qd['fb_options']:
+                            db.session.add(PartiviaFBOption(
+                                quote_id=existing_q.id, meal_type=fb.get('meal_type', ''),
+                                price_per_person=fb.get('price_per_person'),
+                                menu_description=fb.get('menu_description')))
+                    db.session.flush()
+                    results.append({'hotel': existing_q.hotel_name, 'ok': True,
+                                    'action': 'updated (dedup)', 'id': existing_q.id})
+                    continue
+
                 # Nuovo preventivo
                 q = PartiviaQuote(
-                    hotel_name=qd.get('hotel_name', ''),
-                    city=qd.get('city', ''),
+                    hotel_name=hotel_name_raw,
+                    city=city_raw,
                     stars=qd.get('stars'),
                     contact_name=qd.get('contact_name'),
                     contact_email=qd.get('contact_email'),
