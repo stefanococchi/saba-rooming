@@ -886,6 +886,167 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
         db.session.commit()
         return jsonify(ok=True)
 
+    @app.post('/api/pnr/auto-assign')
+    def pnr_auto_assign():
+        """Auto-assegna ospiti ai PNR in base ai voli indicati.
+        Se confirm=true applica, altrimenti restituisce solo preview."""
+        data = request.get_json() or {}
+        confirm = data.get('confirm', False)
+
+        groups = PnrGroup.query.all()
+        # Indice: (volo_andata, volo_ritorno) → lista PnrGroup ordinata per posti
+        pnr_index = {}
+        for pg in groups:
+            key = ((pg.volo_andata or '').strip().upper(),
+                   (pg.volo_ritorno or '').strip().upper())
+            pnr_index.setdefault(key, []).append(pg)
+
+        # Conta posti già occupati per PNR
+        seats_used = {}
+        for pg in groups:
+            seats_used[pg.id] = Guest.query.filter_by(pnr_group_id=pg.id).count()
+
+        # Ospiti non ancora assegnati
+        unassigned = Guest.query.filter(
+            Guest.pnr_group_id.is_(None)
+        ).order_by(Guest.cognome, Guest.nome).all()
+
+        matched = []       # match esatto andata+ritorno
+        partial = []       # solo andata o solo ritorno matcha
+        no_match = []      # ha voli ma nessun PNR corrisponde
+        no_flights = []    # nessun volo compilato
+        overflow = []      # matchato ma PNR pieno
+
+        for g in unassigned:
+            andata = (g.volo_arrivo or '').strip().upper()
+            ritorno = (g.volo_partenza or '').strip().upper()
+
+            if not andata and not ritorno:
+                no_flights.append({
+                    'id': g.id, 'cognome': g.cognome, 'nome': g.nome,
+                    'sede_lavoro': g.sede_lavoro or '',
+                    'reason': 'Nessun volo compilato',
+                })
+                continue
+
+            # Prova match esatto
+            key = (andata, ritorno)
+            candidates = pnr_index.get(key, [])
+
+            assigned_pg = None
+            for pg in candidates:
+                if seats_used.get(pg.id, 0) < pg.seats:
+                    assigned_pg = pg
+                    break
+
+            if assigned_pg:
+                matched.append({
+                    'id': g.id, 'cognome': g.cognome, 'nome': g.nome,
+                    'sede_lavoro': g.sede_lavoro or '',
+                    'pnr_id': assigned_pg.id, 'pnr_code': assigned_pg.pnr_code,
+                    'volo_andata': assigned_pg.volo_andata,
+                    'volo_ritorno': assigned_pg.volo_ritorno,
+                })
+                seats_used[assigned_pg.id] = seats_used.get(assigned_pg.id, 0) + 1
+                continue
+
+            # Match esatto ma tutti pieni → overflow
+            if candidates:
+                overflow.append({
+                    'id': g.id, 'cognome': g.cognome, 'nome': g.nome,
+                    'sede_lavoro': g.sede_lavoro or '',
+                    'volo_arrivo': andata, 'volo_partenza': ritorno,
+                    'pnr_codes': [pg.pnr_code for pg in candidates],
+                    'reason': f'PNR pieni: {", ".join(pg.pnr_code for pg in candidates)}',
+                })
+                continue
+
+            # Prova match parziale
+            partial_matches = []
+            for (k_a, k_r), pgs in pnr_index.items():
+                if andata and andata == k_a and ritorno != k_r:
+                    for pg in pgs:
+                        partial_matches.append({
+                            'pnr_code': pg.pnr_code, 'type': 'andata',
+                            'match_flight': k_a,
+                            'mismatch': f'Ritorno: ospite={ritorno or "—"} PNR={k_r}',
+                        })
+                elif ritorno and ritorno == k_r and andata != k_a:
+                    for pg in pgs:
+                        partial_matches.append({
+                            'pnr_code': pg.pnr_code, 'type': 'ritorno',
+                            'match_flight': k_r,
+                            'mismatch': f'Andata: ospite={andata or "—"} PNR={k_a}',
+                        })
+
+            if partial_matches:
+                partial.append({
+                    'id': g.id, 'cognome': g.cognome, 'nome': g.nome,
+                    'sede_lavoro': g.sede_lavoro or '',
+                    'volo_arrivo': andata, 'volo_partenza': ritorno,
+                    'partial_matches': partial_matches,
+                })
+            else:
+                no_match.append({
+                    'id': g.id, 'cognome': g.cognome, 'nome': g.nome,
+                    'sede_lavoro': g.sede_lavoro or '',
+                    'volo_arrivo': andata, 'volo_partenza': ritorno,
+                    'reason': 'Nessun PNR con questi voli',
+                })
+
+        # Se confirm, applica i match esatti
+        applied = 0
+        if confirm and matched:
+            for m in matched:
+                guest = Guest.query.get(m['id'])
+                if guest:
+                    guest.pnr_group_id = m['pnr_id']
+                    pg = PnrGroup.query.get(m['pnr_id'])
+                    if pg:
+                        guest.volo_arrivo = pg.volo_andata
+                        guest.volo_partenza = pg.volo_ritorno
+                        origin = pg.rotta_andata[:3] if pg.rotta_andata and len(pg.rotta_andata) >= 6 else ''
+                        dest = pg.rotta_ritorno[3:] if pg.rotta_ritorno and len(pg.rotta_ritorno) >= 6 else ''
+                        if origin:
+                            guest.aeroporto_partenza = origin
+                        if dest:
+                            guest.aeroporto_arrivo = dest
+                    applied += 1
+            db.session.commit()
+
+        # Riepilogo posti per PNR
+        pnr_summary = []
+        for pg in sorted(groups, key=lambda x: x.pnr_code):
+            used = seats_used.get(pg.id, 0)
+            pnr_summary.append({
+                'pnr_code': pg.pnr_code,
+                'seats': pg.seats,
+                'used': used,
+                'available': pg.seats - used,
+                'overbooking': used > pg.seats,
+                'volo_andata': pg.volo_andata,
+                'volo_ritorno': pg.volo_ritorno,
+            })
+
+        return jsonify(
+            ok=True,
+            confirmed=confirm,
+            applied=applied,
+            matched=matched,
+            partial=partial,
+            overflow=overflow,
+            no_match=no_match,
+            no_flights=no_flights,
+            pnr_summary=pnr_summary,
+            totals={
+                'matched': len(matched),
+                'partial': len(partial),
+                'overflow': len(overflow),
+                'no_match': len(no_match),
+                'no_flights': len(no_flights),
+            },
+        )
+
     @app.get('/api/pnr/unassigned')
     def pnr_unassigned():
         """Lista ospiti non assegnati a nessun PNR."""

@@ -803,6 +803,9 @@ textarea { resize: vertical; min-height: 120px; }
       <button class="btn btn-sm" onclick="showPnrImport()" style="background:var(--primary);color:white">
         <span class="material-icons-round" style="font-size:16px">upload</span> Importa PNR
       </button>
+      <button class="btn btn-sm" onclick="pnrAutoAssign(false)" style="background:#ef6c00;color:white">
+        <span class="material-icons-round" style="font-size:16px">auto_fix_high</span> Auto-Assegna
+      </button>
       <a href="/api/export/pnr" class="btn btn-outline btn-sm" style="display:flex;align-items:center;gap:4px;text-decoration:none">
         <span class="material-icons-round" style="font-size:16px">download</span> XLSX
       </a>
@@ -1601,6 +1604,147 @@ async function deletePnrGroup(groupId, pnrCode) {
   if (!confirm(`Eliminare il PNR ${pnrCode}? I passeggeri verranno scollegati.`)) return;
   await fetch(`/api/pnr/${groupId}`, {method: 'DELETE'});
   showPNR();
+}
+
+// ── PNR Auto-Assign ──────────────────────────────────────────────────────
+async function pnrAutoAssign(confirm) {
+  const content = document.getElementById('pnrContent');
+  content.innerHTML = '<div style="text-align:center;padding:16px"><span class="spinner"></span> Analisi in corso...</div>';
+
+  try {
+    const r = await fetch('/api/pnr/auto-assign', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({confirm})
+    });
+    const j = await r.json();
+    if (!j.ok) { content.innerHTML = `<p style="color:var(--error)">${j.error}</p>`; return; }
+
+    const t = j.totals;
+    let html = '';
+
+    if (confirm && j.applied) {
+      html += `<div style="background:#e8f5e9;border:1px solid #4caf50;border-radius:8px;padding:12px;margin-bottom:12px">
+        <strong style="color:#2e7d32">✓ ${j.applied} passeggeri assegnati con successo</strong>
+      </div>`;
+    }
+
+    // Summary
+    html += `<div class="stanze-summary">
+      <div style="color:#2e7d32"><strong>${t.matched}</strong> match esatti</div>
+      <div style="color:#ef6c00"><strong>${t.partial}</strong> match parziali</div>
+      <div style="color:#d32f2f"><strong>${t.overflow}</strong> overflow</div>
+      <div style="color:#d32f2f"><strong>${t.no_match}</strong> senza PNR</div>
+      <div><strong>${t.no_flights}</strong> senza voli</div>
+    </div>`;
+
+    // PNR capacity summary
+    html += `<h4 style="margin:12px 0 6px;font-size:14px">Riepilogo PNR</h4>`;
+    html += `<table style="width:100%;font-size:13px;border-collapse:collapse;margin-bottom:12px">
+      <tr style="background:var(--surface-variant)">
+        <th style="padding:4px 8px;text-align:left">PNR</th>
+        <th style="padding:4px 8px;text-align:left">Andata</th>
+        <th style="padding:4px 8px;text-align:left">Ritorno</th>
+        <th style="padding:4px 8px;text-align:right">Occupati</th>
+        <th style="padding:4px 8px;text-align:right">Posti</th>
+        <th style="padding:4px 8px;text-align:right">Liberi</th>
+      </tr>`;
+    j.pnr_summary.forEach(p => {
+      const rowStyle = p.overbooking ? 'background:#ffebee' : p.available === 0 ? 'background:#e8f5e9' : '';
+      html += `<tr style="border-bottom:1px solid var(--outline-variant);${rowStyle}">
+        <td style="padding:4px 8px;font-family:monospace;font-weight:600">${p.pnr_code}</td>
+        <td style="padding:4px 8px">${p.volo_andata}</td>
+        <td style="padding:4px 8px">${p.volo_ritorno}</td>
+        <td style="padding:4px 8px;text-align:right">${p.used}</td>
+        <td style="padding:4px 8px;text-align:right">${p.seats}</td>
+        <td style="padding:4px 8px;text-align:right;font-weight:600;color:${p.overbooking ? '#d32f2f' : p.available === 0 ? '#2e7d32' : ''}">${p.available}${p.overbooking ? ' ⚠' : ''}</td>
+      </tr>`;
+    });
+    html += `</table>`;
+
+    html += `<div style="max-height:50vh;overflow-y:auto">`;
+
+    // Matched
+    if (j.matched.length) {
+      html += `<h4 style="margin:12px 0 6px;font-size:14px;color:#2e7d32">✓ Match esatti (${j.matched.length})</h4>`;
+      j.matched.forEach(m => {
+        html += `<div style="padding:4px 8px;font-size:13px;border-bottom:1px solid var(--outline-variant)">
+          <strong>${m.cognome} ${m.nome}</strong>
+          <span style="margin-left:8px;font-family:monospace;background:#e8f5e9;padding:1px 6px;border-radius:4px">${m.pnr_code}</span>
+          <span style="color:var(--on-surface-variant);margin-left:4px">${m.volo_andata} → ${m.volo_ritorno}</span>
+          ${m.sede_lavoro ? `<span style="float:right;font-size:12px;color:var(--on-surface-variant)">${m.sede_lavoro}</span>` : ''}
+        </div>`;
+      });
+    }
+
+    // Partial matches
+    if (j.partial.length) {
+      html += `<h4 style="margin:12px 0 6px;font-size:14px;color:#ef6c00">⚠ Match parziali (${j.partial.length})</h4>`;
+      j.partial.forEach(p => {
+        const details = p.partial_matches.map(pm => `${pm.pnr_code}: ${pm.mismatch}`).join('; ');
+        html += `<div style="padding:4px 8px;font-size:13px;border-bottom:1px solid var(--outline-variant);background:#fff3e0">
+          <strong>${p.cognome} ${p.nome}</strong>
+          <span style="color:var(--on-surface-variant);margin-left:8px">${p.volo_arrivo || '—'} → ${p.volo_partenza || '—'}</span>
+          <div style="font-size:12px;color:#e65100;margin-top:2px">${details}</div>
+        </div>`;
+      });
+    }
+
+    // Overflow
+    if (j.overflow.length) {
+      html += `<h4 style="margin:12px 0 6px;font-size:14px;color:#d32f2f">🔴 Overflow — PNR pieni (${j.overflow.length})</h4>`;
+      j.overflow.forEach(o => {
+        html += `<div style="padding:4px 8px;font-size:13px;border-bottom:1px solid var(--outline-variant);background:#ffebee">
+          <strong>${o.cognome} ${o.nome}</strong>
+          <span style="color:var(--on-surface-variant);margin-left:8px">${o.volo_arrivo} → ${o.volo_partenza}</span>
+          <div style="font-size:12px;color:#c62828;margin-top:2px">${o.reason}</div>
+        </div>`;
+      });
+    }
+
+    // No match
+    if (j.no_match.length) {
+      html += `<h4 style="margin:12px 0 6px;font-size:14px;color:#d32f2f">✗ Nessun PNR corrispondente (${j.no_match.length})</h4>`;
+      j.no_match.forEach(n => {
+        html += `<div style="padding:4px 8px;font-size:13px;border-bottom:1px solid var(--outline-variant);background:#ffebee">
+          <strong>${n.cognome} ${n.nome}</strong>
+          <span style="color:var(--on-surface-variant);margin-left:8px">${n.volo_arrivo || '—'} → ${n.volo_partenza || '—'}</span>
+        </div>`;
+      });
+    }
+
+    // No flights
+    if (j.no_flights.length) {
+      html += `<h4 style="margin:12px 0 6px;font-size:14px">Senza voli compilati (${j.no_flights.length})</h4>`;
+      j.no_flights.forEach(n => {
+        html += `<div style="padding:4px 8px;font-size:13px;border-bottom:1px solid var(--outline-variant)">
+          ${n.cognome} ${n.nome}
+          ${n.sede_lavoro ? `<span style="float:right;font-size:12px;color:var(--on-surface-variant)">${n.sede_lavoro}</span>` : ''}
+        </div>`;
+      });
+    }
+
+    html += `</div>`;
+
+    // Confirm button (only in preview mode, if there are matches)
+    if (!confirm && j.matched.length) {
+      html += `<div style="margin-top:12px;text-align:center">
+        <button class="btn btn-sm" onclick="pnrAutoAssign(true)" style="background:#2e7d32;color:white;padding:8px 24px">
+          <span class="material-icons-round" style="font-size:16px;vertical-align:middle">check</span>
+          Conferma assegnazione (${j.matched.length} passeggeri)
+        </button>
+        <button class="btn btn-outline btn-sm" onclick="showPNR()" style="margin-left:8px">Annulla</button>
+      </div>`;
+    } else if (confirm) {
+      html += `<div style="margin-top:12px;text-align:center">
+        <button class="btn btn-outline btn-sm" onclick="showPNR()">Torna ai PNR</button>
+      </div>`;
+    }
+
+    content.innerHTML = html;
+
+  } catch (err) {
+    content.innerHTML = `<p style="color:var(--error)">${err.message}</p>`;
+  }
 }
 
 // ── Camere ───────────────────────────────────────────────────────────────
