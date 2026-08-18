@@ -1379,9 +1379,18 @@ Per "azione": "update", valorizza "match_id" con l'ID dell'ospite corrispondente
             # Se match_id non fornito dal LLM, prova fuzzy match
             for g in parsed.get('guests', []):
                 if g.get('azione') == 'update' and not g.get('match_id'):
+                    cognome_up = (g.get('cognome') or '').strip().upper()
+                    nome_up = (g.get('nome') or '').strip().upper()
+                    # Match case-insensitive su cognome + nome
                     match = Guest.query.filter(
-                        db.func.upper(Guest.cognome) == (g.get('cognome') or '').upper()
-                    ).first()
+                        db.func.upper(Guest.cognome) == cognome_up,
+                        db.func.upper(Guest.nome) == nome_up
+                    ).first() if cognome_up and nome_up else None
+                    # Fallback: solo cognome se nome non disponibile
+                    if not match and cognome_up:
+                        match = Guest.query.filter(
+                            db.func.upper(Guest.cognome) == cognome_up
+                        ).first()
                     if match:
                         g['match_id'] = match.id
                         g['match_nome'] = match.nome_completo
@@ -1441,10 +1450,7 @@ Per "azione": "update", valorizza "match_id" con l'ID dell'ospite corrispondente
                 if not g:
                     results.append({'cognome': cognome, 'ok': False, 'error': 'Non trovato'})
                     continue
-                if cognome:
-                    g.cognome = cognome
-                if nome:
-                    g.nome = nome
+                # Non sovrascrivere cognome/nome — il DB ha il dato canonico
                 for f in str_fields:
                     if gd.get(f) is not None:
                         setattr(g, f, gd[f])
@@ -1456,17 +1462,40 @@ Per "azione": "update", valorizza "match_id" con l'ID dell'ospite corrispondente
                     g.email_log_id = email_log_id
                 results.append({'cognome': cognome, 'ok': True, 'action': 'updated', 'id': g.id})
             else:
-                kwargs = dict(cognome=cognome, nome=nome, source='email',
-                              note=gd.get('nota'),
-                              email_log_id=email_log_id)
-                for f in str_fields:
-                    kwargs[f] = gd.get(f)
-                for f in bool_fields:
-                    kwargs[f] = _parse_bool(gd.get(f))
-                g = Guest(**kwargs)
-                db.session.add(g)
-                db.session.flush()
-                results.append({'cognome': cognome, 'ok': True, 'action': 'added', 'id': g.id})
+                # Controllo duplicati case-insensitive prima di inserire
+                existing = None
+                if cognome:
+                    q = Guest.query.filter(
+                        db.func.upper(Guest.cognome) == cognome.upper()
+                    )
+                    if nome:
+                        q = q.filter(db.func.upper(Guest.nome) == nome.upper())
+                    existing = q.first()
+                if existing:
+                    # Esiste già: aggiorna invece di duplicare
+                    for f in str_fields:
+                        if gd.get(f) is not None:
+                            setattr(existing, f, gd[f])
+                    for f in bool_fields:
+                        if gd.get(f) is not None:
+                            setattr(existing, f, _parse_bool(gd[f]))
+                    existing.updated_at = datetime.utcnow()
+                    if email_log_id:
+                        existing.email_log_id = email_log_id
+                    results.append({'cognome': cognome, 'ok': True,
+                                    'action': 'updated (dedup)', 'id': existing.id})
+                else:
+                    kwargs = dict(cognome=cognome, nome=nome, source='email',
+                                  note=gd.get('nota'),
+                                  email_log_id=email_log_id)
+                    for f in str_fields:
+                        kwargs[f] = gd.get(f)
+                    for f in bool_fields:
+                        kwargs[f] = _parse_bool(gd.get(f))
+                    g = Guest(**kwargs)
+                    db.session.add(g)
+                    db.session.flush()
+                    results.append({'cognome': cognome, 'ok': True, 'action': 'added', 'id': g.id})
 
         db.session.commit()
         return jsonify(ok=True, results=results)
