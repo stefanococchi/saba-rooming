@@ -1704,12 +1704,14 @@ async function pnrAutoAssign(confirm) {
         const oraR = m.orario_ritorno ? fmtOra(m.orario_ritorno) : '';
         html += `<div style="padding:4px 8px;font-size:13px;border-bottom:1px solid var(--outline-variant);display:flex;align-items:center;gap:8px">
           <strong style="min-width:180px">${m.cognome} ${m.nome}</strong>
+          ${m.sede_lavoro ? `<span style="font-size:12px;color:var(--on-surface-variant)">${m.sede_lavoro}</span>` : ''}
           <span style="font-family:monospace;background:#e8f5e9;padding:1px 6px;border-radius:4px">${m.pnr_code}</span>
           <span>${m.volo_andata} ${m.rotta_andata} ${oraA}</span>
           <span style="color:var(--on-surface-variant)">→</span>
           <span>${m.volo_ritorno} ${m.rotta_ritorno} ${oraR}</span>
+          ${m.note ? `<span style="font-size:11px;color:var(--on-surface-variant);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${m.note.replace(/"/g,'&quot;')}">${m.note}</span>` : ''}
+          ${m.email_log_id ? `<span class="material-icons-round" onclick="event.stopPropagation();showEmailLog(${m.email_log_id})" style="font-size:16px;color:var(--info,#1976d2);cursor:pointer" title="Email originale">mail</span>` : ''}
           <span style="flex:1"></span>
-          ${m.sede_lavoro ? `<span style="font-size:12px;color:var(--on-surface-variant)">${m.sede_lavoro}</span>` : ''}
         </div>`;
       });
     }
@@ -1729,6 +1731,8 @@ async function pnrAutoAssign(confirm) {
       <strong style="min-width:200px;white-space:nowrap">${g.cognome} ${g.nome}</strong>
       ${g.sede_lavoro ? `<span style="font-size:12px;color:var(--on-surface-variant);min-width:70px">${g.sede_lavoro}</span>` : ''}
       <span style="font-size:12px;color:var(--on-surface-variant)">${g.volo_arrivo || g.volo_andata || '—'} → ${g.volo_partenza || '—'}</span>
+      ${g.note ? `<span style="font-size:11px;color:var(--on-surface-variant);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${g.note.replace(/"/g,'&quot;')}">${g.note}</span>` : ''}
+      ${g.email_log_id ? `<span class="material-icons-round" onclick="event.stopPropagation();showEmailLog(${g.email_log_id})" style="font-size:16px;color:var(--info,#1976d2);cursor:pointer" title="Email originale">mail</span>` : ''}
       ${extra ? `<span style="font-size:11px;color:#e65100">${extra}</span>` : ''}
       <span style="flex:1"></span>
       ${pnrSelect(g.id)}

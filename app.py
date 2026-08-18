@@ -929,14 +929,22 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
         no_flights = []    # nessun volo compilato
         overflow = []      # matchato ma PNR pieno
 
+        def _guest_base(g):
+            notes = ' | '.join(filter(None, [g.note_form, g.note]))
+            return {
+                'id': g.id, 'cognome': g.cognome, 'nome': g.nome,
+                'sede_lavoro': g.sede_lavoro or '',
+                'note': notes,
+                'email_log_id': g.email_log_id,
+            }
+
         for g in unassigned:
             andata = normalize_flight(g.volo_arrivo)
             ritorno = normalize_flight(g.volo_partenza)
 
             if not andata and not ritorno:
                 no_flights.append({
-                    'id': g.id, 'cognome': g.cognome, 'nome': g.nome,
-                    'sede_lavoro': g.sede_lavoro or '',
+                    **_guest_base(g),
                     'reason': 'Nessun volo compilato',
                 })
                 continue
@@ -957,8 +965,7 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
                 orig_r = assigned_pg.rotta_ritorno[:3] if assigned_pg.rotta_ritorno and len(assigned_pg.rotta_ritorno) >= 6 else ''
                 dest_r = assigned_pg.rotta_ritorno[3:] if assigned_pg.rotta_ritorno and len(assigned_pg.rotta_ritorno) >= 6 else ''
                 matched.append({
-                    'id': g.id, 'cognome': g.cognome, 'nome': g.nome,
-                    'sede_lavoro': g.sede_lavoro or '',
+                    **_guest_base(g),
                     'pnr_id': assigned_pg.id, 'pnr_code': assigned_pg.pnr_code,
                     'volo_andata': assigned_pg.volo_andata,
                     'volo_ritorno': assigned_pg.volo_ritorno,
@@ -973,8 +980,7 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
             # Match esatto ma tutti pieni → overflow
             if candidates:
                 overflow.append({
-                    'id': g.id, 'cognome': g.cognome, 'nome': g.nome,
-                    'sede_lavoro': g.sede_lavoro or '',
+                    **_guest_base(g),
                     'volo_arrivo': andata, 'volo_partenza': ritorno,
                     'pnr_codes': [pg.pnr_code for pg in candidates],
                     'reason': f'PNR pieni: {", ".join(pg.pnr_code for pg in candidates)}',
@@ -1001,15 +1007,13 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
 
             if partial_matches:
                 partial.append({
-                    'id': g.id, 'cognome': g.cognome, 'nome': g.nome,
-                    'sede_lavoro': g.sede_lavoro or '',
+                    **_guest_base(g),
                     'volo_arrivo': andata, 'volo_partenza': ritorno,
                     'partial_matches': partial_matches,
                 })
             else:
                 no_match.append({
-                    'id': g.id, 'cognome': g.cognome, 'nome': g.nome,
-                    'sede_lavoro': g.sede_lavoro or '',
+                    **_guest_base(g),
                     'volo_arrivo': andata, 'volo_partenza': ritorno,
                     'reason': 'Nessun PNR con questi voli',
                 })
