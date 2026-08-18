@@ -32,6 +32,7 @@ class Guest(db.Model):
     note_form             = db.Column(db.Text)
     note                  = db.Column(db.Text)
     source                = db.Column(db.String(20), default='manual')  # manual, xlsx, email
+    pnr_group_id          = db.Column(db.Integer, db.ForeignKey('pnr_groups.id'))
     email_log_id          = db.Column(db.Integer, db.ForeignKey('email_logs.id'))
     created_at            = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at            = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -39,6 +40,26 @@ class Guest(db.Model):
     @property
     def nome_completo(self):
         return f'{self.cognome} {self.nome}'.strip()
+
+
+class PnrGroup(db.Model):
+    __tablename__ = 'pnr_groups'
+
+    id              = db.Column(db.Integer, primary_key=True)
+    pnr_code        = db.Column(db.String(20), nullable=False, unique=True)
+    group_name      = db.Column(db.String(100))
+    seats           = db.Column(db.Integer, nullable=False)
+    volo_andata     = db.Column(db.String(20))
+    data_andata     = db.Column(db.String(20))
+    rotta_andata    = db.Column(db.String(10))   # es. LINPMO
+    orario_andata   = db.Column(db.String(20))   # es. 0955-1135
+    volo_ritorno    = db.Column(db.String(20))
+    data_ritorno    = db.Column(db.String(20))
+    rotta_ritorno   = db.Column(db.String(10))
+    orario_ritorno  = db.Column(db.String(20))
+    created_at      = db.Column(db.DateTime, default=datetime.utcnow)
+
+    guests = db.relationship('Guest', backref='pnr_group', lazy='joined')
 
 
 class EmailLog(db.Model):

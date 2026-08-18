@@ -12,7 +12,7 @@ load_dotenv()
 from models import (db, Guest, RoomContract, EmailLog,
                      PartiviaQuote, PartiviaRoomRate,
                      PartiviaMeetingRoom, PartiviaFBOption,
-                     BudgetOverride)
+                     BudgetOverride, PnrGroup)
 
 
 def _parse_bool(val):
@@ -73,6 +73,10 @@ def create_app():
                 conn.commit()
             if 'hidden' not in quote_cols:
                 conn.execute(text("ALTER TABLE partivia_quotes ADD COLUMN hidden BOOLEAN DEFAULT FALSE"))
+                conn.commit()
+            guest_cols = [c['name'] for c in inspect(db.engine).get_columns('guests')]
+            if 'pnr_group_id' not in guest_cols:
+                conn.execute(text("ALTER TABLE guests ADD COLUMN pnr_group_id INTEGER REFERENCES pnr_groups(id)"))
                 conn.commit()
 
         # Migrate Italian statuses to English (one-time)
@@ -669,63 +673,230 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
             totale_voli=len(result),
         )
 
-    # ── PNR (coppie andata + ritorno) ────────────────────────────────────────
+    # ── PNR GROUPS ──────────────────────────────────────────────────────────
 
     @app.get('/api/pnr')
-    def pnr_clusters():
-        """Raggruppa ospiti per coppia volo andata + ritorno (PNR cluster)."""
-        guests = Guest.query.order_by(Guest.cognome, Guest.nome).all()
+    def pnr_list():
+        """Lista PNR groups con ospiti assegnati e statistiche."""
+        import re as _re
+        groups = PnrGroup.query.order_by(PnrGroup.volo_andata, PnrGroup.pnr_code).all()
+        senza_pnr = Guest.query.filter(Guest.pnr_group_id.is_(None)).count()
 
-        clusters = {}
-        senza_voli = 0
-        solo_andata = 0
-        solo_ritorno = 0
-
-        for g in guests:
-            andata = (g.volo_arrivo or '').strip()
-            ritorno = (g.volo_partenza or '').strip()
-
-            if not andata and not ritorno:
-                senza_voli += 1
-                continue
-            if andata and not ritorno:
-                solo_andata += 1
-            elif ritorno and not andata:
-                solo_ritorno += 1
-
-            key = (andata or '—', ritorno or '—')
-            if key not in clusters:
-                clusters[key] = []
-            clusters[key].append({
-                'id': g.id,
-                'cognome': g.cognome,
-                'nome': g.nome,
-                'sede_lavoro': g.sede_lavoro or '',
-                'aeroporto_partenza': g.aeroporto_partenza or '',
-                'aeroporto_arrivo': g.aeroporto_arrivo or '',
-            })
-
-        # Ordina cluster: prima per andata, poi per ritorno
         result = []
-        for (andata, ritorno) in sorted(clusters.keys()):
+        totale_assegnati = 0
+        for g in groups:
+            assigned = [{
+                'id': p.id, 'cognome': p.cognome, 'nome': p.nome,
+                'sede_lavoro': p.sede_lavoro or '',
+            } for p in g.guests]
+            totale_assegnati += len(assigned)
+            # Parse rotta in origin/dest (es. LINPMO → LIN / PMO)
+            orig_a = g.rotta_andata[:3] if g.rotta_andata and len(g.rotta_andata) >= 6 else ''
+            dest_a = g.rotta_andata[3:] if g.rotta_andata and len(g.rotta_andata) >= 6 else ''
+            orig_r = g.rotta_ritorno[:3] if g.rotta_ritorno and len(g.rotta_ritorno) >= 6 else ''
+            dest_r = g.rotta_ritorno[3:] if g.rotta_ritorno and len(g.rotta_ritorno) >= 6 else ''
             result.append({
-                'andata': andata,
-                'ritorno': ritorno,
-                'passeggeri': clusters[(andata, ritorno)],
-                'totale': len(clusters[(andata, ritorno)]),
+                'id': g.id,
+                'pnr_code': g.pnr_code,
+                'group_name': g.group_name or '',
+                'seats': g.seats,
+                'assigned': len(assigned),
+                'available': g.seats - len(assigned),
+                'volo_andata': g.volo_andata or '',
+                'data_andata': g.data_andata or '',
+                'rotta_andata': g.rotta_andata or '',
+                'origin_andata': orig_a,
+                'dest_andata': dest_a,
+                'orario_andata': g.orario_andata or '',
+                'volo_ritorno': g.volo_ritorno or '',
+                'data_ritorno': g.data_ritorno or '',
+                'rotta_ritorno': g.rotta_ritorno or '',
+                'origin_ritorno': orig_r,
+                'dest_ritorno': dest_r,
+                'orario_ritorno': g.orario_ritorno or '',
+                'passeggeri': assigned,
             })
-
-        totale_passeggeri = sum(c['totale'] for c in result)
 
         return jsonify(
             ok=True,
-            clusters=result,
-            totale_clusters=len(result),
-            totale_passeggeri=totale_passeggeri,
-            senza_voli=senza_voli,
-            solo_andata=solo_andata,
-            solo_ritorno=solo_ritorno,
+            groups=result,
+            totale_groups=len(result),
+            totale_seats=sum(g.seats for g in groups),
+            totale_assegnati=totale_assegnati,
+            senza_pnr=senza_pnr,
         )
+
+    @app.post('/api/pnr/parse')
+    def pnr_parse():
+        """Parsa testo PNR Amadeus e restituisce gruppi estratti."""
+        import re
+        text = (request.get_json() or {}).get('text', '')
+        if not text.strip():
+            return jsonify(ok=False, error='Testo vuoto'), 400
+
+        # Split per blocchi RLR
+        blocks = re.split(r'---?\s*(?:AXR\s+)?RLR\s*---?', text)
+        groups = []
+
+        for block in blocks:
+            block = block.strip()
+            if not block:
+                continue
+
+            # PNR code: ultimo token della riga RP/
+            pnr_match = re.search(r'RP/\S+\s+\S+\s+\S+\s+(\w{6})', block)
+            pnr_code = pnr_match.group(1) if pnr_match else None
+            if not pnr_code:
+                continue
+
+            # Seats + group name: "0. 32PAOLACATANIADOS  NM: 0"
+            group_match = re.search(r'0\.\s*(\d+)(\w+)\s+NM:', block)
+            seats = int(group_match.group(1)) if group_match else 0
+            group_name = group_match.group(2) if group_match else ''
+
+            # Voli: "1  AZ1765 S 08OCT 4 LINPMO HK32  0955 1135  *1A/E*"
+            flights = re.findall(
+                r'\d+\s+(\w{2}\d{3,5})\s+\w\s+(\d{2}[A-Z]{3})\s+\d\s+(\w{6})\s+HK\d+\s+(\d{4})\s+(\d{4})',
+                block
+            )
+
+            volo_andata = volo_ritorno = ''
+            data_andata = data_ritorno = ''
+            rotta_andata = rotta_ritorno = ''
+            orario_andata = orario_ritorno = ''
+
+            if len(flights) >= 1:
+                volo_andata = flights[0][0]
+                data_andata = flights[0][1]
+                rotta_andata = flights[0][2]
+                orario_andata = f"{flights[0][3]}-{flights[0][4]}"
+            if len(flights) >= 2:
+                volo_ritorno = flights[1][0]
+                data_ritorno = flights[1][1]
+                rotta_ritorno = flights[1][2]
+                orario_ritorno = f"{flights[1][3]}-{flights[1][4]}"
+
+            groups.append({
+                'pnr_code': pnr_code,
+                'group_name': group_name,
+                'seats': seats,
+                'volo_andata': volo_andata,
+                'data_andata': data_andata,
+                'rotta_andata': rotta_andata,
+                'orario_andata': orario_andata,
+                'volo_ritorno': volo_ritorno,
+                'data_ritorno': data_ritorno,
+                'rotta_ritorno': rotta_ritorno,
+                'orario_ritorno': orario_ritorno,
+            })
+
+        return jsonify(ok=True, groups=groups)
+
+    @app.post('/api/pnr/import')
+    def pnr_import():
+        """Salva i PNR groups parsati nel DB."""
+        data = request.get_json()
+        groups_data = data.get('groups', [])
+        results = []
+
+        for gd in groups_data:
+            pnr_code = (gd.get('pnr_code') or '').strip()
+            if not pnr_code:
+                continue
+            # Dedup: se esiste già, aggiorna
+            existing = PnrGroup.query.filter_by(pnr_code=pnr_code).first()
+            if existing:
+                for f in ('group_name', 'seats', 'volo_andata', 'data_andata',
+                          'rotta_andata', 'orario_andata', 'volo_ritorno',
+                          'data_ritorno', 'rotta_ritorno', 'orario_ritorno'):
+                    if gd.get(f) is not None:
+                        setattr(existing, f, gd[f])
+                results.append({'pnr_code': pnr_code, 'action': 'updated', 'id': existing.id})
+            else:
+                pg = PnrGroup(
+                    pnr_code=pnr_code,
+                    group_name=gd.get('group_name', ''),
+                    seats=gd.get('seats', 0),
+                    volo_andata=gd.get('volo_andata'),
+                    data_andata=gd.get('data_andata'),
+                    rotta_andata=gd.get('rotta_andata'),
+                    orario_andata=gd.get('orario_andata'),
+                    volo_ritorno=gd.get('volo_ritorno'),
+                    data_ritorno=gd.get('data_ritorno'),
+                    rotta_ritorno=gd.get('rotta_ritorno'),
+                    orario_ritorno=gd.get('orario_ritorno'),
+                )
+                db.session.add(pg)
+                db.session.flush()
+                results.append({'pnr_code': pnr_code, 'action': 'added', 'id': pg.id})
+
+        db.session.commit()
+        return jsonify(ok=True, results=results)
+
+    @app.post('/api/pnr/<int:group_id>/assign')
+    def pnr_assign(group_id):
+        """Assegna ospiti a un PNR group."""
+        pg = PnrGroup.query.get_or_404(group_id)
+        data = request.get_json()
+        guest_ids = data.get('guest_ids', [])
+
+        assigned = 0
+        for gid in guest_ids:
+            guest = Guest.query.get(gid)
+            if guest:
+                guest.pnr_group_id = group_id
+                # Popola anche i campi volo sul guest
+                guest.volo_arrivo = pg.volo_andata
+                guest.volo_partenza = pg.volo_ritorno
+                origin_a = pg.rotta_andata[:3] if pg.rotta_andata and len(pg.rotta_andata) >= 6 else ''
+                dest_r = pg.rotta_ritorno[3:] if pg.rotta_ritorno and len(pg.rotta_ritorno) >= 6 else ''
+                if origin_a:
+                    guest.aeroporto_partenza = origin_a
+                if dest_r:
+                    guest.aeroporto_arrivo = dest_r
+                assigned += 1
+
+        current_count = Guest.query.filter_by(pnr_group_id=group_id).count()
+        overbooking = current_count > pg.seats
+
+        db.session.commit()
+        return jsonify(ok=True, assigned=assigned, total=current_count,
+                       seats=pg.seats, overbooking=overbooking)
+
+    @app.post('/api/pnr/<int:group_id>/unassign')
+    def pnr_unassign(group_id):
+        """Rimuovi ospiti da un PNR group."""
+        data = request.get_json()
+        guest_ids = data.get('guest_ids', [])
+
+        for gid in guest_ids:
+            guest = Guest.query.get(gid)
+            if guest and guest.pnr_group_id == group_id:
+                guest.pnr_group_id = None
+
+        db.session.commit()
+        return jsonify(ok=True)
+
+    @app.delete('/api/pnr/<int:group_id>')
+    def pnr_delete(group_id):
+        """Elimina un PNR group (scollega ospiti)."""
+        pg = PnrGroup.query.get_or_404(group_id)
+        Guest.query.filter_by(pnr_group_id=group_id).update({'pnr_group_id': None})
+        db.session.delete(pg)
+        db.session.commit()
+        return jsonify(ok=True)
+
+    @app.get('/api/pnr/unassigned')
+    def pnr_unassigned():
+        """Lista ospiti non assegnati a nessun PNR."""
+        guests = Guest.query.filter(
+            Guest.pnr_group_id.is_(None)
+        ).order_by(Guest.cognome, Guest.nome).all()
+        return jsonify(ok=True, guests=[{
+            'id': g.id, 'cognome': g.cognome, 'nome': g.nome,
+            'sede_lavoro': g.sede_lavoro or '',
+            'aeroporto_partenza': g.aeroporto_partenza or '',
+        } for g in guests])
 
     # ── ASSEGNAZIONE CAMERE ─────────────────────────────────────────────────
 
@@ -1115,30 +1286,20 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
         from openpyxl import Workbook
         from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 
-        guests = Guest.query.order_by(Guest.cognome, Guest.nome).all()
-
-        clusters = {}
-        for g in guests:
-            andata = (g.volo_arrivo or '').strip()
-            ritorno = (g.volo_partenza or '').strip()
-            if not andata and not ritorno:
-                continue
-            key = (andata or '—', ritorno or '—')
-            if key not in clusters:
-                clusters[key] = []
-            clusters[key].append(g)
+        groups = PnrGroup.query.order_by(PnrGroup.volo_andata, PnrGroup.pnr_code).all()
 
         wb = Workbook()
         ws = wb.active
-        ws.title = 'PNR Clusters'
+        ws.title = 'PNR Groups'
         hfont = Font(bold=True, color='FFFFFF', size=11)
         hfill = PatternFill('solid', fgColor='6D4C41')
         cluster_fill = PatternFill('solid', fgColor='EFEBE9')
         border = Border(left=Side(style='thin'), right=Side(style='thin'),
                         top=Side(style='thin'), bottom=Side(style='thin'))
 
-        headers = ['Volo Andata', 'Volo Ritorno', 'Cognome', 'Nome', 'Sede Lavoro',
-                    'Aeroporto Partenza', 'Aeroporto Arrivo']
+        headers = ['PNR', 'Posti', 'Volo Andata', 'Rotta', 'Data', 'Orario',
+                    'Volo Ritorno', 'Rotta', 'Data', 'Orario',
+                    'Cognome', 'Nome', 'Sede Lavoro']
         for c, h in enumerate(headers, 1):
             cell = ws.cell(row=1, column=c, value=h)
             cell.font = hfont
@@ -1147,16 +1308,53 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
             cell.border = border
 
         row = 2
-        for (andata, ritorno) in sorted(clusters.keys()):
-            for i, g in enumerate(clusters[(andata, ritorno)]):
-                vals = [andata if i == 0 else '', ritorno if i == 0 else '',
-                        g.cognome, g.nome, g.sede_lavoro or '',
-                        g.aeroporto_partenza or '', g.aeroporto_arrivo or '']
+        for pg in groups:
+            guests = Guest.query.filter_by(pnr_group_id=pg.id).order_by(
+                Guest.cognome, Guest.nome).all()
+            if not guests:
+                vals = [pg.pnr_code, pg.seats, pg.volo_andata, pg.rotta_andata,
+                        pg.data_andata, pg.orario_andata, pg.volo_ritorno,
+                        pg.rotta_ritorno, pg.data_ritorno, pg.orario_ritorno,
+                        '', '', '']
                 for c, v in enumerate(vals, 1):
                     cell = ws.cell(row=row, column=c, value=v)
                     cell.border = border
-                    if i == 0:
-                        cell.fill = cluster_fill
+                    cell.fill = cluster_fill
+                row += 1
+            else:
+                for i, g in enumerate(guests):
+                    vals = [
+                        pg.pnr_code if i == 0 else '',
+                        pg.seats if i == 0 else '',
+                        pg.volo_andata if i == 0 else '',
+                        pg.rotta_andata if i == 0 else '',
+                        pg.data_andata if i == 0 else '',
+                        pg.orario_andata if i == 0 else '',
+                        pg.volo_ritorno if i == 0 else '',
+                        pg.rotta_ritorno if i == 0 else '',
+                        pg.data_ritorno if i == 0 else '',
+                        pg.orario_ritorno if i == 0 else '',
+                        g.cognome, g.nome, g.sede_lavoro or '',
+                    ]
+                    for c, v in enumerate(vals, 1):
+                        cell = ws.cell(row=row, column=c, value=v)
+                        cell.border = border
+                        if i == 0:
+                            cell.fill = cluster_fill
+                    row += 1
+
+        # Unassigned guests
+        unassigned = Guest.query.filter(Guest.pnr_group_id.is_(None)).order_by(
+            Guest.cognome, Guest.nome).all()
+        if unassigned:
+            row += 1
+            cell = ws.cell(row=row, column=1, value='SENZA PNR')
+            cell.font = Font(bold=True, color='CC0000')
+            row += 1
+            for g in unassigned:
+                ws.cell(row=row, column=11, value=g.cognome).border = border
+                ws.cell(row=row, column=12, value=g.nome).border = border
+                ws.cell(row=row, column=13, value=g.sede_lavoro or '').border = border
                 row += 1
 
         for col in ws.columns:
@@ -1167,7 +1365,7 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
         wb.save(buf)
         buf.seek(0)
         return send_file(buf, as_attachment=True,
-                         download_name='pnr_clusters.xlsx',
+                         download_name='pnr_groups.xlsx',
                          mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
 
     @app.get('/api/export/camere/<int:notte>')
