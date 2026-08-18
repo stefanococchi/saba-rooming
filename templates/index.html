@@ -1718,24 +1718,28 @@ async function pnrAutoAssign(confirm) {
     const pnrOpts = j.pnr_summary.map(p => {
       const r = p.rotta_andata && p.rotta_andata.length >= 6 ? p.rotta_andata.slice(0,3)+'→'+p.rotta_andata.slice(3) : '';
       const rr = p.rotta_ritorno && p.rotta_ritorno.length >= 6 ? p.rotta_ritorno.slice(0,3)+'→'+p.rotta_ritorno.slice(3) : '';
-      const label = `${p.pnr_code} — ${p.volo_andata} ${r} ${fmtOra(p.orario_andata)} | ${p.volo_ritorno} ${rr} ${fmtOra(p.orario_ritorno)} (${p.available} liberi)`;
+      const label = `${p.pnr_code} ${p.volo_andata} ${r} ${fmtOra(p.orario_andata)} | ${p.volo_ritorno} ${rr} ${fmtOra(p.orario_ritorno)} [${p.available}]`;
       return `<option value="${p.pnr_code}" ${p.available <= 0 ? 'style="color:#d32f2f"' : ''}>${label}</option>`;
     }).join('');
-    const pnrSelect = (guestId) => `<select onchange="manualPnrAssign(${guestId}, this.value); this.closest('.pnr-manual-row').style.opacity='0.4'" style="font-size:12px;padding:2px 4px;border-radius:4px;border:1px solid var(--outline-variant)">
+    const pnrSelect = (guestId) => `<select onchange="manualPnrAssign(${guestId}, this.value); this.closest('.pnr-manual-row').style.opacity='0.4'" style="font-size:12px;padding:2px 4px;border-radius:4px;border:1px solid var(--outline-variant);max-width:360px">
       <option value="">Assegna a...</option>${pnrOpts}</select>`;
+
+    // Helper for guest row in problem sections
+    const guestRow = (g, bg, extra) => `<div class="pnr-manual-row" style="padding:4px 8px;font-size:13px;border-bottom:1px solid var(--outline-variant);${bg ? 'background:'+bg+';' : ''}display:flex;align-items:center;gap:6px">
+      <strong style="min-width:200px;white-space:nowrap">${g.cognome} ${g.nome}</strong>
+      ${g.sede_lavoro ? `<span style="font-size:12px;color:var(--on-surface-variant);min-width:70px">${g.sede_lavoro}</span>` : ''}
+      <span style="font-size:12px;color:var(--on-surface-variant)">${g.volo_arrivo || g.volo_andata || '—'} → ${g.volo_partenza || '—'}</span>
+      ${extra ? `<span style="font-size:11px;color:#e65100">${extra}</span>` : ''}
+      <span style="flex:1"></span>
+      ${pnrSelect(g.id)}
+    </div>`;
 
     // Partial matches
     if (j.partial.length) {
       html += `<h4 style="margin:12px 0 6px;font-size:14px;color:#ef6c00">⚠ Match parziali (${j.partial.length})</h4>`;
       j.partial.forEach(p => {
         const details = p.partial_matches.map(pm => `${pm.pnr_code}: ${pm.mismatch}`).join('; ');
-        html += `<div class="pnr-manual-row" style="padding:4px 8px;font-size:13px;border-bottom:1px solid var(--outline-variant);background:#fff3e0;display:flex;align-items:center;gap:8px">
-          <strong style="min-width:180px">${p.cognome} ${p.nome}</strong>
-          <span style="color:var(--on-surface-variant)">${p.volo_arrivo || '—'} → ${p.volo_partenza || '—'}</span>
-          <span style="font-size:12px;color:#e65100">${details}</span>
-          <span style="flex:1"></span>
-          ${pnrSelect(p.id)}
-        </div>`;
+        html += guestRow(p, '#fff3e0', details);
       });
     }
 
@@ -1743,13 +1747,7 @@ async function pnrAutoAssign(confirm) {
     if (j.overflow.length) {
       html += `<h4 style="margin:12px 0 6px;font-size:14px;color:#d32f2f">🔴 Overflow — PNR pieni (${j.overflow.length})</h4>`;
       j.overflow.forEach(o => {
-        html += `<div class="pnr-manual-row" style="padding:4px 8px;font-size:13px;border-bottom:1px solid var(--outline-variant);background:#ffebee;display:flex;align-items:center;gap:8px">
-          <strong style="min-width:180px">${o.cognome} ${o.nome}</strong>
-          <span style="color:var(--on-surface-variant)">${o.volo_arrivo} → ${o.volo_partenza}</span>
-          <span style="font-size:12px;color:#c62828">${o.reason}</span>
-          <span style="flex:1"></span>
-          ${pnrSelect(o.id)}
-        </div>`;
+        html += guestRow(o, '#ffebee', o.reason);
       });
     }
 
@@ -1757,12 +1755,7 @@ async function pnrAutoAssign(confirm) {
     if (j.no_match.length) {
       html += `<h4 style="margin:12px 0 6px;font-size:14px;color:#d32f2f">✗ Nessun PNR corrispondente (${j.no_match.length})</h4>`;
       j.no_match.forEach(n => {
-        html += `<div class="pnr-manual-row" style="padding:4px 8px;font-size:13px;border-bottom:1px solid var(--outline-variant);background:#ffebee;display:flex;align-items:center;gap:8px">
-          <strong style="min-width:180px">${n.cognome} ${n.nome}</strong>
-          <span style="color:var(--on-surface-variant)">${n.volo_arrivo || '—'} → ${n.volo_partenza || '—'}</span>
-          <span style="flex:1"></span>
-          ${pnrSelect(n.id)}
-        </div>`;
+        html += guestRow(n, '#ffebee', '');
       });
     }
 
@@ -1770,12 +1763,7 @@ async function pnrAutoAssign(confirm) {
     if (j.no_flights.length) {
       html += `<h4 style="margin:12px 0 6px;font-size:14px">Senza voli compilati (${j.no_flights.length})</h4>`;
       j.no_flights.forEach(n => {
-        html += `<div class="pnr-manual-row" style="padding:4px 8px;font-size:13px;border-bottom:1px solid var(--outline-variant);display:flex;align-items:center;gap:8px">
-          <strong style="min-width:180px">${n.cognome} ${n.nome}</strong>
-          ${n.sede_lavoro ? `<span style="font-size:12px;color:var(--on-surface-variant)">${n.sede_lavoro}</span>` : ''}
-          <span style="flex:1"></span>
-          ${pnrSelect(n.id)}
-        </div>`;
+        html += guestRow(n, '', '');
       });
     }
 
