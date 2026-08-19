@@ -31,6 +31,7 @@ class Guest(db.Model):
     camera_assegnata      = db.Column(db.String(100))
     note_form             = db.Column(db.Text)
     note                  = db.Column(db.Text)
+    data_nascita          = db.Column(db.String(20))
     source                = db.Column(db.String(20), default='manual')  # manual, xlsx, email
     pnr_group_id          = db.Column(db.Integer, db.ForeignKey('pnr_groups.id'))
     email_log_id          = db.Column(db.Integer, db.ForeignKey('email_logs.id'))

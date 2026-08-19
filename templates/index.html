@@ -548,6 +548,11 @@ textarea { resize: vertical; min-height: 120px; }
         Importa XLSX
         <input type="file" accept=".xlsx,.xls" id="importFile" hidden>
       </label>
+      <label class="btn btn-outline btn-sm" style="cursor:pointer">
+        <span class="material-icons-round">cake</span>
+        Importa Date Nascita
+        <input type="file" accept=".json" id="importBirthDates" hidden>
+      </label>
       {% endif %}
       <a class="btn btn-outline btn-sm" href="/api/export">
         <span class="material-icons-round">download</span>
@@ -647,6 +652,7 @@ textarea { resize: vertical; min-height: 120px; }
             <tr>
               <th>Cognome</th>
               <th>Nome</th>
+              <th>Data Nascita</th>
               <th>Email</th>
               <th>Telefono</th>
               <th>Sede</th>
@@ -676,6 +682,7 @@ textarea { resize: vertical; min-height: 120px; }
             <tr data-id="{{ g.id }}">
               <td class="{{ 'editable' if not client_view else '' }}" {% if not client_view %}data-field="cognome"{% endif %}>{{ g.cognome }}</td>
               <td class="{{ 'editable' if not client_view else '' }}" {% if not client_view %}data-field="nome"{% endif %}>{{ g.nome }}</td>
+              <td class="{{ 'editable' if not client_view else '' }}" {% if not client_view %}data-field="data_nascita"{% endif %}>{{ g.data_nascita or '' }}</td>
               <td class="{{ 'editable' if not client_view else '' }}" {% if not client_view %}data-field="email"{% endif %}>{{ g.email or '' }}</td>
               <td class="{{ 'editable' if not client_view else '' }}" {% if not client_view %}data-field="telefono"{% endif %}>{{ g.telefono or '' }}</td>
               <td class="{{ 'editable' if not client_view else '' }}" {% if not client_view %}data-field="sede_lavoro"{% endif %}>{{ g.sede_lavoro or '' }}</td>
@@ -892,6 +899,7 @@ RP/FCOAZ05RM/...   X2YKLK
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 16px">
       <div class="form-group"><label>Cognome *</label><input type="text" id="addCognome"></div>
       <div class="form-group"><label>Nome</label><input type="text" id="addNome"></div>
+      <div class="form-group"><label>Data Nascita</label><input type="text" id="addDataNascita" placeholder="GG/MM/AAAA"></div>
       <div class="form-group"><label>Email</label><input type="text" id="addEmail"></div>
       <div class="form-group"><label>Telefono</label><input type="text" id="addTelefono"></div>
       <div class="form-group"><label>Sede Lavoro</label><input type="text" id="addSede"></div>
@@ -987,6 +995,29 @@ function showSnack(msg, ms = 3000) {
   setTimeout(() => el.classList.remove('show'), ms);
 }
 
+// ── Import Date Nascita (JSON) ────────────────────────────────────────────
+document.getElementById('importBirthDates').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const fd = new FormData();
+  fd.append('file', file);
+  try {
+    const r = await fetch('/api/import/birth-dates', { method: 'POST', body: fd });
+    const j = await r.json();
+    if (j.ok) {
+      let msg = `Date nascita aggiornate: ${j.updated}/${j.total}`;
+      if (j.not_found.length) msg += ` — Non trovati: ${j.not_found.join(', ')}`;
+      showSnack(msg, 5000);
+      setTimeout(() => location.reload(), 1200);
+    } else {
+      showSnack('Errore: ' + j.error, 5000);
+    }
+  } catch (err) {
+    showSnack('Errore: ' + err.message, 5000);
+  }
+  e.target.value = '';
+});
+
 // ── Import XLSX (LLM-guided) ──────────────────────────────────────────────
 document.getElementById('importFile').addEventListener('change', async (e) => {
   const file = e.target.files[0];
@@ -1030,6 +1061,7 @@ const FIELD_OPTIONS = [
   { value: 'cognome', label: 'Cognome' },
   { value: 'nome', label: 'Nome' },
   { value: 'nome_completo', label: 'Nome completo' },
+  { value: 'data_nascita', label: 'Data Nascita' },
   { value: 'email', label: 'Email' },
   { value: 'telefono', label: 'Telefono' },
   { value: 'sede_lavoro', label: 'Sede Lavoro' },
@@ -1253,6 +1285,7 @@ async function saveNewGuest() {
   const data = {
     cognome: document.getElementById('addCognome').value,
     nome: document.getElementById('addNome').value,
+    data_nascita: document.getElementById('addDataNascita').value,
     email: document.getElementById('addEmail').value,
     telefono: document.getElementById('addTelefono').value,
     sede_lavoro: document.getElementById('addSede').value,

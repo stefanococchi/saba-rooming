@@ -103,7 +103,10 @@ def _update_deadline(app, result: dict, email_text: str,
     with app.app_context():
         quote = None
         if match_id:
-            quote = PartiviaQuote.query.get(match_id)
+            try:
+                quote = db.session.get(PartiviaQuote, int(match_id))
+            except (ValueError, TypeError):
+                pass
 
         # Fallback: fuzzy match by hotel name
         if not quote and hotel_name:

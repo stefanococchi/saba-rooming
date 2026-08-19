@@ -78,6 +78,9 @@ def create_app():
             if 'pnr_group_id' not in guest_cols:
                 conn.execute(text("ALTER TABLE guests ADD COLUMN pnr_group_id INTEGER REFERENCES pnr_groups(id)"))
                 conn.commit()
+            if 'data_nascita' not in guest_cols:
+                conn.execute(text("ALTER TABLE guests ADD COLUMN data_nascita VARCHAR(20)"))
+                conn.commit()
 
         # Migrate Italian statuses to English (one-time)
         _status_map = {
@@ -138,6 +141,7 @@ def create_app():
         'pickup_bus_andata', 'pickup_bus_ritorno',
         'divide_stanza_con', 'restrizioni_alimentari',
         'tipo_camera', 'camera_assegnata', 'note_form', 'note',
+        'data_nascita',
     )
     GUEST_BOOL_FIELDS = (
         'presenza_8', 'presenza_9', 'presenza_10', 'presenza_11',
@@ -385,6 +389,7 @@ Per ogni riga, produci un oggetto JSON con TUTTI questi campi:
 - parcheggio_linate (true/false), parcheggio_hotel (true/false)
 - divide_stanza_con, restrizioni_alimentari
 - tipo_camera, note_form, note
+- data_nascita (formato GG/MM/AAAA)
 
 REGOLE PRESENZE:
 - Se arriva giorno X e parte giorno Y: presente da X a Y-1
@@ -460,6 +465,7 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
                     tipo_camera=gd.get('tipo_camera'),
                     note_form=gd.get('note_form'),
                     note=gd.get('note'),
+                    data_nascita=gd.get('data_nascita'),
                     source='xlsx',
                 )
                 db.session.add(g)
@@ -545,6 +551,7 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
                 tipo_camera=get_val('tipo_camera'),
                 note_form=get_val('note_form'),
                 note=get_val('note'),
+                data_nascita=get_val('data_nascita'),
                 source='xlsx',
             )
             db.session.add(g)
@@ -1348,12 +1355,12 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
         ws = wb.active
         ws.title = 'Anagrafica'
         write_sheet(ws,
-            ['Cognome', 'Nome', 'Email', 'Telefono', 'Sede Lavoro',
+            ['Cognome', 'Nome', 'Data Nascita', 'Email', 'Telefono', 'Sede Lavoro',
              '8 Ott', '9 Ott', '10 Ott', '11 Ott',
              'Tipo Camera', 'Divide stanza con',
              'Parcheggio Linate', 'Parcheggio Hotel',
              'Restrizioni Alimentari', 'Note Form', 'Note'],
-            lambda g: [g.cognome, g.nome, g.email, g.telefono, g.sede_lavoro,
+            lambda g: [g.cognome, g.nome, g.data_nascita, g.email, g.telefono, g.sede_lavoro,
                        bool_label(g.presenza_8), bool_label(g.presenza_9),
                        bool_label(g.presenza_10), bool_label(g.presenza_11),
                        g.tipo_camera, g.divide_stanza_con,
@@ -1951,6 +1958,57 @@ Per "azione": "update", valorizza "match_id" con l'ID dell'ospite corrispondente
         log = EmailLog.query.get_or_404(log_id)
         return jsonify(id=log.id, testo=log.testo, summary=log.summary,
                        created_at=log.created_at.isoformat())
+
+    # ── IMPORT DATE NASCITA DA JSON ─────────────────────────────────────────
+
+    @app.post('/api/import/birth-dates')
+    def import_birth_dates():
+        """Import birth dates from allegati JSON (key: 'Nome Cognome/file.jpg' → 'DD/MM/YYYY')."""
+        import unicodedata
+
+        if 'file' not in request.files:
+            return jsonify(ok=False, error='File JSON mancante'), 400
+
+        try:
+            data = json.load(request.files['file'])
+        except Exception as e:
+            return jsonify(ok=False, error=f'JSON non valido: {e}'), 400
+
+        # Extract unique name → birth_date
+        birth_dates = {}
+        for key, date_val in data.items():
+            name = key.split('/')[0].strip()
+            if name not in birth_dates and date_val:
+                birth_dates[name] = date_val
+
+        def _norm(name):
+            s = name.lower().strip().replace('\u2019', "'").replace('\u2018', "'")
+            return ''.join(
+                c for c in unicodedata.normalize('NFD', s)
+                if unicodedata.category(c) != 'Mn'
+            )
+
+        guests = Guest.query.all()
+        lookup = {}
+        for g in guests:
+            lookup[_norm(f"{g.cognome} {g.nome}")] = g
+            rev = _norm(f"{g.nome} {g.cognome}")
+            if rev not in lookup:
+                lookup[rev] = g
+
+        updated = 0
+        not_found = []
+        for name, bdate in birth_dates.items():
+            guest = lookup.get(_norm(name))
+            if guest:
+                guest.data_nascita = bdate
+                updated += 1
+            else:
+                not_found.append(name)
+
+        db.session.commit()
+        return jsonify(ok=True, updated=updated, total=len(birth_dates),
+                       not_found=not_found)
 
     # ── DELETE ALL ───────────────────────────────────────────────────────────
 
