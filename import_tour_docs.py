@@ -4,17 +4,17 @@ Import passport and driving licence files from a ZIP archive.
 Usage:
     python import_tour_docs.py /path/to/allegati_2026-08-26.zip
 
-Extracts files into static/tour_docs/<guest_id>/ and updates
-TourGuest.passport_file / driving_file columns.
+Stores files as BLOBs in tour_guest_documents table and updates
+TourGuest.passport_file / driving_file with the filename.
 """
 
 import sys
-import os
+import mimetypes
 import zipfile
 import unicodedata
 
 from app import create_app
-from models import db, TourGuest
+from models import db, TourGuest, TourGuestDocument
 
 
 def _normalise(s):
@@ -44,9 +44,6 @@ def import_docs(zip_path):
                 if k and k not in lookup:
                     lookup[k] = g
 
-        static_dir = os.path.join(os.path.dirname(__file__), 'static', 'tour_docs')
-        os.makedirs(static_dir, exist_ok=True)
-
         zf = zipfile.ZipFile(zip_path)
 
         # Get unique folders (person names)
@@ -67,7 +64,6 @@ def import_docs(zip_path):
 
             # Try partial matches if no exact
             if not guest:
-                # Try each word combination
                 words = norm_folder.split()
                 for i in range(len(words)):
                     for j in range(i + 1, len(words) + 1):
@@ -78,8 +74,8 @@ def import_docs(zip_path):
                     if guest:
                         break
 
-            # Try matching by surname only (last word)
-            if not guest and words:
+            # Try matching by surname only
+            if not guest:
                 for g in guests:
                     if _normalise(g.cognome) in norm_folder or norm_folder in _normalise(f'{g.nome} {g.cognome}'):
                         guest = g
@@ -90,10 +86,10 @@ def import_docs(zip_path):
                 continue
 
             matched += 1
-            guest_dir = os.path.join(static_dir, str(guest.id))
-            os.makedirs(guest_dir, exist_ok=True)
 
-            # Extract files for this person
+            # Remove existing docs for this guest
+            TourGuestDocument.query.filter_by(guest_id=guest.id).delete()
+
             for entry in zf.namelist():
                 if not entry.startswith(folder + '/'):
                     continue
@@ -101,18 +97,25 @@ def import_docs(zip_path):
                 if not filename:
                     continue
 
-                # Write file
-                target = os.path.join(guest_dir, filename)
-                with open(target, 'wb') as f:
-                    f.write(zf.read(entry))
-
-                # Relative path from static/
-                rel_path = f'tour_docs/{guest.id}/{filename}'
+                file_data = zf.read(entry)
+                mime = mimetypes.guess_type(filename)[0] or 'application/octet-stream'
 
                 if filename.startswith('pass_'):
-                    guest.passport_file = rel_path
+                    doc_type = 'passport'
+                    guest.passport_file = filename
                 elif filename.startswith('driv_'):
-                    guest.driving_file = rel_path
+                    doc_type = 'driving'
+                    guest.driving_file = filename
+                else:
+                    continue
+
+                db.session.add(TourGuestDocument(
+                    guest_id=guest.id,
+                    doc_type=doc_type,
+                    filename=filename,
+                    mime_type=mime,
+                    data=file_data,
+                ))
 
             print(f'  {folder} → {guest.cognome} {guest.nome} (id={guest.id})')
 

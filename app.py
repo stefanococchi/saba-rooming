@@ -16,7 +16,7 @@ from models import (db, Guest, RoomContract, EmailLog,
                      TourHotel, TourRoomCategory,
                      TourGuest, TourRoomAssignment,
                      TourHotelToken, TourHotelAccessLog,
-                     TourClientToken)
+                     TourClientToken, TourGuestDocument)
 
 
 def _parse_bool(val):
@@ -4294,6 +4294,17 @@ Notes: {q.notes or 'N/A'}"""
         return send_file(buf, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
                          as_attachment=True, download_name=filename)
 
+    # ── TOUR: serve documents from DB (admin) ──────────────────────────
+
+    @app.route('/api/tour/doc/<int:guest_id>/<doc_type>')
+    def tour_serve_doc(guest_id, doc_type):
+        """Serve a document from DB inline."""
+        doc = TourGuestDocument.query.filter_by(
+            guest_id=guest_id, doc_type=doc_type).first()
+        if not doc or not doc.data:
+            return 'File not found', 404
+        return send_file(BytesIO(doc.data), mimetype=doc.mime_type)
+
     # ── TOUR: hotel token management ────────────────────────────────────
 
     @app.route('/api/tour/hotel/<int:hotel_id>/generate-link', methods=['POST'])
@@ -4390,29 +4401,40 @@ Notes: {q.notes or 'N/A'}"""
 
     @app.route('/tour/docs/<token>/download/<int:guest_id>/<doc_type>')
     def tour_public_doc_download(token, guest_id, doc_type):
-        """Download a single document. doc_type = 'passport' or 'driving'."""
+        """Download a single document from DB. doc_type = 'passport' or 'driving'."""
         tok = TourHotelToken.query.filter_by(token=token).first_or_404()
-        # Verify guest belongs to this hotel
-        assignment = TourRoomAssignment.query.filter_by(
+        TourRoomAssignment.query.filter_by(
             hotel_id=tok.hotel_id, guest_id=guest_id).first_or_404()
-        g = assignment.guest
 
-        field = 'passport_file' if doc_type == 'passport' else 'driving_file'
-        fpath = getattr(g, field)
-        if not fpath:
-            return 'File not found', 404
-        full = os.path.join(app.static_folder, fpath)
-        if not os.path.exists(full):
+        doc = TourGuestDocument.query.filter_by(
+            guest_id=guest_id, doc_type=doc_type).first()
+        if not doc or not doc.data:
             return 'File not found', 404
 
+        g = doc.guest
         _log_access(tok, f'download_{doc_type}', f'{g.cognome} {g.nome}')
-        ext = os.path.splitext(fpath)[1]
+        ext = os.path.splitext(doc.filename or '')[1]
         fname = f'{g.cognome}_{g.nome}_{doc_type}{ext}'
-        return send_file(full, as_attachment=True, download_name=fname)
+        return send_file(BytesIO(doc.data), mimetype=doc.mime_type,
+                         as_attachment=True, download_name=fname)
+
+    @app.route('/tour/docs/<token>/view/<int:guest_id>/<doc_type>')
+    def tour_public_doc_view(token, guest_id, doc_type):
+        """Serve a document inline (for image preview)."""
+        tok = TourHotelToken.query.filter_by(token=token).first_or_404()
+        TourRoomAssignment.query.filter_by(
+            hotel_id=tok.hotel_id, guest_id=guest_id).first_or_404()
+
+        doc = TourGuestDocument.query.filter_by(
+            guest_id=guest_id, doc_type=doc_type).first()
+        if not doc or not doc.data:
+            return 'File not found', 404
+
+        return send_file(BytesIO(doc.data), mimetype=doc.mime_type)
 
     @app.route('/tour/docs/<token>/download-all')
     def tour_public_docs_download_all(token):
-        """Download all documents for this hotel as ZIP."""
+        """Download all documents for this hotel as ZIP from DB."""
         import zipfile as _zf
         tok = TourHotelToken.query.filter_by(token=token).first_or_404()
         hotel = tok.hotel
@@ -4423,15 +4445,13 @@ Notes: {q.notes or 'N/A'}"""
             for item in guest_list:
                 g = item['guest']
                 folder = f'{g.cognome} {g.nome}'.strip()
-                for field, label in [('passport_file', 'passport'),
-                                     ('driving_file', 'driving_licence')]:
-                    fpath = getattr(g, field)
-                    if not fpath:
+                docs = TourGuestDocument.query.filter_by(guest_id=g.id).all()
+                for doc in docs:
+                    if not doc.data:
                         continue
-                    full = os.path.join(app.static_folder, fpath)
-                    if os.path.exists(full):
-                        ext = os.path.splitext(fpath)[1]
-                        zout.write(full, f'{folder}/{label}{ext}')
+                    ext = os.path.splitext(doc.filename or '')[1]
+                    label = 'passport' if doc.doc_type == 'passport' else 'driving_licence'
+                    zout.writestr(f'{folder}/{label}{ext}', doc.data)
 
         buf.seek(0)
         _log_access(tok, 'download_all')

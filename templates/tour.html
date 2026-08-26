@@ -526,13 +526,13 @@ tr.cancelled td { opacity: .45; }
                     <div class="detail-label">Documents</div>
                     <div class="detail-value" style="display:flex; gap:8px; flex-wrap:wrap">
                       {% if g.passport_file %}
-                      <a href="/static/{{ g.passport_file }}" target="_blank"
+                      <a href="/api/tour/doc/{{ g.id }}/passport" target="_blank"
                          style="display:inline-flex; align-items:center; gap:4px; padding:4px 10px; border-radius:6px; background:#e3f2fd; color:#1565c0; text-decoration:none; font-size:12px; font-weight:600">
                         <span class="material-icons-round" style="font-size:16px">badge</span> Passport
                       </a>
                       {% endif %}
                       {% if g.driving_file %}
-                      <a href="/static/{{ g.driving_file }}" target="_blank"
+                      <a href="/api/tour/doc/{{ g.id }}/driving" target="_blank"
                          style="display:inline-flex; align-items:center; gap:4px; padding:4px 10px; border-radius:6px; background:#e8f5e9; color:#2e7d32; text-decoration:none; font-size:12px; font-weight:600">
                         <span class="material-icons-round" style="font-size:16px">directions_car</span> Driving Licence
                       </a>

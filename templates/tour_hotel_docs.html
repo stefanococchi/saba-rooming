@@ -142,21 +142,22 @@ body { font-family:'Inter',system-ui,sans-serif; background:var(--surface); colo
           <div class="doc-panel-header pass">
             <span class="material-icons-round" style="font-size:18px">badge</span> Passport
           </div>
-          {% set pass_url = '/tour/docs/' ~ token ~ '/download/' ~ g.id ~ '/passport' %}
+          {% set pass_dl = '/tour/docs/' ~ token ~ '/download/' ~ g.id ~ '/passport' %}
+          {% set pass_view = '/tour/docs/' ~ token ~ '/view/' ~ g.id ~ '/passport' %}
           <div class="doc-panel-body">
             {% if g.passport_file %}
               {% set pext = g.passport_file.split('.')[-1].lower() %}
               {% if pext in ('jpg','jpeg','png','gif','webp') %}
-                <a href="{{ pass_url }}" target="_blank">
-                  <img src="/static/{{ g.passport_file }}" alt="Passport">
+                <a href="{{ pass_dl }}">
+                  <img src="{{ pass_view }}" alt="Passport">
                 </a>
               {% elif pext == 'pdf' %}
-                <a href="{{ pass_url }}" target="_blank" class="pdf-link">
+                <a href="{{ pass_view }}" target="_blank" class="pdf-link">
                   <span class="material-icons-round">picture_as_pdf</span>
                   <span>Open PDF</span>
                 </a>
               {% else %}
-                <a href="{{ pass_url }}" target="_blank">Download file</a>
+                <a href="{{ pass_dl }}">Download file</a>
               {% endif %}
             {% else %}
               <span class="no-doc">No passport uploaded</span>
@@ -167,21 +168,22 @@ body { font-family:'Inter',system-ui,sans-serif; background:var(--surface); colo
           <div class="doc-panel-header driv">
             <span class="material-icons-round" style="font-size:18px">directions_car</span> Driving Licence
           </div>
-          {% set driv_url = '/tour/docs/' ~ token ~ '/download/' ~ g.id ~ '/driving' %}
+          {% set driv_dl = '/tour/docs/' ~ token ~ '/download/' ~ g.id ~ '/driving' %}
+          {% set driv_view = '/tour/docs/' ~ token ~ '/view/' ~ g.id ~ '/driving' %}
           <div class="doc-panel-body">
             {% if g.driving_file %}
               {% set dext = g.driving_file.split('.')[-1].lower() %}
               {% if dext in ('jpg','jpeg','png','gif','webp') %}
-                <a href="{{ driv_url }}" target="_blank">
-                  <img src="/static/{{ g.driving_file }}" alt="Driving Licence">
+                <a href="{{ driv_dl }}">
+                  <img src="{{ driv_view }}" alt="Driving Licence">
                 </a>
               {% elif dext == 'pdf' %}
-                <a href="{{ driv_url }}" target="_blank" class="pdf-link">
+                <a href="{{ driv_view }}" target="_blank" class="pdf-link">
                   <span class="material-icons-round">picture_as_pdf</span>
                   <span>Open PDF</span>
                 </a>
               {% else %}
-                <a href="{{ driv_url }}" target="_blank">Download file</a>
+                <a href="{{ driv_dl }}">Download file</a>
               {% endif %}
             {% else %}
               <span class="no-doc">No driving licence uploaded</span>

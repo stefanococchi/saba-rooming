@@ -262,6 +262,21 @@ class TourHotelToken(db.Model):
     hotel      = db.relationship('TourHotel', backref='tokens')
 
 
+class TourGuestDocument(db.Model):
+    """Passport and driving licence stored as BLOBs in DB."""
+    __tablename__ = 'tour_guest_documents'
+
+    id         = db.Column(db.Integer, primary_key=True)
+    guest_id   = db.Column(db.Integer, db.ForeignKey('tour_guests.id'), nullable=False)
+    doc_type   = db.Column(db.String(20), nullable=False)   # 'passport' or 'driving'
+    filename   = db.Column(db.String(200))                   # original filename
+    mime_type  = db.Column(db.String(100))                   # e.g. image/jpeg, application/pdf
+    data       = db.Column(db.LargeBinary)                   # file content
+
+    guest      = db.relationship('TourGuest', backref=db.backref(
+                    'documents', cascade='all, delete-orphan', lazy='select'))
+
+
 class TourClientToken(db.Model):
     """Access token for external clients to view the tour dashboard."""
     __tablename__ = 'tour_client_tokens'
