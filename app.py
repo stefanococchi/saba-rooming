@@ -3666,8 +3666,8 @@ Notes: {q.notes or 'N/A'}"""
             {'date': '5 September', 'night': '5Sep', 'city': 'Brescia',
              'route': 'Maranello → Brescia',
              'dinner_venue': 'Antica Fratta, Franciacorta',
-             'highlights': ['Marcaria c/o UFI', 'Lunch at Cologne Metelli',
-                            'Brembo visit', 'Dinner at Antica Fratta Winery']},
+             'highlights': ['Lunch at Cologne Metelli',
+                            'Dinner at Antica Fratta Winery']},
         ]
 
         # Payment stats

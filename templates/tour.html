@@ -58,7 +58,7 @@ body {
 .topbar a.home-link:hover { color: #fff; }
 
 /* ── Layout ──────────────────────────────────────────── */
-.container { max-width: 100%; padding: 16px; }
+.container { max-width: 100%; padding: 8px; }
 
 /* ── Tabs ────────────────────────────────────────────── */
 .tabs {
@@ -104,6 +104,7 @@ body {
 .card {
   background: var(--surface-card); border-radius: var(--radius);
   box-shadow: var(--shadow-sm); overflow: hidden;
+  max-width: 100%;
 }
 .card-header {
   padding: 16px 20px;
@@ -113,7 +114,7 @@ body {
 }
 .card-header .material-icons-round { color: var(--primary); font-size: 22px; }
 
-.table-wrap { overflow-x: auto; }
+.table-wrap { overflow-x: auto; max-width: calc(100vw - 16px); }
 
 table {
   width: 100%; border-collapse: collapse; font-size: 12px;
@@ -221,14 +222,12 @@ tr.cancelled td { opacity: .45; }
   <h1>Liqui Moly Nexus Auto Tour</h1>
   <div class="spacer"></div>
   <div class="badge" id="guestCount">{{ guests|length }} participants</div>
-  {% if not client_view %}
   <a href="/api/tour/export" class="home-link btn-xlsx">
     <span class="material-icons-round" style="font-size:18px">download</span> Rooming
   </a>
   <a href="/api/tour/export/dinners" class="home-link btn-xlsx">
     <span class="material-icons-round" style="font-size:18px">restaurant</span> Dinners
   </a>
-  {% endif %}
 </div>
 
 <div class="container">
@@ -619,10 +618,10 @@ tr.cancelled td { opacity: .45; }
                 onclick="generateHotelLink({{ h.id }}, this)">
           <span class="material-icons-round" style="font-size:16px">link</span> Get Link
         </button>
+        {% endif %}
         <a href="/api/tour/export/hotel/{{ h.id }}" class="btn-xlsx" style="margin-left:4px; font-size:12px">
           <span class="material-icons-round" style="font-size:16px">download</span> XLSX
         </a>
-        {% endif %}
       </div>
       <div style="padding: 12px 20px">
         {% if h.categories %}
