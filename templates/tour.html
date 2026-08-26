@@ -1,0 +1,1056 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Liqui Moly Tour</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+:root {
+  --primary: #E65100;
+  --primary-light: #FF8A65;
+  --primary-dark: #BF360C;
+  --surface: #FFF8F0;
+  --surface-card: #ffffff;
+  --surface-variant: #FFF3E0;
+  --on-surface: #1c1b1f;
+  --on-surface-variant: #49454f;
+  --outline: #cac4bd;
+  --outline-variant: #e7e0d9;
+  --error: #ba1a1a;
+  --success: #2e7d32;
+  --info: #0277bd;
+  --radius: 16px;
+  --radius-sm: 12px;
+  --shadow-sm: 0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.06);
+  --shadow-md: 0 4px 12px rgba(0,0,0,.1);
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  font-family: 'Inter', system-ui, sans-serif;
+  background: var(--surface);
+  color: var(--on-surface);
+  min-height: 100vh;
+}
+
+/* ── Top Bar ─────────────────────────────────────────── */
+.topbar {
+  background: linear-gradient(135deg, var(--primary-dark) 0%, var(--primary) 50%, var(--primary-light) 100%);
+  color: white; padding: 16px 24px;
+  display: flex; align-items: center; gap: 16px;
+  position: sticky; top: 0; z-index: 100;
+  box-shadow: 0 2px 12px rgba(191,54,12,.3);
+}
+.topbar h1 { font-size: 20px; font-weight: 600; letter-spacing: -.3px; }
+.topbar .spacer { flex:1; }
+.topbar .badge {
+  background: rgba(255,255,255,.2); padding: 4px 14px;
+  border-radius: 20px; font-size: 13px; font-weight: 600;
+  border: 1px solid rgba(255,255,255,.15);
+}
+.topbar a.home-link {
+  color: rgba(255,255,255,.8); text-decoration: none; font-size: 13px;
+  display: flex; align-items: center; gap: 4px;
+}
+.topbar a.home-link:hover { color: #fff; }
+
+/* ── Layout ──────────────────────────────────────────── */
+.container { max-width: 100%; padding: 16px; }
+
+/* ── Tabs ────────────────────────────────────────────── */
+.tabs {
+  display: flex; gap: 0; margin-bottom: 16px;
+  border-bottom: 2px solid var(--outline-variant);
+}
+.tab-btn {
+  padding: 10px 20px; font-size: 13px; font-weight: 600;
+  border: none; background: none; cursor: pointer;
+  color: var(--on-surface-variant);
+  border-bottom: 3px solid transparent;
+  margin-bottom: -2px; transition: all .2s;
+}
+.tab-btn.active {
+  color: var(--primary); border-bottom-color: var(--primary);
+}
+.tab-panel { display: none; }
+.tab-panel.active { display: block; }
+
+/* ── Summary Cards ───────────────────────────────────── */
+.summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px; margin-bottom: 20px;
+}
+.summary-card {
+  background: var(--surface-card); border-radius: var(--radius-sm);
+  padding: 16px; box-shadow: var(--shadow-sm);
+}
+.summary-card .night-label {
+  font-size: 11px; font-weight: 700; text-transform: uppercase;
+  color: var(--primary); margin-bottom: 4px;
+}
+.summary-card .hotel-name {
+  font-size: 14px; font-weight: 600; margin-bottom: 8px;
+}
+.summary-card .stat {
+  font-size: 12px; color: var(--on-surface-variant); line-height: 1.6;
+}
+.summary-card .stat strong { color: var(--on-surface); }
+
+/* ── Table ───────────────────────────────────────────── */
+.card {
+  background: var(--surface-card); border-radius: var(--radius);
+  box-shadow: var(--shadow-sm); overflow: hidden;
+}
+.card-header {
+  padding: 16px 20px;
+  display: flex; align-items: center; gap: 12px;
+  border-bottom: 1px solid var(--outline-variant);
+  font-size: 15px; font-weight: 600;
+}
+.card-header .material-icons-round { color: var(--primary); font-size: 22px; }
+
+.table-wrap { overflow-x: auto; }
+
+table {
+  width: 100%; border-collapse: collapse; font-size: 12px;
+}
+th {
+  background: var(--surface-variant); color: var(--on-surface-variant);
+  padding: 8px 10px; text-align: left; font-weight: 600;
+  font-size: 11px; text-transform: uppercase; letter-spacing: .3px;
+  white-space: nowrap; position: sticky; top: 0; z-index: 2;
+}
+td {
+  padding: 6px 10px; border-bottom: 1px solid var(--outline-variant);
+  white-space: nowrap; max-width: 200px; overflow: hidden;
+  text-overflow: ellipsis;
+}
+tr:hover { background: var(--surface-variant); }
+
+/* ── Badges ──────────────────────────────────────────── */
+.badge-paid { background: #e8f5e9; color: #2e7d32; padding: 2px 8px; border-radius: 8px; font-size: 11px; font-weight: 600; }
+.badge-collect { background: #fff3e0; color: #e65100; padding: 2px 8px; border-radius: 8px; font-size: 11px; font-weight: 600; }
+.badge-noneed { background: #e3f2fd; color: #1565c0; padding: 2px 8px; border-radius: 8px; font-size: 11px; font-weight: 600; }
+.badge-cancelled { background: #eceff1; color: #78909c; padding: 2px 8px; border-radius: 8px; font-size: 11px; font-weight: 600; }
+tr.cancelled td { opacity: .45; }
+.badge-vip { background: #fce4ec; color: #c62828; padding: 2px 8px; border-radius: 8px; font-size: 11px; font-weight: 600; }
+.badge-room { background: #f3e5f5; color: #7b1fa2; padding: 2px 8px; border-radius: 8px; font-size: 11px; font-weight: 500; }
+.badge-dinner { background: #e8f5e9; color: #2e7d32; font-size: 11px; }
+
+/* ── Search ──────────────────────────────────────────── */
+.search-bar {
+  display: flex; align-items: center; gap: 8px;
+  background: var(--surface-variant); border-radius: 10px;
+  padding: 6px 14px; margin-bottom: 12px; max-width: 400px;
+}
+.search-bar input {
+  border: none; outline: none; background: none;
+  font-size: 14px; flex: 1; font-family: inherit;
+}
+.search-bar .material-icons-round { color: var(--on-surface-variant); font-size: 20px; }
+
+/* ── Filter chips ────────────────────────────────────── */
+.filters { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+.chip {
+  padding: 4px 12px; border-radius: 16px; font-size: 12px;
+  font-weight: 500; cursor: pointer; border: 1px solid var(--outline);
+  background: var(--surface-card); color: var(--on-surface-variant);
+  transition: all .15s;
+}
+.chip.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+
+/* ── Notes tooltip ───────────────────────────────────── */
+.note-icon { cursor: help; color: var(--on-surface-variant); font-size: 16px; vertical-align: middle; }
+.note-icon:hover { color: var(--primary); }
+
+/* ── Expand row ──────────────────────────────────────── */
+.expand-row td {
+  padding: 12px 20px; background: var(--surface-variant);
+  font-size: 12px; line-height: 1.6;
+}
+.expand-row .detail-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 8px 24px;
+}
+.expand-row .detail-label {
+  font-weight: 600; color: var(--on-surface-variant); font-size: 11px;
+  text-transform: uppercase;
+}
+.expand-row .detail-value { margin-bottom: 4px; }
+
+.hidden { display: none; }
+
+/* ── Excel export buttons ────────────────────────────── */
+.btn-xlsx {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 4px 12px; border-radius: 8px;
+  background: #217346; color: #fff !important;
+  text-decoration: none; font-size: 13px; font-weight: 600;
+  transition: background .15s;
+}
+.btn-xlsx:hover { background: #1a5c38; }
+.btn-docs {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 4px 12px; border-radius: 8px;
+  background: #1565c0; color: #fff !important;
+  text-decoration: none; font-size: 13px; font-weight: 600;
+  transition: background .15s;
+}
+.btn-docs:hover { background: #0d47a1; }
+
+/* ── Nights tables: fixed column widths ──────────────── */
+.nights-table { width: 100%; table-layout: fixed; }
+.nights-table col.col-category { width: 240px; }
+.nights-table col.col-code     { width: 80px; }
+.nights-table col.col-num      { width: 80px; }
+.nights-table col.col-guests   { /* takes remaining space */ }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  {% if not client_view %}
+  <a href="/" class="home-link">
+    <span class="material-icons-round">arrow_back</span> Portal
+  </a>
+  {% endif %}
+  <h1>Liqui Moly Nexus Auto Tour</h1>
+  <div class="spacer"></div>
+  <div class="badge" id="guestCount">{{ guests|length }} participants</div>
+  {% if not client_view %}
+  <a href="/api/tour/export" class="home-link btn-xlsx">
+    <span class="material-icons-round" style="font-size:18px">download</span> Rooming
+  </a>
+  <a href="/api/tour/export/dinners" class="home-link btn-xlsx">
+    <span class="material-icons-round" style="font-size:18px">restaurant</span> Dinners
+  </a>
+  {% endif %}
+</div>
+
+<div class="container">
+
+  <!-- TABS -->
+  <div class="tabs">
+    <button class="tab-btn active" onclick="switchTab('overview')">Overview</button>
+    <button class="tab-btn" onclick="switchTab('participants')">Participants</button>
+    <button class="tab-btn" onclick="switchTab('nights')">Nights &amp; Hotels</button>
+    <button class="tab-btn" onclick="switchTab('payments')">Payments</button>
+    {% if not client_view %}
+    <button class="tab-btn" onclick="switchTab('access')">Hotel Access</button>
+    {% endif %}
+  </div>
+
+  <!-- ══ OVERVIEW TAB ══ -->
+  <div id="tab-overview" class="tab-panel active">
+
+    <!-- Map + Programme side by side -->
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:16px">
+      <!-- Tour map -->
+      <div class="card">
+        <div class="card-header">
+          <span class="material-icons-round">map</span> Tour Route
+        </div>
+        <div id="tourMap" style="height:420px; width:100%"></div>
+      </div>
+
+      <!-- Daily highlights -->
+      <div class="card">
+        <div class="card-header">
+          <span class="material-icons-round">event_note</span> Daily Programme
+        </div>
+        <div style="padding:16px 20px; overflow-y:auto; max-height:420px">
+          {% for s in stages %}
+          <div style="margin-bottom:16px">
+            <div style="font-weight:700; color:var(--primary); margin-bottom:4px">{{ s.date }} — {{ s.city }}</div>
+            <div style="font-size:13px; color:var(--on-surface-variant); line-height:1.8; padding-left:12px">
+              {% for h in s.highlights %}
+              <div>• {{ h }}</div>
+              {% endfor %}
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+
+    <!-- Quick numbers -->
+    <div class="summary-grid" style="margin-bottom:20px">
+      <div class="summary-card">
+        <div class="night-label">Participants</div>
+        <div style="font-size:28px; font-weight:700; color:var(--primary)">{{ payment_stats.total }}</div>
+        <div class="stat">{{ payment_stats.cancelled }} cancelled</div>
+      </div>
+      <div class="summary-card">
+        <div class="night-label">Payments</div>
+        <div style="font-size:28px; font-weight:700; color:var(--success)">{{ payment_stats.paid }}</div>
+        <div class="stat">paid | <strong style="color:var(--primary)">{{ payment_stats.to_collect }}</strong> to collect | {{ payment_stats.on_site }} on site</div>
+      </div>
+      <div class="summary-card">
+        <div class="night-label">Dinner 2 Sept</div>
+        <div style="font-size:28px; font-weight:700; color:var(--primary)">{{ payment_stats.dinner_2sep }}</div>
+        <div class="stat">attending</div>
+      </div>
+      <div class="summary-card">
+        <div class="night-label">No fee needed</div>
+        <div style="font-size:28px; font-weight:700; color:var(--info)">{{ payment_stats.no_need }}</div>
+        <div class="stat">not attending 2 Sept</div>
+      </div>
+    </div>
+
+    <!-- Tour stages -->
+    <div class="card" style="margin-bottom:20px">
+      <div class="card-header">
+        <span class="material-icons-round">route</span> Tour Stages
+      </div>
+      <div style="padding:0">
+        <table style="width:100%">
+          <thead>
+            <tr>
+              <th style="width:140px">Date</th>
+              <th style="width:120px">City</th>
+              <th>Route</th>
+              <th style="width:200px">Dinner venue</th>
+              <th style="text-align:center; width:80px">People</th>
+              <th style="text-align:center; width:80px">Rooms</th>
+              <th style="text-align:center; width:80px">Blocked</th>
+              <th style="text-align:center; width:80px">Left</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for s in stages %}
+            {% set nd = night_data.get(s.night, {'total_people':0,'total_rooms_used':0,'total_blocked':0}) %}
+            <tr>
+              <td style="font-weight:600">{{ s.date }}</td>
+              <td><strong>{{ s.city }}</strong></td>
+              <td style="font-size:12px; color:var(--on-surface-variant)">{{ s.route }}</td>
+              <td style="font-size:12px">{{ s.dinner_venue }}</td>
+              <td style="text-align:center; font-weight:600">{{ nd.total_people }}</td>
+              <td style="text-align:center; font-weight:600; color:var(--primary)">{{ nd.total_rooms_used }}</td>
+              <td style="text-align:center">{{ nd.total_blocked }}</td>
+              <td style="text-align:center; font-weight:600; color:{% if nd.total_blocked - nd.total_rooms_used <= 3 %}var(--error){% else %}var(--success){% endif %}">{{ nd.total_blocked - nd.total_rooms_used }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Hotels per night -->
+    {% for s in stages %}
+    {% set nd = night_data.get(s.night) %}
+    {% if nd %}
+    <div class="card" style="margin-bottom:16px">
+      <div class="card-header">
+        <span class="material-icons-round">nights_stay</span>
+        {{ s.date }} — {{ s.city }}
+        <span style="font-size:12px; color:var(--on-surface-variant); margin-left:auto">
+          {{ nd.total_people }} people | {{ nd.total_rooms_used }} rooms used | {{ nd.total_blocked }} blocked
+        </span>
+      </div>
+      <div style="padding:0">
+        <table style="width:100%">
+          <thead>
+            <tr>
+              <th>Hotel</th>
+              <th style="text-align:center; width:100px">Rooms Blocked</th>
+              <th style="text-align:center; width:100px">Rooms Used</th>
+              <th style="text-align:center; width:100px">Left</th>
+              <th style="text-align:center; width:100px">People</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for h in nd.hotels %}
+            {% set hs = hotel_summary[h.id] %}
+            <tr>
+              <td><strong>{{ h.hotel_name }}</strong><span style="color:var(--on-surface-variant); font-size:12px"> — {{ h.city }}</span></td>
+              <td style="text-align:center">{{ h.rooms_blocked }}</td>
+              <td style="text-align:center; font-weight:600; color:var(--primary)">{{ hs.rooms_used }}</td>
+              <td style="text-align:center; font-weight:600; color:{% if h.rooms_blocked - hs.rooms_used <= 2 %}var(--error){% elif h.rooms_blocked - hs.rooms_used <= 5 %}#e65100{% else %}var(--success){% endif %}">{{ h.rooms_blocked - hs.rooms_used }}</td>
+              <td style="text-align:center; font-weight:600">{{ hs.people }}</td>
+            </tr>
+            {% endfor %}
+            <tr style="background:var(--surface-variant); font-weight:700">
+              <td>Total</td>
+              <td style="text-align:center">{{ nd.total_blocked }}</td>
+              <td style="text-align:center; color:var(--primary)">{{ nd.total_rooms_used }}</td>
+              <td style="text-align:center; color:{% if nd.total_blocked - nd.total_rooms_used <= 3 %}var(--error){% else %}var(--success){% endif %}">{{ nd.total_blocked - nd.total_rooms_used }}</td>
+              <td style="text-align:center">{{ nd.total_people }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% endif %}
+    {% endfor %}
+
+
+  </div>
+
+  <!-- ══ PARTICIPANTS TAB ══ -->
+  <div id="tab-participants" class="tab-panel">
+    <div class="search-bar">
+      <span class="material-icons-round">search</span>
+      <input type="text" id="searchInput" placeholder="Search by name, email, car...">
+    </div>
+
+    <div class="filters">
+      <span class="chip active" data-filter="all">All</span>
+      <span class="chip" data-filter="vip">VIP</span>
+      <span class="chip" data-filter="dinner">Dinner</span>
+      <span class="chip" data-filter="paid">Paid</span>
+      <span class="chip" data-filter="collect">To Collect</span>
+      <span class="chip" data-filter="airplane">Airplane</span>
+      <span class="chip" data-filter="car">Car</span>
+    </div>
+
+    <div class="card">
+      <div class="table-wrap">
+        <table id="guestTable">
+          <thead>
+            <tr>
+              <th></th>
+              <th>Name</th>
+              <th>Email</th>
+              <th>Arrival</th>
+              <th>Car</th>
+              <th>Room With</th>
+              <th>VIP</th>
+              <th>Sept 2</th>
+              <th>Dinner</th>
+              <th>Payment</th>
+              <th>Size</th>
+              <th>Diet</th>
+              {% for h in hotels %}
+              <th title="{{ h.hotel_name }} ({{ h.city }})" style="font-size:10px; max-width:60px; overflow:hidden; text-overflow:ellipsis">
+                {{ h.column_key.split('_')[0] }}<br>{{ h.column_key.split('_')[1][:6] }}
+              </th>
+              {% endfor %}
+              <th>Docs / Notes</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for g in guests %}
+            {% set ra_map = {} %}
+            {% for ra in g.room_assignments %}
+              {% if ra.hotel %}
+                {% if ra_map.update({ra.hotel.column_key: ra.room_code}) %}{% endif %}
+              {% endif %}
+            {% endfor %}
+            <tr class="guest-row{% if g.payment == 'PAID-CANCELLED' %} cancelled{% endif %}"
+                data-id="{{ g.id }}"
+                data-name="{{ g.nome_completo|lower }}"
+                data-email="{{ (g.email or '')|lower }}"
+                data-car="{{ g.car_number or '' }}"
+                data-vip="{{ g.vip or '' }}"
+                data-dinner="{{ 'yes' if g.dinner else '' }}"
+                data-payment="{{ (g.payment or '')|lower }}"
+                data-arrival="{{ (g.arrivo_mezzo or '')|lower }}">
+              <td>
+                <span class="material-icons-round note-icon" style="font-size:18px; cursor:pointer"
+                      onclick="toggleExpand({{ g.id }})">expand_more</span>
+              </td>
+              <td><strong>{{ g.cognome }}</strong> {{ g.nome }}
+                {% if g.titolo %}<span style="color:#999; font-size:11px">({{ g.titolo }})</span>{% endif %}
+              </td>
+              <td style="font-size:11px">{{ g.email or '' }}</td>
+              <td>{{ g.arrivo_mezzo or '' }}</td>
+              <td>{{ g.car_number or '' }}</td>
+              <td style="font-size:11px">{{ g.room_with or '' }}</td>
+              <td>{% if g.vip %}<span class="badge-vip">{{ g.vip }}</span>{% endif %}</td>
+              <td>{% if g.sept2 %}<span class="badge-dinner">Yes</span>{% endif %}</td>
+              <td>{% if g.dinner %}<span class="badge-dinner">X</span>{% endif %}</td>
+              <td>
+                {% if g.payment == 'PAID-CANCELLED' %}<span class="badge-cancelled">PAID-CANCELLED</span>
+                {% elif g.payment == 'PAID' %}<span class="badge-paid">PAID</span>
+                {% elif g.payment and 'COLLECT' in g.payment %}<span class="badge-collect">{{ g.payment }}</span>
+                {% elif g.payment == 'NO NEED' %}<span class="badge-noneed">NO NEED</span>
+                {% elif g.payment == 'PAY ON SITE' %}<span class="badge-collect">ON SITE</span>
+                {% elif g.payment %}<span style="font-size:11px">{{ g.payment }}</span>
+                {% endif %}
+              </td>
+              <td>{{ g.cloth_size or '' }}</td>
+              <td style="font-size:11px; max-width:100px; overflow:hidden; text-overflow:ellipsis"
+                  title="{{ g.diet or '' }}">{{ g.diet or '' }}</td>
+              {% for h in hotels %}
+              <td>
+                {% if ra_map.get(h.column_key) %}
+                  <span class="badge-room">{{ ra_map[h.column_key] }}</span>
+                {% endif %}
+              </td>
+              {% endfor %}
+              <td style="white-space:nowrap">
+                {% if g.passport_file %}
+                  <span class="material-icons-round" style="font-size:16px; color:#1565c0; vertical-align:middle" title="Passport">badge</span>
+                {% endif %}
+                {% if g.driving_file %}
+                  <span class="material-icons-round" style="font-size:16px; color:#2e7d32; vertical-align:middle" title="Driving Licence">directions_car</span>
+                {% endif %}
+                {% if g.notes %}
+                  <span class="material-icons-round note-icon" title="{{ g.notes }}">sticky_note_2</span>
+                {% endif %}
+              </td>
+            </tr>
+            <tr class="expand-row hidden" id="expand-{{ g.id }}">
+              <td colspan="{{ hotels|length + 13 }}">
+                <div class="detail-grid">
+                  <div>
+                    <div class="detail-label">Full Name</div>
+                    <div class="detail-value">{{ g.titolo or '' }} {{ g.nome_completo }}</div>
+                  </div>
+                  <div>
+                    <div class="detail-label">Nationality</div>
+                    <div class="detail-value">{{ g.nazionalita or '-' }}</div>
+                  </div>
+                  <div>
+                    <div class="detail-label">Phone</div>
+                    <div class="detail-value">{{ g.telefono or '-' }}</div>
+                  </div>
+                  <div>
+                    <div class="detail-label">Arrival Date</div>
+                    <div class="detail-value">{{ g.arrivo_data or '-' }}</div>
+                  </div>
+                  <div>
+                    <div class="detail-label">Car With</div>
+                    <div class="detail-value">{{ g.car_with or '-' }}</div>
+                  </div>
+                  <div>
+                    <div class="detail-label">Client Room Note</div>
+                    <div class="detail-value">{{ g.client_room_note or '-' }}</div>
+                  </div>
+                  {% if g.passport_file or g.driving_file %}
+                  <div>
+                    <div class="detail-label">Documents</div>
+                    <div class="detail-value" style="display:flex; gap:8px; flex-wrap:wrap">
+                      {% if g.passport_file %}
+                      <a href="/static/{{ g.passport_file }}" target="_blank"
+                         style="display:inline-flex; align-items:center; gap:4px; padding:4px 10px; border-radius:6px; background:#e3f2fd; color:#1565c0; text-decoration:none; font-size:12px; font-weight:600">
+                        <span class="material-icons-round" style="font-size:16px">badge</span> Passport
+                      </a>
+                      {% endif %}
+                      {% if g.driving_file %}
+                      <a href="/static/{{ g.driving_file }}" target="_blank"
+                         style="display:inline-flex; align-items:center; gap:4px; padding:4px 10px; border-radius:6px; background:#e8f5e9; color:#2e7d32; text-decoration:none; font-size:12px; font-weight:600">
+                        <span class="material-icons-round" style="font-size:16px">directions_car</span> Driving Licence
+                      </a>
+                      {% endif %}
+                    </div>
+                  </div>
+                  {% endif %}
+                  <div style="grid-column: 1/-1">
+                    <div class="detail-label">Notes</div>
+                    <div class="detail-value" style="white-space:pre-wrap">{{ g.notes or '-' }}</div>
+                  </div>
+                  {% if g.email_requests %}
+                  <div style="grid-column: 1/-1">
+                    <div class="detail-label">Email Requests</div>
+                    <div class="detail-value" style="white-space:pre-wrap">{{ g.email_requests or '-' }}</div>
+                  </div>
+                  {% endif %}
+                </div>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ NIGHTS TAB ══ -->
+  <div id="tab-nights" class="tab-panel">
+    {% set nights = {} %}
+    {% for h in hotels %}
+      {% if nights.update({h.night_label: (nights.get(h.night_label) or []) + [h]}) %}{% endif %}
+    {% endfor %}
+
+    {% for night_label in ['1Sep','2Sep','3Sep','4Sep','5Sep'] %}
+    {% if nights.get(night_label) %}
+    <h3 style="margin: 20px 0 10px; color: var(--primary); font-size: 18px">
+      <span class="material-icons-round" style="vertical-align: middle; margin-right: 4px">nights_stay</span>
+      Night of {{ night_label }}
+    </h3>
+
+    {% set night_hotels = nights[night_label] %}
+    {% set ns_night = namespace(total_blocked=0, total_rooms_used=0, total_people=0) %}
+    {% for h in night_hotels %}
+      {% set occ = hotel_occupancy.get(h.id, {}) %}
+      {% set ns_h = namespace(rooms=0, people=0) %}
+      {% for code, data in occ.items() %}
+        {% set ns_h.rooms = ns_h.rooms + data.room_count %}
+        {% set ns_h.people = ns_h.people + data.people %}
+      {% endfor %}
+      {% set ns_night.total_blocked = ns_night.total_blocked + h.rooms_blocked %}
+      {% set ns_night.total_rooms_used = ns_night.total_rooms_used + ns_h.rooms %}
+      {% set ns_night.total_people = ns_night.total_people + ns_h.people %}
+    {% endfor %}
+
+    <!-- Night summary bar -->
+    <div style="display:flex; gap:16px; margin-bottom:10px; font-size:13px; color: var(--on-surface-variant)">
+      <span>Blocked: <strong style="color:var(--on-surface)">{{ ns_night.total_blocked }}</strong></span>
+      <span>Rooms used: <strong style="color:var(--on-surface)">{{ ns_night.total_rooms_used }}</strong></span>
+      <span>Remaining: <strong style="color:{% if ns_night.total_blocked - ns_night.total_rooms_used <= 3 %}var(--error){% else %}var(--success){% endif %}">{{ ns_night.total_blocked - ns_night.total_rooms_used }}</strong></span>
+      <span>People: <strong style="color:var(--on-surface)">{{ ns_night.total_people }}</strong></span>
+    </div>
+
+    {% for h in night_hotels %}
+    {% set occ = hotel_occupancy.get(h.id, {}) %}
+    {% set ns_htot = namespace(rooms=0, people=0) %}
+    {% for code, data in occ.items() %}
+      {% set ns_htot.rooms = ns_htot.rooms + data.room_count %}
+      {% set ns_htot.people = ns_htot.people + data.people %}
+    {% endfor %}
+
+    <div class="card" style="margin-bottom: 12px">
+      <div class="card-header">
+        <span class="material-icons-round">hotel</span>
+        {{ h.hotel_name }} — {{ h.city }}
+        <span style="font-size:12px; color: var(--on-surface-variant); margin-left:auto">
+          {{ h.rooms_blocked }} blocked |
+          <strong style="color:var(--primary)">{{ ns_htot.rooms }}</strong> used |
+          <strong style="color:{% if h.rooms_blocked - ns_htot.rooms <= 2 %}var(--error){% else %}var(--success){% endif %}">{{ h.rooms_blocked - ns_htot.rooms }}</strong> left |
+          {{ ns_htot.people }} people
+        </span>
+        {% if not client_view %}
+        <button class="btn-docs" style="margin-left:12px; font-size:12px; border:none; cursor:pointer"
+                onclick="generateHotelLink({{ h.id }}, this)">
+          <span class="material-icons-round" style="font-size:16px">link</span> Get Link
+        </button>
+        <a href="/api/tour/export/hotel/{{ h.id }}" class="btn-xlsx" style="margin-left:4px; font-size:12px">
+          <span class="material-icons-round" style="font-size:16px">download</span> XLSX
+        </a>
+        {% endif %}
+      </div>
+      <div style="padding: 12px 20px">
+        {% if h.categories %}
+        <table class="nights-table">
+          <colgroup>
+            <col class="col-category">
+            <col class="col-code">
+            <col class="col-num">
+            <col class="col-num">
+            <col class="col-num">
+            <col class="col-num">
+            <col class="col-guests">
+          </colgroup>
+          <thead>
+            <tr>
+              <th>Category</th>
+              <th>Code</th>
+              <th style="text-align:center">Available</th>
+              <th style="text-align:center">Used</th>
+              <th style="text-align:center">Left</th>
+              <th style="text-align:center">People</th>
+              <th>Guests</th>
+            </tr>
+          </thead>
+          <tbody>
+          {% for c in h.categories %}
+            {% set cat_occ = occ.get(c.code, {'room_count': 0, 'people': 0, 'guests': []}) %}
+            {% set remaining = c.rooms_available - cat_occ.room_count %}
+            <tr>
+              <td>{{ c.category_name }}</td>
+              <td><span class="badge-room">{{ c.code }}</span></td>
+              <td style="text-align:center">{{ c.rooms_available }}</td>
+              <td style="text-align:center; font-weight:600">{{ cat_occ.room_count }}</td>
+              <td style="text-align:center; font-weight:600; color:{% if remaining <= 0 %}var(--error){% elif remaining <= 2 %}#e65100{% else %}var(--success){% endif %}">{{ remaining }}</td>
+              <td style="text-align:center">{{ cat_occ.people }}</td>
+              <td style="font-size:11px; white-space:normal; overflow:hidden; text-overflow:ellipsis">
+                {% for g, rc in cat_occ.get('guests', []) %}
+                  {{ g.cognome }} {{ g.nome }} <span style="color:var(--primary);font-weight:500">({{ rc }})</span>{% if not loop.last %}, {% endif %}
+                {% endfor %}
+              </td>
+            </tr>
+          {% endfor %}
+          <!-- Codes not in categories (unmatched assignments) -->
+          {% for code, data in occ.items() %}
+            {% set known_codes = h.categories | map(attribute='code') | list %}
+            {% if code not in known_codes %}
+            <tr style="background: #fff8e1">
+              <td style="font-style:italic; color: var(--on-surface-variant)">Uncategorized</td>
+              <td><span class="badge-room" style="background:#fff3e0; color:#e65100">{{ code }}</span></td>
+              <td style="text-align:center">-</td>
+              <td style="text-align:center; font-weight:600">{{ data.room_count }}</td>
+              <td style="text-align:center">-</td>
+              <td style="text-align:center">{{ data.people }}</td>
+              <td style="font-size:11px; white-space:normal; overflow:hidden; text-overflow:ellipsis">
+                {% for g, rc in data.guests %}
+                  {{ g.cognome }} {{ g.nome }} <span style="color:var(--primary);font-weight:500">({{ rc }})</span>{% if not loop.last %}, {% endif %}
+                {% endfor %}
+              </td>
+            </tr>
+            {% endif %}
+          {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <!-- Hotel without categories (e.g. 1Sep outside scope) -->
+        {% if occ %}
+        <table class="nights-table">
+          <colgroup>
+            <col class="col-category">
+            <col class="col-code">
+            <col class="col-num">
+            <col class="col-num">
+            <col class="col-num">
+            <col class="col-num">
+            <col class="col-guests">
+          </colgroup>
+          <thead>
+            <tr>
+              <th>Category</th>
+              <th>Code</th>
+              <th style="text-align:center">Available</th>
+              <th style="text-align:center">Used</th>
+              <th style="text-align:center">Left</th>
+              <th style="text-align:center">People</th>
+              <th>Guests</th>
+            </tr>
+          </thead>
+          <tbody>
+          {% for code, data in occ.items() %}
+            <tr>
+              <td style="font-style:italic; color: var(--on-surface-variant)">—</td>
+              <td><span class="badge-room">{{ code }}</span></td>
+              <td style="text-align:center">-</td>
+              <td style="text-align:center; font-weight:600">{{ data.room_count }}</td>
+              <td style="text-align:center">-</td>
+              <td style="text-align:center">{{ data.people }}</td>
+              <td style="font-size:11px; white-space:normal; overflow:hidden; text-overflow:ellipsis">
+                {% for g, rc in data.guests %}
+                  {{ g.cognome }} {{ g.nome }} <span style="color:var(--primary);font-weight:500">({{ rc }})</span>{% if not loop.last %}, {% endif %}
+                {% endfor %}
+              </td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <p style="font-size:13px; color: var(--on-surface-variant)">No room assignments for this hotel</p>
+        {% endif %}
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+    {% endif %}
+    {% endfor %}
+  </div>
+
+  <!-- ══ PAYMENTS TAB ══ -->
+  <div id="tab-payments" class="tab-panel">
+    <div class="card">
+      <div class="card-header">
+        <span class="material-icons-round">payments</span> Payment Status (Sept 2 fee)
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Name</th><th>Email</th><th>Sept2</th><th>Room 2Sep</th><th>Payment</th><th>Notes</th></tr>
+          </thead>
+          <tbody>
+            {% for g in guests %}
+            {% set ra_2sep = namespace(code='') %}
+            {% for ra in g.room_assignments %}
+              {% if ra.hotel and ra.hotel.column_key == '2Sep_Paolovi' %}
+                {% set ra_2sep.code = ra.room_code %}
+              {% endif %}
+            {% endfor %}
+            {% if g.payment and 'COLLECT' in g.payment or g.payment == 'PAY ON SITE' or g.payment == 'TO COLLECT' %}
+            <tr>
+              <td><strong>{{ g.cognome }}</strong> {{ g.nome }}</td>
+              <td style="font-size:11px">{{ g.email or '' }}</td>
+              <td>{% if g.sept2 %}Yes{% else %}No{% endif %}</td>
+              <td>{% if ra_2sep.code %}<span class="badge-room">{{ ra_2sep.code }}</span>{% endif %}</td>
+              <td><span class="badge-collect">{{ g.payment }}</span></td>
+              <td style="font-size:11px; max-width:300px; white-space:normal">{{ g.notes or '' }}</td>
+            </tr>
+            {% endif %}
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ ACCESS LOGS TAB ══ -->
+  <div id="tab-access" class="tab-panel">
+    <div class="card">
+      <div class="card-header">
+        <span class="material-icons-round">security</span> Hotel Access Links & Logs
+      </div>
+      <div style="padding:16px 20px">
+        <p style="font-size:13px; color:var(--on-surface-variant); margin-bottom:16px">
+          Generate a unique link for each hotel. When they open it, they see only their guests with passport and driving licence. Every access is logged.
+        </p>
+        <div id="accessLinksContainer">
+          <p style="color:#999; font-size:13px">Loading...</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <div class="card-header">
+        <span class="material-icons-round">group</span> Client Access Links
+        <span style="font-size:12px; color:var(--on-surface-variant); margin-left:auto">
+          External clients see the full dashboard without Payments, Hotel Access, export buttons or documents
+        </span>
+      </div>
+      <div style="padding:16px 20px">
+        <div style="display:flex; gap:8px; margin-bottom:16px">
+          <input type="text" id="clientLabel" placeholder="Label (e.g. Liqui Moly team)" style="padding:6px 12px; border:1px solid var(--outline); border-radius:8px; font-size:13px; flex:1; max-width:300px; font-family:inherit">
+          <button class="btn-docs" style="border:none; cursor:pointer" onclick="generateClientLink()">
+            <span class="material-icons-round" style="font-size:16px">add_link</span> Generate
+          </button>
+        </div>
+        <div id="clientLinksContainer">
+          <p style="color:#999; font-size:13px">Loading...</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ── Tabs ──
+function switchTab(name) {
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  event.target.classList.add('active');
+}
+
+// ── Expand rows ──
+function toggleExpand(id) {
+  const row = document.getElementById('expand-' + id);
+  row.classList.toggle('hidden');
+}
+
+// ── Search ──
+document.getElementById('searchInput').addEventListener('input', function() {
+  const q = this.value.toLowerCase();
+  document.querySelectorAll('.guest-row').forEach(tr => {
+    const match = tr.dataset.name.includes(q) || tr.dataset.email.includes(q) || tr.dataset.car.includes(q);
+    tr.style.display = match ? '' : 'none';
+    const expand = document.getElementById('expand-' + tr.dataset.id);
+    if (!match) expand.classList.add('hidden');
+  });
+});
+
+// ── Filter chips ──
+document.querySelectorAll('.chip').forEach(chip => {
+  chip.addEventListener('click', function() {
+    document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+    this.classList.add('active');
+    const f = this.dataset.filter;
+    document.querySelectorAll('.guest-row').forEach(tr => {
+      let show = true;
+      if (f === 'vip') show = !!tr.dataset.vip;
+      else if (f === 'dinner') show = tr.dataset.dinner === 'yes';
+      else if (f === 'paid') show = tr.dataset.payment === 'paid';
+      else if (f === 'collect') show = tr.dataset.payment.includes('collect') || tr.dataset.payment === 'pay on site';
+      else if (f === 'airplane') show = tr.dataset.arrival === 'airplane';
+      else if (f === 'car') show = tr.dataset.arrival === 'car';
+      tr.style.display = show ? '' : 'none';
+    });
+  });
+});
+
+
+// ── Generate hotel link ──
+function generateHotelLink(hotelId, btn) {
+  fetch('/api/tour/hotel/' + hotelId + '/generate-link', {method:'POST'})
+    .then(r => r.json())
+    .then(data => {
+      const url = location.origin + data.url;
+      navigator.clipboard.writeText(url).then(() => {
+        btn.innerHTML = '<span class="material-icons-round" style="font-size:16px">check</span> Copied!';
+        setTimeout(() => {
+          btn.innerHTML = '<span class="material-icons-round" style="font-size:16px">link</span> Get Link';
+        }, 2000);
+      });
+    });
+}
+
+// ── Load access logs ──
+function loadAccessLogs() {
+  fetch('/api/tour/hotel-links').then(r => r.json()).then(hotels => {
+    const c = document.getElementById('accessLinksContainer');
+    if (!c) return;
+    let html = '<table style="width:100%; font-size:13px"><thead><tr>' +
+      '<th>Night</th><th>Hotel</th><th>Link</th><th>Last Access</th><th>Actions</th>' +
+      '</tr></thead><tbody>';
+
+    hotels.forEach(h => {
+      const link = h.token ? location.origin + '/tour/docs/' + h.token : '';
+      const lastLog = h.logs.length ? h.logs[0] : null;
+      const lastAccess = lastLog ? lastLog.at + ' — ' + lastLog.action +
+        (lastLog.detail ? ' (' + lastLog.detail + ')' : '') +
+        ' — IP: ' + lastLog.ip : '<span style="color:#999">Never accessed</span>';
+
+      html += '<tr>' +
+        '<td>' + h.night_label + '</td>' +
+        '<td><strong>' + h.hotel_name + '</strong> <span style="color:#999">(' + h.city + ')</span></td>' +
+        '<td>' + (h.token ?
+          '<a href="' + link + '" target="_blank" style="font-size:11px; word-break:break-all">' + link + '</a>' :
+          '<span style="color:#999">Not generated</span>') + '</td>' +
+        '<td style="font-size:11px">' + lastAccess + '</td>' +
+        '<td><button class="btn-docs" style="font-size:11px; border:none; cursor:pointer; padding:3px 8px" ' +
+          'onclick="generateHotelLink(' + h.hotel_id + ', this)">' +
+          '<span class="material-icons-round" style="font-size:14px">link</span> ' +
+          (h.token ? 'Copy' : 'Generate') + '</button>';
+
+      if (h.logs.length > 1) {
+        html += ' <button style="font-size:11px; border:1px solid #ddd; border-radius:6px; padding:3px 8px; cursor:pointer; background:#fff" ' +
+          'onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display===\'none\'?\'block\':\'none\'">History</button>' +
+          '<div style="display:none; margin-top:8px; font-size:11px; max-height:150px; overflow-y:auto">';
+        h.logs.forEach(l => {
+          html += '<div style="padding:2px 0; border-bottom:1px solid #f0f0f0">' +
+            l.at + ' — <strong>' + l.action + '</strong>' +
+            (l.detail ? ' (' + l.detail + ')' : '') + ' — IP: ' + l.ip + '</div>';
+        });
+        html += '</div>';
+      }
+
+      html += '</td></tr>';
+    });
+
+    html += '</tbody></table>';
+    c.innerHTML = html;
+  });
+}
+
+// ── Client links ──
+function generateClientLink() {
+  const label = document.getElementById('clientLabel').value.trim() || 'Client';
+  fetch('/api/tour/client-link', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({label})
+  }).then(r => r.json()).then(data => {
+    document.getElementById('clientLabel').value = '';
+    loadClientLinks();
+    const url = location.origin + data.url;
+    navigator.clipboard.writeText(url);
+  });
+}
+
+function loadClientLinks() {
+  fetch('/api/tour/client-links').then(r => r.json()).then(links => {
+    const c = document.getElementById('clientLinksContainer');
+    if (!c) return;
+    if (!links.length) { c.innerHTML = '<p style="color:#999; font-size:13px">No client links yet</p>'; return; }
+    let html = '<table style="width:100%; font-size:13px"><thead><tr><th>Label</th><th>Link</th><th>Created</th><th></th></tr></thead><tbody>';
+    links.forEach(l => {
+      const url = location.origin + '/tour/client/' + l.token;
+      html += '<tr><td><strong>' + l.label + '</strong></td>' +
+        '<td><a href="' + url + '" target="_blank" style="font-size:11px; word-break:break-all">' + url + '</a></td>' +
+        '<td style="font-size:11px">' + l.created_at + '</td>' +
+        '<td><button style="font-size:11px; border:1px solid #ddd; border-radius:6px; padding:3px 8px; cursor:pointer; background:#fff; margin-right:4px" ' +
+          'onclick="navigator.clipboard.writeText(\'' + url + '\');this.textContent=\'Copied!\';setTimeout(()=>this.textContent=\'Copy\',1500)">Copy</button>' +
+        '<button style="font-size:11px; border:1px solid #f44336; border-radius:6px; padding:3px 8px; cursor:pointer; background:#fff; color:#f44336" ' +
+          'onclick="if(confirm(\'Delete this link?\'))fetch(\'/api/tour/client-link/' + l.id + '\',{method:\'DELETE\'}).then(()=>loadClientLinks())">Delete</button>' +
+        '</td></tr>';
+    });
+    html += '</tbody></table>';
+    c.innerHTML = html;
+  });
+}
+
+// Load logs when access tab is shown
+const accessTab = document.querySelector('[onclick*="access"]');
+if (accessTab) accessTab.addEventListener('click', function() { loadAccessLogs(); loadClientLinks(); });
+
+// ── Tour Map ──
+(function() {
+  const mapEl = document.getElementById('tourMap');
+  if (!mapEl) return;
+
+  const map = L.map('tourMap', {scrollWheelZoom: false}).setView([45.15, 11.0], 8);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; OpenStreetMap',
+    maxZoom: 18,
+  }).addTo(map);
+
+  // Tour stops with coordinates
+  const stops = [
+    {name: '2 Sep: Brescia', lat: 45.5416, lng: 10.2118, label: 'Brescia\nCentro Paolo VI',
+     details: 'Arrival & Network Dinner'},
+    {name: '3 Sep: Ferrara', lat: 44.8381, lng: 11.6199, label: 'Ferrara\nCasa d\'Este / Carlton / Europa',
+     details: 'Karting → Verona → Monselice → Dinner Circolo Negozianti'},
+    {name: '4 Sep: Maranello', lat: 44.5303, lng: 10.8633, label: 'Maranello\nArthur / Arthurino / Village',
+     details: 'Golf Le Fonti → Passo Futa → Ferrari → Dinner Arthur Pool'},
+    {name: '5 Sep: Brescia', lat: 45.5416, lng: 10.2118, label: 'Brescia\nCentro Paolo VI',
+     details: 'UFI → Metelli → Brembo → Dinner Antica Fratta'},
+  ];
+
+  // Day activities waypoints (intermediate stops)
+  const day3_waypoints = [
+    {name: 'South Garda Karting', lat: 45.3866, lng: 10.6259},
+    {name: 'Fabbrica Pedavena, Verona', lat: 45.4384, lng: 10.9916},
+    {name: 'Monselice', lat: 45.2379, lng: 11.7475},
+  ];
+  const day4_waypoints = [
+    {name: 'Golf Club Le Fonti', lat: 44.4857, lng: 11.2635},
+    {name: 'Passo della Futa', lat: 44.1192, lng: 11.3104},
+    {name: 'Ferrari Plant', lat: 44.5303, lng: 10.8633},
+  ];
+  const day5_waypoints = [
+    {name: 'Marcaria / UFI', lat: 45.1166, lng: 10.5333},
+    {name: 'Cologne (Metelli)', lat: 45.5838, lng: 10.0292},
+    {name: 'Brembo, Stezzano', lat: 45.6494, lng: 9.6522},
+    {name: 'Antica Fratta, Monticelli B.', lat: 45.5472, lng: 10.0703},
+  ];
+
+  const orangeIcon = L.divIcon({
+    html: '<div style="background:var(--primary,#E65100);color:#fff;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.3)"></div>',
+    iconSize: [28, 28], iconAnchor: [14, 14], className: '',
+  });
+
+  function makeIcon(num) {
+    return L.divIcon({
+      html: '<div style="background:#E65100;color:#fff;width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.3)">' + num + '</div>',
+      iconSize: [30, 30], iconAnchor: [15, 15], className: '',
+    });
+  }
+
+  const smallIcon = L.divIcon({
+    html: '<div style="background:#795548;width:10px;height:10px;border-radius:50%;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.3)"></div>',
+    iconSize: [10, 10], iconAnchor: [5, 5], className: '',
+  });
+
+  // Add stop markers
+  stops.forEach((s, i) => {
+    L.marker([s.lat, s.lng], {icon: makeIcon(i + 2)})
+      .bindPopup('<strong>' + s.name + '</strong><br>' + s.details)
+      .addTo(map);
+  });
+
+  // Add waypoint markers
+  [day3_waypoints, day4_waypoints, day5_waypoints].forEach(wps => {
+    wps.forEach(w => {
+      L.marker([w.lat, w.lng], {icon: smallIcon})
+        .bindPopup(w.name)
+        .addTo(map);
+    });
+  });
+
+  // Route lines
+  const route_2_3 = [[45.5416,10.2118], [45.3866,10.6259], [45.4384,10.9916], [45.2379,11.7475], [44.8381,11.6199]];
+  const route_3_4 = [[44.8381,11.6199], [44.4857,11.2635], [44.1192,11.3104], [44.5303,10.8633]];
+  const route_4_5 = [[44.5303,10.8633], [45.1166,10.5333], [45.5838,10.0292], [45.6494,9.6522], [45.5472,10.0703], [45.5416,10.2118]];
+
+  L.polyline(route_2_3, {color:'#E65100', weight:3, opacity:0.7, dashArray:'8,6'}).addTo(map);
+  L.polyline(route_3_4, {color:'#BF360C', weight:3, opacity:0.7, dashArray:'8,6'}).addTo(map);
+  L.polyline(route_4_5, {color:'#FF8A65', weight:3, opacity:0.7, dashArray:'8,6'}).addTo(map);
+
+  // Fit bounds
+  const allPts = [...stops, ...day3_waypoints, ...day4_waypoints, ...day5_waypoints].map(s => [s.lat, s.lng]);
+  map.fitBounds(allPts, {padding: [30, 30]});
+})();
+
+</script>
+</body>
+</html>

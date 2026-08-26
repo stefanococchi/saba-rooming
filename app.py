@@ -12,7 +12,11 @@ load_dotenv()
 from models import (db, Guest, RoomContract, EmailLog,
                      PartiviaQuote, PartiviaRoomRate,
                      PartiviaMeetingRoom, PartiviaFBOption,
-                     BudgetOverride, PnrGroup)
+                     BudgetOverride, PnrGroup,
+                     TourHotel, TourRoomCategory,
+                     TourGuest, TourRoomAssignment,
+                     TourHotelToken, TourHotelAccessLog,
+                     TourClientToken)
 
 
 def _parse_bool(val):
@@ -81,6 +85,23 @@ def create_app():
             if 'data_nascita' not in guest_cols:
                 conn.execute(text("ALTER TABLE guests ADD COLUMN data_nascita VARCHAR(20)"))
                 conn.commit()
+            # Tour room categories: add sort_order if missing
+            trc_tables = [t['name'] for t in inspect(db.engine).get_table_names()] if False else []
+            try:
+                trc_cols = [c['name'] for c in inspect(db.engine).get_columns('tour_room_categories')]
+                if 'sort_order' not in trc_cols:
+                    conn.execute(text("ALTER TABLE tour_room_categories ADD COLUMN sort_order INTEGER DEFAULT 0"))
+                    conn.commit()
+            except Exception:
+                pass  # table may not exist yet
+            try:
+                tg_cols = [c['name'] for c in inspect(db.engine).get_columns('tour_guests')]
+                for col in ('passport_file', 'driving_file'):
+                    if col not in tg_cols:
+                        conn.execute(text(f"ALTER TABLE tour_guests ADD COLUMN {col} VARCHAR(300)"))
+                        conn.commit()
+            except Exception:
+                pass
 
         # Migrate Italian statuses to English (one-time)
         _status_map = {
@@ -3530,6 +3551,893 @@ Notes: {q.notes or 'N/A'}"""
             'summary': l.summary,
             'created_at': l.created_at.isoformat() if l.created_at else None,
         } for l in logs])
+
+    # ── TOUR: Liqui Moly ────────────────────────────────────────────────
+
+    @app.route('/api/tour/client-link', methods=['POST'])
+    def tour_generate_client_link():
+        import secrets
+        data = request.json or {}
+        label = (data.get('label') or 'Client').strip()
+        token = secrets.token_urlsafe(24)
+        ct = TourClientToken(label=label, token=token)
+        db.session.add(ct)
+        db.session.commit()
+        return jsonify({'token': ct.token, 'url': f'/tour/client/{ct.token}',
+                        'label': ct.label, 'id': ct.id})
+
+    @app.route('/api/tour/client-links')
+    def tour_client_links():
+        tokens = TourClientToken.query.order_by(TourClientToken.created_at.desc()).all()
+        return jsonify([{'id': t.id, 'label': t.label, 'token': t.token,
+                         'created_at': t.created_at.strftime('%d/%m/%Y %H:%M') if t.created_at else ''}
+                        for t in tokens])
+
+    @app.route('/api/tour/client-link/<int:tid>', methods=['DELETE'])
+    def tour_delete_client_link(tid):
+        t = TourClientToken.query.get_or_404(tid)
+        db.session.delete(t)
+        db.session.commit()
+        return jsonify({'ok': True})
+
+    @app.route('/tour/client/<token>')
+    def tour_client_view(token):
+        ct = TourClientToken.query.filter_by(token=token).first_or_404()
+        return _tour_render(client_view=True)
+
+    @app.route('/tour')
+    def tour_index():
+        return _tour_render(client_view=False)
+
+    def _tour_render(client_view=False):
+        import re as _re_tour
+        guests = TourGuest.query.order_by(TourGuest.cognome, TourGuest.nome).all()
+        hotels = TourHotel.query.order_by(TourHotel.night_date, TourHotel.hotel_name).all()
+
+        # Build occupancy data per hotel
+        # Non-suffixed codes (GS, KING) = 1 room per person
+        # Suffixed codes (DBL-T4, XL-2) = 1 room per unique raw code
+        hotel_occupancy = {}  # hotel.id → {base_code: {room_count, people, guests}}
+        suffix_re = _re_tour.compile(r'-[A-Z]*\d+$')
+        for h in hotels:
+            assignments = TourRoomAssignment.query.filter_by(hotel_id=h.id).all()
+            occ = {}
+            for a in assignments:
+                base_code = suffix_re.sub('', a.room_code)
+                has_suffix = (base_code != a.room_code)
+                if base_code not in occ:
+                    occ[base_code] = {'shared_codes': set(), 'single_count': 0,
+                                      'people': 0, 'guests': []}
+                occ[base_code]['people'] += 1
+                occ[base_code]['guests'].append((a.guest, a.room_code))
+                if has_suffix:
+                    occ[base_code]['shared_codes'].add(a.room_code)
+                else:
+                    occ[base_code]['single_count'] += 1
+            # Convert to room_count
+            for code in occ:
+                occ[code]['room_count'] = (occ[code]['single_count']
+                                           + len(occ[code]['shared_codes']))
+                del occ[code]['shared_codes']
+                del occ[code]['single_count']
+            hotel_occupancy[h.id] = occ
+
+        # Build per-hotel summary: rooms_used, people
+        hotel_summary = {}
+        for h in hotels:
+            occ = hotel_occupancy.get(h.id, {})
+            total_rooms = 0
+            total_people = 0
+            for code, data in occ.items():
+                total_rooms += data['room_count']
+                total_people += data['people']
+            hotel_summary[h.id] = {'rooms_used': total_rooms, 'people': total_people}
+
+        # Build per-night summary
+        from collections import OrderedDict
+        night_data = OrderedDict()
+        for h in hotels:
+            nl = h.night_label
+            if nl not in night_data:
+                night_data[nl] = {'hotels': [], 'total_blocked': 0,
+                                  'total_rooms_used': 0, 'total_people': 0}
+            hs = hotel_summary[h.id]
+            night_data[nl]['hotels'].append(h)
+            night_data[nl]['total_blocked'] += h.rooms_blocked
+            night_data[nl]['total_rooms_used'] += hs['rooms_used']
+            night_data[nl]['total_people'] += hs['people']
+
+        # Tour stages info
+        stages = [
+            {'date': '2 September', 'night': '2Sep', 'city': 'Brescia',
+             'route': 'Arrival & Network Dinner',
+             'dinner_venue': 'Centro Paolo VI',
+             'highlights': ['Guest arrivals', 'Network Dinner at Centro Paolo VI']},
+            {'date': '3 September', 'night': '3Sep', 'city': 'Ferrara',
+             'route': 'Brescia → Ferrara',
+             'dinner_venue': 'Circolo dei Negozianti',
+             'highlights': ['South Garda Karting Circuit', 'Lunch at Fabbrica Pedavena, Verona',
+                            'Coffee Break at Monselice Incredibilia', 'Dinner at Circolo dei Negozianti']},
+            {'date': '4 September', 'night': '4Sep', 'city': 'Maranello',
+             'route': 'Ferrara → Maranello',
+             'dinner_venue': 'Hotel Arthur Pool',
+             'highlights': ['Golf Club Le Fonti', 'Lunch at Passo della Futa',
+                            'Ferrari Plant visit', 'Dinner at Hotel Arthur Pool + DJ set']},
+            {'date': '5 September', 'night': '5Sep', 'city': 'Brescia',
+             'route': 'Maranello → Brescia',
+             'dinner_venue': 'Antica Fratta, Franciacorta',
+             'highlights': ['Marcaria c/o UFI', 'Lunch at Cologne Metelli',
+                            'Brembo visit', 'Dinner at Antica Fratta Winery']},
+        ]
+
+        # Payment stats
+        payment_stats = {
+            'total': len([g for g in guests if g.payment != 'PAID-CANCELLED']),
+            'cancelled': len([g for g in guests if g.payment == 'PAID-CANCELLED']),
+            'paid': len([g for g in guests if g.payment == 'PAID']),
+            'to_collect': len([g for g in guests if g.payment and 'COLLECT' in (g.payment or '')
+                               and g.payment != 'PAID-CANCELLED']),
+            'no_need': len([g for g in guests if g.payment == 'NO NEED']),
+            'on_site': len([g for g in guests if g.payment == 'PAY ON SITE']),
+            'dinner_2sep': len([g for g in guests if g.dinner and g.payment != 'PAID-CANCELLED']),
+        }
+
+        return render_template('tour.html', guests=guests, hotels=hotels,
+                               hotel_occupancy=hotel_occupancy,
+                               hotel_summary=hotel_summary,
+                               night_data=night_data,
+                               stages=stages,
+                               payment_stats=payment_stats,
+                               client_view=client_view)
+
+    @app.route('/api/tour/stats')
+    def tour_stats():
+        import re as _re_stats
+        hotels = TourHotel.query.order_by(TourHotel.night_date, TourHotel.hotel_name).all()
+        result = []
+        for h in hotels:
+            assignments = TourRoomAssignment.query.filter_by(hotel_id=h.id).all()
+            # Count unique rooms: strip suffix (-T4, -D2, -1 etc.) then
+            # count distinct raw codes per base code as rooms
+            room_set = set()
+            people = 0
+            for a in assignments:
+                room_set.add(a.room_code)
+                people += 1
+            result.append({
+                'id': h.id,
+                'column_key': h.column_key,
+                'night_label': h.night_label,
+                'hotel_name': h.hotel_name,
+                'city': h.city,
+                'rooms_blocked': h.rooms_blocked,
+                'rooms_used': len(room_set),
+                'people': people,
+                'categories': [{
+                    'code': c.code,
+                    'category_name': c.category_name,
+                    'rooms_available': c.rooms_available,
+                } for c in h.categories],
+            })
+        return jsonify(result)
+
+    @app.route('/api/tour/guest/<int:gid>', methods=['PUT'])
+    def tour_update_guest(gid):
+        g = TourGuest.query.get_or_404(gid)
+        data = request.json
+        str_fields = (
+            'cognome', 'nome', 'email', 'telefono', 'nazionalita', 'titolo',
+            'arrivo_mezzo', 'arrivo_data', 'room_with', 'car_number', 'car_with',
+            'vip', 'client_room_note', 'payment', 'cloth_size', 'diet',
+            'notes', 'email_requests',
+        )
+        bool_fields = ('dinner', 'sept2')
+        for f in str_fields:
+            if f in data:
+                setattr(g, f, data[f] or None)
+        for f in bool_fields:
+            if f in data:
+                setattr(g, f, _parse_bool(data[f]))
+        db.session.commit()
+        return jsonify({'ok': True})
+
+    @app.route('/api/tour/guest/<int:gid>/room', methods=['PUT'])
+    def tour_assign_room(gid):
+        """Assign or update a room for a guest at a specific hotel."""
+        g = TourGuest.query.get_or_404(gid)
+        data = request.json
+        hotel_id = data['hotel_id']
+        room_code = (data.get('room_code') or '').strip()
+
+        existing = TourRoomAssignment.query.filter_by(
+            guest_id=gid, hotel_id=hotel_id).first()
+
+        if room_code:
+            if existing:
+                existing.room_code = room_code
+            else:
+                db.session.add(TourRoomAssignment(
+                    guest_id=gid, hotel_id=hotel_id, room_code=room_code))
+        else:
+            if existing:
+                db.session.delete(existing)
+
+        db.session.commit()
+        return jsonify({'ok': True})
+
+    # ── TOUR EXPORT XLSX ─────────────────────────────────────────────────
+
+    @app.get('/api/tour/export')
+    def tour_export_xlsx():
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+
+        guests = TourGuest.query.order_by(TourGuest.cognome, TourGuest.nome).all()
+        hotels = TourHotel.query.order_by(TourHotel.night_date, TourHotel.hotel_name).all()
+
+        # Hotel lookup by column_key
+        hotel_by_key = {h.column_key: h for h in hotels}
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = 'Completed'
+
+        # ── Colour palette (from original XLSX) ──
+        FILL_NONE    = PatternFill()                                      # no fill
+        FILL_GREY    = PatternFill('solid', fgColor='EDEDED')             # car group
+        FILL_GREEN   = PatternFill('solid', fgColor='E2EFDA')             # 1Sep
+        FILL_YELLOW  = PatternFill('solid', fgColor='FFF2CC')             # 2Sep
+        FILL_BLUE    = PatternFill('solid', fgColor='DDEBF7')             # 3Sep
+        FILL_PEACH   = PatternFill('solid', fgColor='FCE4D6')             # 4Sep
+        FILL_PURPLE  = PatternFill('solid', fgColor='E4DFEC')             # 5Sep
+
+        FONT_NORMAL  = Font(size=11)
+        FONT_BOLD    = Font(bold=True, size=11)
+        FONT_CANCEL  = Font(color='808080', size=11)
+        FONT_HDR_BLK = Font(bold=True, size=12, color='000000')           # base headers
+
+        # ── Exact column order matching original XLSX ──
+        # (header_label, data_fn, header_fill, data_fill)
+        COL_HOTEL_ORDER = [
+            '1Sep_Paolovi', '2Sep_Paolovi',
+            '3Sep_CasaEste', '3Sep_Carlton', '3Sep_Europa',
+            '4Sep_Arthur', '4Sep_Arthurino', '4Sep_AcetaiaBoni', '4Sep_Village',
+            '5Sep_Paolovi',
+        ]
+
+        HOTEL_FILL = {
+            '1Sep_Paolovi':     FILL_GREEN,
+            '2Sep_Paolovi':     FILL_YELLOW,
+            '3Sep_CasaEste':    FILL_BLUE,
+            '3Sep_Carlton':     FILL_BLUE,
+            '3Sep_Europa':      FILL_BLUE,
+            '4Sep_Arthur':      FILL_PEACH,
+            '4Sep_Arthurino':   FILL_PEACH,
+            '4Sep_AcetaiaBoni': FILL_PEACH,
+            '4Sep_Village':     FILL_PEACH,
+            '5Sep_Paolovi':     FILL_PURPLE,
+        }
+
+        # Build column spec: (header, getter_fn, header_fill, data_fill)
+        def _hotel_getter(key):
+            def fn(g, ra_map):
+                hid = hotel_by_key[key].id if key in hotel_by_key else None
+                return ra_map.get(hid, '') if hid else ''
+            return fn
+
+        columns = [
+            # A-I: base (no fill)
+            ('Surname',       lambda g, m: g.cognome,        FILL_NONE, FILL_NONE),
+            ('Name',          lambda g, m: g.nome,           FILL_NONE, FILL_NONE),
+            ('Email',         lambda g, m: g.email,          FILL_NONE, FILL_NONE),
+            ('Arrival',       lambda g, m: g.arrivo_mezzo,   FILL_NONE, FILL_NONE),
+            ('Nationality',   lambda g, m: g.nazionalita,    FILL_NONE, FILL_NONE),
+            ('Sept2',         lambda g, m: 'yes' if g.sept2 else 'no', FILL_NONE, FILL_NONE),
+            ('Telephone',     lambda g, m: g.telefono,       FILL_NONE, FILL_NONE),
+            ('Title',         lambda g, m: g.titolo,         FILL_NONE, FILL_NONE),
+            ('Arrival_date',  lambda g, m: g.arrivo_data,    FILL_NONE, FILL_NONE),
+            # J: room_with (no fill)
+            ('room_with',     lambda g, m: g.room_with,      FILL_NONE, FILL_NONE),
+            # K-N: car group (grey fill)
+            ('car',           lambda g, m: g.car_number,     FILL_GREY,  FILL_NONE),
+            ('car_with',      lambda g, m: g.car_with,       FILL_GREY,  FILL_NONE),
+            ('VIP',           lambda g, m: g.vip,            FILL_GREY,  FILL_NONE),
+            ('client_room_note', lambda g, m: g.client_room_note, FILL_GREY, FILL_NONE),
+            # O: 1Sep hotel (green)
+            ('1Sep_Paolovi',  _hotel_getter('1Sep_Paolovi'), FILL_GREEN, FILL_GREEN),
+            # P: dinner (no fill)
+            ('dinner',        lambda g, m: 'X' if g.dinner else '', FILL_NONE, FILL_NONE),
+            # Q: 2Sep hotel (yellow)
+            ('2Sep_Paolovi',  _hotel_getter('2Sep_Paolovi'), FILL_YELLOW, FILL_YELLOW),
+            # R: payment (no fill)
+            ('payment',       lambda g, m: g.payment,        FILL_NONE, FILL_NONE),
+            # S-U: 3Sep hotels (blue)
+            ('3Sep_CasaEste', _hotel_getter('3Sep_CasaEste'), FILL_BLUE, FILL_BLUE),
+            ('3Sep_Carlton',  _hotel_getter('3Sep_Carlton'),  FILL_BLUE, FILL_BLUE),
+            ('3Sep_Europa',   _hotel_getter('3Sep_Europa'),   FILL_BLUE, FILL_BLUE),
+            # V-Y: 4Sep hotels (peach)
+            ('4Sep_Arthur',       _hotel_getter('4Sep_Arthur'),       FILL_PEACH, FILL_PEACH),
+            ('4Sep_Arthurino',    _hotel_getter('4Sep_Arthurino'),    FILL_PEACH, FILL_PEACH),
+            ('4Sep_AcetaiaBoni',  _hotel_getter('4Sep_AcetaiaBoni'),  FILL_PEACH, FILL_PEACH),
+            ('4Sep_Village',      _hotel_getter('4Sep_Village'),      FILL_PEACH, FILL_PEACH),
+            # Z: 5Sep hotel (purple)
+            ('5Sep_Paolovi',  _hotel_getter('5Sep_Paolovi'), FILL_PURPLE, FILL_PURPLE),
+            # AA-AD: post cols (no fill)
+            ('cloth',         lambda g, m: g.cloth_size,      FILL_NONE, FILL_NONE),
+            ('diet',          lambda g, m: g.diet,            FILL_NONE, FILL_NONE),
+            ('notes',         lambda g, m: g.notes,           FILL_NONE, FILL_NONE),
+            ('Email_Requests', lambda g, m: g.email_requests, FILL_NONE, FILL_NONE),
+        ]
+
+        # ── Write header row ──
+        for c, (header, _, hdr_fill, _) in enumerate(columns, 1):
+            cell = ws.cell(row=1, column=c, value=header)
+            cell.font = FONT_HDR_BLK
+            if hdr_fill.fgColor and hdr_fill.fgColor.rgb and hdr_fill.fgColor.rgb != '00000000':
+                cell.fill = hdr_fill
+            cell.alignment = Alignment(horizontal='center', wrap_text=True)
+
+        # ── Write data rows ──
+        for r, g in enumerate(guests, 2):
+            ra_map = {ra.hotel_id: ra.room_code for ra in g.room_assignments}
+            is_cancelled = g.payment == 'PAID-CANCELLED'
+
+            for c, (_, getter, _, data_fill) in enumerate(columns, 1):
+                val = getter(g, ra_map)
+                cell = ws.cell(row=r, column=c, value=val if val is not None else '')
+
+                # Apply column background fill
+                has_fill = data_fill.fgColor and data_fill.fgColor.rgb and data_fill.fgColor.rgb != '00000000'
+                if is_cancelled:
+                    cell.font = FONT_CANCEL
+                    if has_fill:
+                        cell.fill = data_fill  # keep column colour, grey text
+                else:
+                    cell.font = FONT_NORMAL
+                    if has_fill:
+                        cell.fill = data_fill
+
+        # ── Auto-width ──
+        for col_cells in ws.columns:
+            max_len = 0
+            for cell in col_cells:
+                try:
+                    max_len = max(max_len, len(str(cell.value or '')))
+                except Exception:
+                    pass
+            ws.column_dimensions[col_cells[0].column_letter].width = min(max_len + 3, 40)
+
+        # ── Sheet 2: Summary ─────────────────────────────────────────────
+        ws2 = wb.create_sheet('Summary')
+        ws2.cell(row=1, column=1, value='Liqui Moly Tour - Export Summary').font = Font(bold=True, size=13)
+
+        row = 3
+        total = len(guests)
+        paid = sum(1 for g in guests if g.payment == 'PAID')
+        collect = sum(1 for g in guests if g.payment and 'COLLECT' in (g.payment or ''))
+        cancelled = sum(1 for g in guests if g.payment == 'PAID-CANCELLED')
+        dinner = sum(1 for g in guests if g.dinner)
+
+        for label, val in [
+            ('Total participants', total),
+            ('Paid', paid),
+            ('To collect', collect),
+            ('Paid-Cancelled', cancelled),
+            ('Dinner (2 Sep)', dinner),
+        ]:
+            ws2.cell(row=row, column=1, value=label).font = FONT_BOLD
+            ws2.cell(row=row, column=2, value=val)
+            row += 1
+
+        row += 1
+        for ci, h in enumerate(['Night', 'Hotel', 'Blocked', 'Used', 'Left', 'People'], 1):
+            ws2.cell(row=row, column=ci, value=h).font = FONT_BOLD
+        row += 1
+
+        for h in hotels:
+            assignments = TourRoomAssignment.query.filter_by(hotel_id=h.id).all()
+            room_set = set()
+            for a in assignments:
+                room_set.add(a.room_code)
+            ws2.cell(row=row, column=1, value=h.night_label)
+            ws2.cell(row=row, column=2, value=h.hotel_name)
+            ws2.cell(row=row, column=3, value=h.rooms_blocked)
+            ws2.cell(row=row, column=4, value=len(room_set))
+            ws2.cell(row=row, column=5, value=h.rooms_blocked - len(room_set))
+            ws2.cell(row=row, column=6, value=len(assignments))
+            row += 1
+
+        ws2.column_dimensions['A'].width = 18
+        ws2.column_dimensions['B'].width = 30
+
+        buf = BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+        today = datetime.now().strftime('%Y-%m-%d')
+        return send_file(buf, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                         as_attachment=True, download_name=f'liquimoly_rooming_{today}.xlsx')
+
+    # ── TOUR: dinner export ──────────────────────────────────────────────
+
+    @app.get('/api/tour/export/dinners')
+    def tour_export_dinners():
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+        import re as _re_din
+
+        guests = TourGuest.query.order_by(TourGuest.cognome, TourGuest.nome).all()
+        hotels = TourHotel.query.order_by(TourHotel.night_date, TourHotel.hotel_name).all()
+
+        # Build assignment lookup: guest_id → {night_label → (hotel_name, city, room_code)}
+        base_re = _re_din.compile(r'-[A-Z]*\d+$')
+        cat_names_all = {}  # (hotel_id, code) → clean name
+        for h in hotels:
+            for c in h.categories:
+                clean = c.category_name
+                for sfx in (' - Single Use', ' for Single Use',
+                            ' (twin beds on request)', ' with Single Bed',
+                            ' / Double for Single Use'):
+                    clean = clean.replace(sfx, '')
+                cat_names_all[(h.id, c.code)] = clean
+
+        guest_rooms = {}  # guest_id → {night_label → "Hotel, City - Category"}
+        for h in hotels:
+            assignments = TourRoomAssignment.query.filter_by(hotel_id=h.id).all()
+            for a in assignments:
+                base_code = base_re.sub('', a.room_code)
+                cat_label = cat_names_all.get((h.id, base_code), base_code)
+                sleeping = f'{h.hotel_name}, {h.city} - {cat_label}'
+                guest_rooms.setdefault(a.guest_id, {})[h.night_label] = sleeping
+
+        # Dinner config per night
+        DINNERS = [
+            {
+                'night': '2Sep',
+                'sheet_name': '2 Sept - Paolo VI',
+                'title': 'Dinner 2 September 2026',
+                'venue': 'Centro Paolo VI, Brescia',
+                'use_dinner_flag': True,  # use guest.dinner column
+            },
+            {
+                'night': '3Sep',
+                'sheet_name': '3 Sept - Circolo Negozianti',
+                'title': 'Dinner 3 September 2026',
+                'venue': 'Circolo dei Negozianti, Ferrara',
+                'use_dinner_flag': False,  # use room assignments
+            },
+            {
+                'night': '4Sep',
+                'sheet_name': '4 Sept - Arthur Pool',
+                'title': 'Dinner 4 September 2026',
+                'venue': 'Hotel Arthur - pool area, Maranello',
+                'use_dinner_flag': False,
+            },
+            {
+                'night': '5Sep',
+                'sheet_name': '5 Sept - Antica Fratta',
+                'title': 'Dinner 5 September 2026',
+                'venue': 'Antica Fratta, Monticelli Brusati',
+                'use_dinner_flag': False,
+            },
+        ]
+
+        # Styles
+        font_title = Font(bold=True, size=14, name='Calibri')
+        font_sub = Font(size=10, name='Calibri')
+        font_info = Font(bold=True, size=11, name='Calibri')
+        font_hdr = Font(bold=True, size=11, name='Calibri')
+        font_data = Font(size=10, name='Calibri')
+        fill_hdr = PatternFill('solid', fgColor='D9E1F2')
+        thin_border = Border(
+            left=Side(style='thin'), right=Side(style='thin'),
+            top=Side(style='thin'), bottom=Side(style='thin'),
+        )
+
+        wb = Workbook()
+        first_sheet = True
+
+        for dinner in DINNERS:
+            night = dinner['night']
+
+            # Select guests for this dinner
+            if dinner['use_dinner_flag']:
+                dinner_guests = [g for g in guests
+                                 if g.dinner and g.payment != 'PAID-CANCELLED']
+            else:
+                dinner_guests = [g for g in guests
+                                 if night in guest_rooms.get(g.id, {})
+                                 and g.payment != 'PAID-CANCELLED']
+
+            # Also include guests with dinner flag who have no room but are dining
+            # (for 2Sep this is already handled; for other nights, room = attending)
+
+            diet_count = sum(1 for g in dinner_guests
+                             if g.diet and g.diet.strip().lower()
+                             not in ('no', 'none', 'no.', '', 'non'))
+
+            if first_sheet:
+                ws = wb.active
+                ws.title = dinner['sheet_name']
+                first_sheet = False
+            else:
+                ws = wb.create_sheet(dinner['sheet_name'])
+
+            # Header rows
+            ws.cell(row=1, column=1, value=dinner['title']).font = font_title
+            ws.cell(row=2, column=1, value=dinner['venue']).font = font_sub
+            ws.cell(row=3, column=1,
+                    value='LIQUI MOLY NEXUS AUTO TOUR 2026 - group CARZILLA').font = font_sub
+            ws.cell(row=4, column=1,
+                    value=f'{len(dinner_guests)} guests - {diet_count} with dietary requirements').font = font_info
+
+            # Column headers
+            headers = ['#', 'Surname', 'Name', 'Nationality',
+                       'Diet / allergies', 'Sleeping that night']
+            for c, h in enumerate(headers, 1):
+                cell = ws.cell(row=6, column=c, value=h)
+                cell.font = font_hdr
+                cell.fill = fill_hdr
+                cell.border = thin_border
+                cell.alignment = Alignment(horizontal='center')
+
+            # Data rows
+            for i, g in enumerate(dinner_guests, 1):
+                sleeping = guest_rooms.get(g.id, {}).get(night, 'no room this night')
+
+                diet_val = g.diet
+                if diet_val and diet_val.strip().lower() in ('no', 'none', 'no.', 'non'):
+                    diet_val = None
+
+                row_data = [
+                    i,
+                    g.cognome,
+                    g.nome,
+                    g.nazionalita,
+                    diet_val,
+                    sleeping,
+                ]
+                for c, v in enumerate(row_data, 1):
+                    cell = ws.cell(row=6 + i, column=c, value=v if v is not None else '')
+                    cell.font = font_data
+                    cell.border = thin_border
+
+            # Column widths
+            widths = [5, 22, 18, 16, 30, 45]
+            for c, w in enumerate(widths, 1):
+                from openpyxl.utils import get_column_letter
+                ws.column_dimensions[get_column_letter(c)].width = w
+
+        buf = BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+        return send_file(buf, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                         as_attachment=True, download_name='dinners_LMNAT2026.xlsx')
+
+    # ── TOUR: per-hotel export ───────────────────────────────────────────
+
+    @app.get('/api/tour/export/hotel/<int:hotel_id>')
+    def tour_export_hotel(hotel_id):
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+        import re as _re_hex
+
+        hotel = TourHotel.query.get_or_404(hotel_id)
+        assignments = TourRoomAssignment.query.filter_by(hotel_id=hotel_id).all()
+
+        # Group by room_code, resolve guests
+        # Shared rooms: same base code with suffix → group together
+        guest_map = {}  # guest_id → TourGuest
+        for a in assignments:
+            guest_map[a.guest_id] = a.guest
+
+        # Build room list.
+        # Codes WITH suffix (e.g. PD-D2) = shared room → group by raw_code.
+        # Codes WITHOUT suffix (e.g. PD) = individual rooms → one room per person.
+        # Clean category names for hotel rooming lists
+        def _clean_cat(name):
+            for suffix in (' - Single Use', ' for Single Use',
+                           ' (twin beds on request)', ' with Single Bed',
+                           ' / Double for Single Use'):
+                name = name.replace(suffix, '')
+            return name
+        cat_names = {c.code: _clean_cat(c.category_name) for c in hotel.categories}
+
+        cat_order = {c.code: c.sort_order for c in hotel.categories}
+        base_re = _re_hex.compile(r'-[A-Z]*\d+$')
+
+        rooms = []
+        shared_groups = {}  # suffixed raw_code → [assignment, ...]
+        for a in assignments:
+            has_suffix = bool(base_re.search(a.room_code))
+            if has_suffix:
+                shared_groups.setdefault(a.room_code, []).append(a)
+            else:
+                # Individual room
+                base = a.room_code
+                rooms.append({
+                    'raw_code': a.room_code,
+                    'base_code': base,
+                    'category_name': cat_names.get(base, base),
+                    'sort_key': (cat_order.get(base, 999), a.guest.cognome),
+                    'guests': [a.guest],
+                    'shared': False,
+                })
+
+        # Add shared rooms
+        for raw_code, assigns in shared_groups.items():
+            base = base_re.sub('', raw_code)
+            rooms.append({
+                'raw_code': raw_code,
+                'base_code': base,
+                'category_name': cat_names.get(base, base),
+                'sort_key': (cat_order.get(base, 999), assigns[0].guest.cognome),
+                'guests': [a.guest for a in assigns],
+                'shared': len(assigns) > 1,
+            })
+
+        rooms.sort(key=lambda r: r['sort_key'])
+
+        # Determine bed type for shared rooms
+        def _bed_type(guest, room_with):
+            """'double bed' for couples, 'twin beds' otherwise."""
+            if not room_with:
+                return 'twin beds'
+            rw = room_with.lower()
+            if 'wife' in rw or 'husband' in rw or 'partner' in rw:
+                return 'double bed'
+            return 'twin beds'
+
+        # ── Build workbook ──
+        wb = Workbook()
+        ws = wb.active
+        ws.title = 'Rooming list'
+
+        # Styles matching the template
+        font_title = Font(bold=True, size=14, name='Calibri')
+        font_sub = Font(size=10, name='Calibri')
+        font_info = Font(bold=True, size=11, name='Calibri')
+        font_hdr = Font(bold=True, size=11, name='Calibri')
+        font_data = Font(size=10, name='Calibri')
+        font_data_bold = Font(bold=True, size=10, name='Calibri')
+
+        fill_hdr = PatternFill('solid', fgColor='D9E1F2')
+        fill_shared = PatternFill('solid', fgColor='FFF2CC')
+        fill_none = PatternFill()
+
+        thin_border = Border(
+            left=Side(style='thin'), right=Side(style='thin'),
+            top=Side(style='thin'), bottom=Side(style='thin'),
+        )
+
+        # Night label → readable date
+        night_dates = {
+            '1Sep': '1 September 2026', '2Sep': '2 September 2026',
+            '3Sep': '3 September 2026', '4Sep': '4 September 2026',
+            '5Sep': '5 September 2026',
+        }
+        checkin = night_dates.get(hotel.night_label, hotel.night_label)
+        # Checkout = next day
+        checkout_map = {
+            '1Sep': '2 September 2026', '2Sep': '3 September 2026',
+            '3Sep': '4 September 2026', '4Sep': '5 September 2026',
+            '5Sep': '6 September 2026',
+        }
+        checkout = checkout_map.get(hotel.night_label, '')
+
+        total_rooms = len(rooms)
+        total_people = sum(len(r['guests']) for r in rooms)
+
+        # Header rows
+        ws.cell(row=1, column=1, value=f'{hotel.hotel_name} - {hotel.city}').font = font_title
+        ws.cell(row=2, column=1, value='LIQUI MOLY NEXUS AUTO TOUR 2026 - group CARZILLA').font = font_sub
+        ws.cell(row=3, column=1,
+                value=f'Check-in {checkin}   /   Check-out {checkout}').font = font_info
+        ws.cell(row=4, column=1,
+                value=f'{total_rooms} rooms - {total_people} guests').font = font_sub
+
+        # Column headers (row 6)
+        headers = ['#', 'Room type', 'Room', 'Surname', 'Name', 'Nationality',
+                   'Diet / notes', 'Beds']
+        for c, h in enumerate(headers, 1):
+            cell = ws.cell(row=6, column=c, value=h)
+            cell.font = font_hdr
+            cell.fill = fill_hdr
+            cell.border = thin_border
+            cell.alignment = Alignment(horizontal='center')
+
+        # Data rows
+        row = 7
+        room_num = 0
+        for room in rooms:
+            room_num += 1
+            is_shared = room['shared']
+            fill = fill_shared if is_shared else fill_none
+            guests_in_room = room['guests']
+
+            for gi, guest in enumerate(guests_in_room):
+                is_first = (gi == 0)
+                bed_text = ''
+                if is_shared and is_first:
+                    bed_text = _bed_type(guest, guest.room_with)
+
+                data = [
+                    room_num if is_first else None,           # #
+                    room['category_name'] if is_first else None,  # Room type
+                    None,                                      # Room (hotel fills in)
+                    (guest.cognome or '').upper(),             # Surname
+                    (guest.nome or '').upper(),                # Name
+                    guest.nazionalita,                         # Nationality
+                    guest.diet if guest.diet and guest.diet.lower() not in ('no', 'none', 'no.') else None,
+                    bed_text or None,                          # Beds
+                ]
+                for c, v in enumerate(data, 1):
+                    cell = ws.cell(row=row, column=c, value=v if v is not None else '')
+                    cell.font = font_data
+                    cell.border = thin_border
+                    if is_shared:
+                        cell.fill = fill
+
+                row += 1
+
+        # Column widths
+        widths = [5, 20, 8, 22, 18, 16, 30, 14]
+        for c, w in enumerate(widths, 1):
+            from openpyxl.utils import get_column_letter
+            ws.column_dimensions[get_column_letter(c)].width = w
+
+        buf = BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+
+        safe_name = hotel.hotel_name.replace(' ', '_').replace("'", '')
+        filename = f'rooming_{hotel.night_label}_{safe_name}.xlsx'
+        return send_file(buf, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                         as_attachment=True, download_name=filename)
+
+    # ── TOUR: hotel token management ────────────────────────────────────
+
+    @app.route('/api/tour/hotel/<int:hotel_id>/generate-link', methods=['POST'])
+    def tour_generate_hotel_link(hotel_id):
+        """Generate (or return existing) access token for a hotel."""
+        import secrets
+        hotel = TourHotel.query.get_or_404(hotel_id)
+        existing = TourHotelToken.query.filter_by(hotel_id=hotel_id).first()
+        if existing:
+            return jsonify({'token': existing.token,
+                            'url': f'/tour/docs/{existing.token}'})
+        token = secrets.token_urlsafe(24)
+        ht = TourHotelToken(hotel_id=hotel_id, token=token)
+        db.session.add(ht)
+        db.session.commit()
+        return jsonify({'token': ht.token, 'url': f'/tour/docs/{ht.token}'})
+
+    @app.route('/api/tour/hotel-links')
+    def tour_hotel_links():
+        """List all hotel tokens and their access logs."""
+        hotels = TourHotel.query.order_by(TourHotel.night_date, TourHotel.hotel_name).all()
+        result = []
+        for h in hotels:
+            tok = TourHotelToken.query.filter_by(hotel_id=h.id).first()
+            logs = []
+            if tok:
+                for log in (TourHotelAccessLog.query.filter_by(token_id=tok.id)
+                            .order_by(TourHotelAccessLog.accessed_at.desc())
+                            .limit(20).all()):
+                    logs.append({
+                        'action': log.action,
+                        'detail': log.detail,
+                        'ip': log.ip_address,
+                        'at': log.accessed_at.strftime('%d/%m/%Y %H:%M') if log.accessed_at else '',
+                    })
+            result.append({
+                'hotel_id': h.id,
+                'hotel_name': h.hotel_name,
+                'night_label': h.night_label,
+                'city': h.city,
+                'token': tok.token if tok else None,
+                'logs': logs,
+            })
+        return jsonify(result)
+
+    # ── TOUR: public hotel document portal (token-based) ─────────────
+
+    def _hotel_guest_list(hotel):
+        """Build sorted guest list with room info for a hotel."""
+        import re as _re_gl
+        base_re = _re_gl.compile(r'-[A-Z]*\d+$')
+        cat_names = {}
+        for c in hotel.categories:
+            clean = c.category_name
+            for sfx in (' - Single Use', ' for Single Use',
+                        ' (twin beds on request)', ' with Single Bed',
+                        ' / Double for Single Use'):
+                clean = clean.replace(sfx, '')
+            cat_names[c.code] = clean
+
+        assignments = TourRoomAssignment.query.filter_by(hotel_id=hotel.id).all()
+        guest_list = []
+        for a in assignments:
+            g = a.guest
+            if g.payment == 'PAID-CANCELLED':
+                continue
+            base_code = base_re.sub('', a.room_code)
+            guest_list.append({
+                'guest': g,
+                'room_code': a.room_code,
+                'room_type': cat_names.get(base_code, base_code),
+            })
+        guest_list.sort(key=lambda x: (x['guest'].cognome, x['guest'].nome))
+        return guest_list
+
+    def _log_access(token_obj, action, detail=None):
+        db.session.add(TourHotelAccessLog(
+            token_id=token_obj.id,
+            ip_address=request.remote_addr,
+            user_agent=str(request.user_agent)[:500],
+            action=action,
+            detail=detail,
+        ))
+        db.session.commit()
+
+    @app.route('/tour/docs/<token>')
+    def tour_public_docs(token):
+        tok = TourHotelToken.query.filter_by(token=token).first_or_404()
+        hotel = tok.hotel
+        guest_list = _hotel_guest_list(hotel)
+        _log_access(tok, 'view')
+        return render_template('tour_hotel_docs.html',
+                               hotel=hotel, guest_list=guest_list, token=token)
+
+    @app.route('/tour/docs/<token>/download/<int:guest_id>/<doc_type>')
+    def tour_public_doc_download(token, guest_id, doc_type):
+        """Download a single document. doc_type = 'passport' or 'driving'."""
+        tok = TourHotelToken.query.filter_by(token=token).first_or_404()
+        # Verify guest belongs to this hotel
+        assignment = TourRoomAssignment.query.filter_by(
+            hotel_id=tok.hotel_id, guest_id=guest_id).first_or_404()
+        g = assignment.guest
+
+        field = 'passport_file' if doc_type == 'passport' else 'driving_file'
+        fpath = getattr(g, field)
+        if not fpath:
+            return 'File not found', 404
+        full = os.path.join(app.static_folder, fpath)
+        if not os.path.exists(full):
+            return 'File not found', 404
+
+        _log_access(tok, f'download_{doc_type}', f'{g.cognome} {g.nome}')
+        ext = os.path.splitext(fpath)[1]
+        fname = f'{g.cognome}_{g.nome}_{doc_type}{ext}'
+        return send_file(full, as_attachment=True, download_name=fname)
+
+    @app.route('/tour/docs/<token>/download-all')
+    def tour_public_docs_download_all(token):
+        """Download all documents for this hotel as ZIP."""
+        import zipfile as _zf
+        tok = TourHotelToken.query.filter_by(token=token).first_or_404()
+        hotel = tok.hotel
+        guest_list = _hotel_guest_list(hotel)
+
+        buf = BytesIO()
+        with _zf.ZipFile(buf, 'w', _zf.ZIP_DEFLATED) as zout:
+            for item in guest_list:
+                g = item['guest']
+                folder = f'{g.cognome} {g.nome}'.strip()
+                for field, label in [('passport_file', 'passport'),
+                                     ('driving_file', 'driving_licence')]:
+                    fpath = getattr(g, field)
+                    if not fpath:
+                        continue
+                    full = os.path.join(app.static_folder, fpath)
+                    if os.path.exists(full):
+                        ext = os.path.splitext(fpath)[1]
+                        zout.write(full, f'{folder}/{label}{ext}')
+
+        buf.seek(0)
+        _log_access(tok, 'download_all')
+        safe_name = hotel.hotel_name.replace(' ', '_').replace("'", '')
+        return send_file(buf, mimetype='application/zip', as_attachment=True,
+                         download_name=f'docs_{hotel.night_label}_{safe_name}.zip')
 
     return app
 

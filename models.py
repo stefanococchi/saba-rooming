@@ -168,3 +168,120 @@ class BudgetOverride(db.Model):
     id         = db.Column(db.Integer, primary_key=True)
     data       = db.Column(db.JSON, default=dict)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+# ── Tour: Liqui Moly / eventi itineranti ─────────────────────────────
+
+
+class TourHotel(db.Model):
+    __tablename__ = 'tour_hotels'
+
+    id             = db.Column(db.Integer, primary_key=True)
+    night_label    = db.Column(db.String(20), nullable=False)   # "1Sep", "2Sep", …
+    night_date     = db.Column(db.Date)                         # 2026-09-01
+    column_key     = db.Column(db.String(50), nullable=False, unique=True)  # "2Sep_Paolovi"
+    hotel_name     = db.Column(db.String(200), nullable=False)
+    city           = db.Column(db.String(100))
+    rooms_blocked  = db.Column(db.Integer, default=0)
+
+    categories  = db.relationship('TourRoomCategory', backref='hotel',
+                                   cascade='all, delete-orphan', lazy='joined',
+                                   order_by='TourRoomCategory.sort_order')
+    assignments = db.relationship('TourRoomAssignment', backref='hotel',
+                                   cascade='all, delete-orphan', lazy='dynamic')
+
+
+class TourRoomCategory(db.Model):
+    __tablename__ = 'tour_room_categories'
+
+    id              = db.Column(db.Integer, primary_key=True)
+    hotel_id        = db.Column(db.Integer, db.ForeignKey('tour_hotels.id'), nullable=False)
+    category_name   = db.Column(db.String(100), nullable=False)
+    code            = db.Column(db.String(20), nullable=False)
+    rooms_available = db.Column(db.Integer, default=0)
+    sort_order      = db.Column(db.Integer, default=0)  # lower = more important
+
+
+class TourGuest(db.Model):
+    __tablename__ = 'tour_guests'
+
+    id                = db.Column(db.Integer, primary_key=True)
+    cognome           = db.Column(db.String(100), nullable=False)
+    nome              = db.Column(db.String(100), nullable=False)
+    email             = db.Column(db.String(200))
+    telefono          = db.Column(db.String(50))
+    nazionalita       = db.Column(db.String(100))
+    titolo            = db.Column(db.String(10))        # Mr, Mrs
+    arrivo_mezzo      = db.Column(db.String(50))        # Airplane, Car, Train, Other
+    arrivo_data       = db.Column(db.String(20))        # data arrivo (es. "2Sep")
+    room_with         = db.Column(db.String(200))       # compagno di stanza
+    car_number        = db.Column(db.String(20))
+    car_with          = db.Column(db.String(200))       # compagno di auto
+    vip               = db.Column(db.String(50))        # VIP, ULTRA VIP, blank
+    client_room_note  = db.Column(db.Text)
+    dinner            = db.Column(db.Boolean, default=False)   # cena 2 Set
+    sept2             = db.Column(db.Boolean, default=False)   # presenza 2 Set
+    payment           = db.Column(db.String(50))        # PAID, TO COLLECT, NO NEED …
+    cloth_size        = db.Column(db.String(10))        # S, M, L, XL, XXL, XXXL
+    diet              = db.Column(db.String(300))
+    notes             = db.Column(db.Text)
+    email_requests    = db.Column(db.Text)
+    passport_file     = db.Column(db.String(300))   # path relative to static/
+    driving_file      = db.Column(db.String(300))   # path relative to static/
+    source            = db.Column(db.String(20), default='manual')
+    created_at        = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at        = db.Column(db.DateTime, default=datetime.utcnow,
+                                   onupdate=datetime.utcnow)
+
+    room_assignments = db.relationship('TourRoomAssignment', backref='guest',
+                                        cascade='all, delete-orphan', lazy='joined')
+
+    @property
+    def nome_completo(self):
+        return f'{self.cognome} {self.nome}'.strip()
+
+
+class TourRoomAssignment(db.Model):
+    __tablename__ = 'tour_room_assignments'
+
+    id         = db.Column(db.Integer, primary_key=True)
+    guest_id   = db.Column(db.Integer, db.ForeignKey('tour_guests.id'), nullable=False)
+    hotel_id   = db.Column(db.Integer, db.ForeignKey('tour_hotels.id'), nullable=False)
+    room_code  = db.Column(db.String(20))   # GS, KING, DBL-1, SGL, X …
+
+
+class TourHotelToken(db.Model):
+    """Unique access token for each hotel to view their guest documents."""
+    __tablename__ = 'tour_hotel_tokens'
+
+    id         = db.Column(db.Integer, primary_key=True)
+    hotel_id   = db.Column(db.Integer, db.ForeignKey('tour_hotels.id'), nullable=False)
+    token      = db.Column(db.String(64), nullable=False, unique=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    hotel      = db.relationship('TourHotel', backref='tokens')
+
+
+class TourClientToken(db.Model):
+    """Access token for external clients to view the tour dashboard."""
+    __tablename__ = 'tour_client_tokens'
+
+    id         = db.Column(db.Integer, primary_key=True)
+    label      = db.Column(db.String(100))              # e.g. "Liqui Moly team"
+    token      = db.Column(db.String(64), nullable=False, unique=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+class TourHotelAccessLog(db.Model):
+    """Log of every access to the hotel document portal."""
+    __tablename__ = 'tour_hotel_access_logs'
+
+    id         = db.Column(db.Integer, primary_key=True)
+    token_id   = db.Column(db.Integer, db.ForeignKey('tour_hotel_tokens.id'), nullable=False)
+    ip_address = db.Column(db.String(50))
+    user_agent = db.Column(db.Text)
+    action     = db.Column(db.String(50), default='view')  # view, download_one, download_all
+    detail     = db.Column(db.String(200))                  # e.g. guest name for download_one
+    accessed_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    token      = db.relationship('TourHotelToken', backref='access_logs')

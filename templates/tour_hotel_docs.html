@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ hotel.hotel_name }} — Guest Documents</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
+<style>
+:root {
+  --primary: #E65100;
+  --surface: #FFF8F0;
+  --surface-card: #ffffff;
+  --surface-variant: #FFF3E0;
+  --on-surface: #1c1b1f;
+  --on-surface-variant: #49454f;
+  --outline-variant: #e7e0d9;
+  --success: #2e7d32;
+  --info: #1565c0;
+  --radius: 16px;
+  --shadow-sm: 0 1px 3px rgba(0,0,0,.08);
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family:'Inter',system-ui,sans-serif; background:var(--surface); color:var(--on-surface); min-height:100vh; }
+
+.topbar {
+  background: linear-gradient(135deg, #BF360C 0%, #E65100 50%, #FF8A65 100%);
+  color:#fff; padding:16px 24px; display:flex; align-items:center; gap:16px;
+  position:sticky; top:0; z-index:100; box-shadow:0 2px 12px rgba(191,54,12,.3);
+}
+.topbar h1 { font-size:18px; font-weight:600; }
+.topbar .sub { font-size:13px; opacity:.8; margin-left:8px; }
+.topbar .spacer { flex:1; }
+.topbar .badge { background:rgba(255,255,255,.2); padding:4px 14px; border-radius:20px; font-size:13px; font-weight:600; }
+
+.btn-zip {
+  display:inline-flex; align-items:center; gap:4px;
+  padding:6px 16px; border-radius:8px; background:#1565c0; color:#fff;
+  text-decoration:none; font-size:13px; font-weight:600; transition:background .15s;
+}
+.btn-zip:hover { background:#0d47a1; }
+
+.container { max-width:1200px; margin:0 auto; padding:24px; }
+
+.guest-card {
+  background:var(--surface-card); border-radius:var(--radius); box-shadow:var(--shadow-sm);
+  margin-bottom:16px; overflow:hidden;
+}
+.guest-header {
+  padding:14px 20px; display:flex; align-items:center; gap:12px;
+  border-bottom:1px solid var(--outline-variant); cursor:pointer;
+}
+.guest-header:hover { background:var(--surface-variant); }
+.guest-name { font-size:15px; font-weight:600; }
+.guest-meta { font-size:12px; color:var(--on-surface-variant); }
+.guest-room { font-size:12px; background:#f3e5f5; color:#7b1fa2; padding:2px 8px; border-radius:8px; font-weight:500; }
+
+.doc-badge {
+  display:inline-flex; align-items:center; gap:3px;
+  font-size:11px; font-weight:600; padding:2px 6px; border-radius:6px;
+}
+.doc-badge.pass { background:#e3f2fd; color:#1565c0; }
+.doc-badge.driv { background:#e8f5e9; color:#2e7d32; }
+.doc-badge.missing { background:#fce4ec; color:#c62828; }
+
+.guest-body { padding:16px 20px; display:none; }
+.guest-body.open { display:block; }
+
+.doc-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+@media (max-width:700px) { .doc-grid { grid-template-columns:1fr; } }
+
+.doc-panel {
+  border:1px solid var(--outline-variant); border-radius:12px; overflow:hidden;
+}
+.doc-panel-header {
+  padding:8px 14px; font-size:13px; font-weight:600;
+  display:flex; align-items:center; gap:6px;
+}
+.doc-panel-header.pass { background:#e3f2fd; color:#1565c0; }
+.doc-panel-header.driv { background:#e8f5e9; color:#2e7d32; }
+
+.doc-panel-body { padding:8px; text-align:center; min-height:200px; display:flex; align-items:center; justify-content:center; }
+.doc-panel-body img { max-width:100%; max-height:400px; border-radius:8px; }
+.doc-panel-body .pdf-link {
+  display:flex; flex-direction:column; align-items:center; gap:8px;
+  color:var(--on-surface-variant); text-decoration:none;
+}
+.doc-panel-body .pdf-link .material-icons-round { font-size:48px; color:#c62828; }
+.doc-panel-body .no-doc { color:#999; font-size:13px; }
+
+.search-bar {
+  display:flex; align-items:center; gap:8px;
+  background:var(--surface-card); border-radius:10px;
+  padding:8px 14px; margin-bottom:16px; box-shadow:var(--shadow-sm);
+}
+.search-bar input { border:none; outline:none; background:none; font-size:14px; flex:1; font-family:inherit; }
+.search-bar .material-icons-round { color:var(--on-surface-variant); font-size:20px; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <h1>{{ hotel.hotel_name }}</h1>
+  <span class="sub">{{ hotel.city }} — Night of {{ hotel.night_label }}</span>
+  <div class="spacer"></div>
+  <div class="badge">{{ guest_list|length }} guests</div>
+  <a href="/tour/docs/{{ token }}/download-all" class="btn-zip">
+    <span class="material-icons-round" style="font-size:18px">folder_zip</span> Download All
+  </a>
+</div>
+
+<div class="container">
+  <div class="search-bar">
+    <span class="material-icons-round">search</span>
+    <input type="text" id="search" placeholder="Search by name...">
+  </div>
+
+  {% for item in guest_list %}
+  {% set g = item.guest %}
+  <div class="guest-card" data-name="{{ g.cognome|lower }} {{ g.nome|lower }}">
+    <div class="guest-header" onclick="this.nextElementSibling.classList.toggle('open')">
+      <span class="material-icons-round" style="color:var(--primary); font-size:20px">person</span>
+      <span class="guest-name">{{ g.cognome }} {{ g.nome }}</span>
+      <span class="guest-room">{{ item.room_type }}</span>
+      <span class="guest-meta">{{ g.nazionalita or '' }}</span>
+      <div style="flex:1"></div>
+      {% if g.passport_file %}<span class="doc-badge pass">
+        <span class="material-icons-round" style="font-size:14px">badge</span> Pass
+      </span>{% else %}<span class="doc-badge missing">
+        <span class="material-icons-round" style="font-size:14px">badge</span> Missing
+      </span>{% endif %}
+      {% if g.driving_file %}<span class="doc-badge driv">
+        <span class="material-icons-round" style="font-size:14px">directions_car</span> Driving
+      </span>{% else %}<span class="doc-badge missing">
+        <span class="material-icons-round" style="font-size:14px">directions_car</span> Missing
+      </span>{% endif %}
+      <span class="material-icons-round" style="font-size:20px; color:var(--on-surface-variant)">expand_more</span>
+    </div>
+    <div class="guest-body">
+      <div class="doc-grid">
+        <div class="doc-panel">
+          <div class="doc-panel-header pass">
+            <span class="material-icons-round" style="font-size:18px">badge</span> Passport
+          </div>
+          {% set pass_url = '/tour/docs/' ~ token ~ '/download/' ~ g.id ~ '/passport' %}
+          <div class="doc-panel-body">
+            {% if g.passport_file %}
+              {% set pext = g.passport_file.split('.')[-1].lower() %}
+              {% if pext in ('jpg','jpeg','png','gif','webp') %}
+                <a href="{{ pass_url }}" target="_blank">
+                  <img src="/static/{{ g.passport_file }}" alt="Passport">
+                </a>
+              {% elif pext == 'pdf' %}
+                <a href="{{ pass_url }}" target="_blank" class="pdf-link">
+                  <span class="material-icons-round">picture_as_pdf</span>
+                  <span>Open PDF</span>
+                </a>
+              {% else %}
+                <a href="{{ pass_url }}" target="_blank">Download file</a>
+              {% endif %}
+            {% else %}
+              <span class="no-doc">No passport uploaded</span>
+            {% endif %}
+          </div>
+        </div>
+        <div class="doc-panel">
+          <div class="doc-panel-header driv">
+            <span class="material-icons-round" style="font-size:18px">directions_car</span> Driving Licence
+          </div>
+          {% set driv_url = '/tour/docs/' ~ token ~ '/download/' ~ g.id ~ '/driving' %}
+          <div class="doc-panel-body">
+            {% if g.driving_file %}
+              {% set dext = g.driving_file.split('.')[-1].lower() %}
+              {% if dext in ('jpg','jpeg','png','gif','webp') %}
+                <a href="{{ driv_url }}" target="_blank">
+                  <img src="/static/{{ g.driving_file }}" alt="Driving Licence">
+                </a>
+              {% elif dext == 'pdf' %}
+                <a href="{{ driv_url }}" target="_blank" class="pdf-link">
+                  <span class="material-icons-round">picture_as_pdf</span>
+                  <span>Open PDF</span>
+                </a>
+              {% else %}
+                <a href="{{ driv_url }}" target="_blank">Download file</a>
+              {% endif %}
+            {% else %}
+              <span class="no-doc">No driving licence uploaded</span>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<script>
+document.getElementById('search').addEventListener('input', function() {
+  const q = this.value.toLowerCase();
+  document.querySelectorAll('.guest-card').forEach(card => {
+    card.style.display = card.dataset.name.includes(q) ? '' : 'none';
+  });
+});
+</script>
+</body>
+</html>
