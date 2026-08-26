@@ -204,7 +204,7 @@ tr.cancelled td { opacity: .45; }
 .btn-docs:hover { background: #0d47a1; }
 
 /* ── Nights tables: fixed column widths ──────────────── */
-.nights-table { width: 100%; table-layout: fixed; }
+.nights-table { width: 100%; table-layout: fixed; min-width: 700px; }
 .nights-table col.col-category { width: 240px; }
 .nights-table col.col-code     { width: 80px; }
 .nights-table col.col-num      { width: 80px; }
@@ -622,7 +622,7 @@ tr.cancelled td { opacity: .45; }
           <span class="material-icons-round" style="font-size:16px">download</span> XLSX
         </a>
       </div>
-      <div style="padding: 12px 20px">
+      <div style="padding: 12px 20px" class="table-wrap">
         {% if h.categories %}
         <table class="nights-table">
           <colgroup>
