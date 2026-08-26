@@ -117,29 +117,29 @@ body {
 .table-wrap { overflow-x: auto; max-width: calc(100vw - 16px); }
 
 table {
-  width: 100%; border-collapse: collapse; font-size: 12px;
+  width: 100%; border-collapse: collapse; font-size: 11px;
 }
 th {
   background: var(--surface-variant); color: var(--on-surface-variant);
-  padding: 8px 10px; text-align: left; font-weight: 600;
-  font-size: 11px; text-transform: uppercase; letter-spacing: .3px;
+  padding: 4px 6px; text-align: left; font-weight: 600;
+  font-size: 10px; text-transform: uppercase; letter-spacing: .3px;
   white-space: nowrap; position: sticky; top: 0; z-index: 2;
 }
 td {
-  padding: 6px 10px; border-bottom: 1px solid var(--outline-variant);
-  white-space: nowrap; max-width: 200px; overflow: hidden;
+  padding: 3px 6px; border-bottom: 1px solid var(--outline-variant);
+  white-space: nowrap; max-width: 120px; overflow: hidden;
   text-overflow: ellipsis;
 }
 tr:hover { background: var(--surface-variant); }
 
 /* ── Badges ──────────────────────────────────────────── */
-.badge-paid { background: #e8f5e9; color: #2e7d32; padding: 2px 8px; border-radius: 8px; font-size: 11px; font-weight: 600; }
-.badge-collect { background: #fff3e0; color: #e65100; padding: 2px 8px; border-radius: 8px; font-size: 11px; font-weight: 600; }
-.badge-noneed { background: #e3f2fd; color: #1565c0; padding: 2px 8px; border-radius: 8px; font-size: 11px; font-weight: 600; }
-.badge-cancelled { background: #eceff1; color: #78909c; padding: 2px 8px; border-radius: 8px; font-size: 11px; font-weight: 600; }
+.badge-paid { background: #e8f5e9; color: #2e7d32; padding: 1px 5px; border-radius: 6px; font-size: 10px; font-weight: 600; }
+.badge-collect { background: #fff3e0; color: #e65100; padding: 1px 5px; border-radius: 6px; font-size: 10px; font-weight: 600; }
+.badge-noneed { background: #e3f2fd; color: #1565c0; padding: 1px 5px; border-radius: 6px; font-size: 10px; font-weight: 600; }
+.badge-cancelled { background: #eceff1; color: #78909c; padding: 1px 5px; border-radius: 6px; font-size: 10px; font-weight: 600; }
 tr.cancelled td { opacity: .45; }
 .badge-vip { background: #fce4ec; color: #c62828; padding: 2px 8px; border-radius: 8px; font-size: 11px; font-weight: 600; }
-.badge-room { background: #f3e5f5; color: #7b1fa2; padding: 2px 8px; border-radius: 8px; font-size: 11px; font-weight: 500; }
+.badge-room { background: #f3e5f5; color: #7b1fa2; padding: 1px 4px; border-radius: 6px; font-size: 10px; font-weight: 500; }
 .badge-dinner { background: #e8f5e9; color: #2e7d32; font-size: 11px; }
 
 /* ── Search ──────────────────────────────────────────── */
@@ -424,8 +424,8 @@ tr.cancelled td { opacity: .45; }
               <th>Size</th>
               <th>Diet</th>
               {% for h in hotels %}
-              <th title="{{ h.hotel_name }} ({{ h.city }})" style="font-size:10px; max-width:60px; overflow:hidden; text-overflow:ellipsis">
-                {{ h.column_key.split('_')[0] }}<br>{{ h.column_key.split('_')[1][:6] }}
+              <th title="{{ h.hotel_name }} ({{ h.city }})" style="font-size:9px; max-width:40px; overflow:hidden; text-overflow:ellipsis; padding:2px 3px">
+                {{ h.column_key.split('_')[0] }}<br>{{ h.column_key.split('_')[1][:4] }}
               </th>
               {% endfor %}
               <th>Docs / Notes</th>
@@ -455,10 +455,10 @@ tr.cancelled td { opacity: .45; }
               <td><strong>{{ g.cognome }}</strong> {{ g.nome }}
                 {% if g.titolo %}<span style="color:#999; font-size:11px">({{ g.titolo }})</span>{% endif %}
               </td>
-              <td style="font-size:11px">{{ g.email or '' }}</td>
-              <td>{{ g.arrivo_mezzo or '' }}</td>
+              <td style="font-size:10px; max-width:100px" title="{{ g.email or '' }}">{{ g.email or '' }}</td>
+              <td style="font-size:10px">{{ g.arrivo_mezzo or '' }}</td>
               <td>{{ g.car_number or '' }}</td>
-              <td style="font-size:11px">{{ g.room_with or '' }}</td>
+              <td style="font-size:10px; max-width:90px" title="{{ g.room_with or '' }}">{{ g.room_with or '' }}</td>
               <td>{% if g.vip %}<span class="badge-vip">{{ g.vip }}</span>{% endif %}</td>
               <td>{% if g.sept2 %}<span class="badge-dinner">Yes</span>{% endif %}</td>
               <td>{% if g.dinner %}<span class="badge-dinner">X</span>{% endif %}</td>
@@ -472,8 +472,7 @@ tr.cancelled td { opacity: .45; }
                 {% endif %}
               </td>
               <td>{{ g.cloth_size or '' }}</td>
-              <td style="font-size:11px; max-width:100px; overflow:hidden; text-overflow:ellipsis"
-                  title="{{ g.diet or '' }}">{{ g.diet or '' }}</td>
+              <td style="font-size:10px; max-width:70px" title="{{ g.diet or '' }}">{{ g.diet or '' }}</td>
               {% for h in hotels %}
               <td>
                 {% if ra_map.get(h.column_key) %}
