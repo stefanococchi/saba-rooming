@@ -203,12 +203,12 @@ tr.cancelled td { opacity: .45; }
 }
 .btn-docs:hover { background: #0d47a1; }
 
-/* ── Nights tables: fixed column widths ──────────────── */
-.nights-table { width: 100%; table-layout: fixed; min-width: 700px; }
-.nights-table col.col-category { width: 240px; }
-.nights-table col.col-code     { width: 80px; }
-.nights-table col.col-num      { width: 80px; }
-.nights-table col.col-guests   { /* takes remaining space */ }
+/* ── Nights tables ───────────────────────────────────── */
+.nights-table { width: 100%; border-collapse: collapse; }
+.nights-table col.col-category { width: 20%; }
+.nights-table col.col-code     { width: 8%; }
+.nights-table col.col-num      { width: 7%; }
+.nights-table col.col-guests   { width: auto; }
 </style>
 </head>
 <body>
@@ -305,18 +305,18 @@ tr.cancelled td { opacity: .45; }
       <div class="card-header">
         <span class="material-icons-round">route</span> Tour Stages
       </div>
-      <div style="padding:0">
-        <table style="width:100%">
+      <div class="table-wrap" style="padding:0">
+        <table style="width:100%; min-width:600px">
           <thead>
             <tr>
-              <th style="width:140px">Date</th>
-              <th style="width:120px">City</th>
+              <th>Date</th>
+              <th>City</th>
               <th>Route</th>
-              <th style="width:200px">Dinner venue</th>
-              <th style="text-align:center; width:80px">People</th>
-              <th style="text-align:center; width:80px">Rooms</th>
-              <th style="text-align:center; width:80px">Blocked</th>
-              <th style="text-align:center; width:80px">Left</th>
+              <th>Dinner venue</th>
+              <th style="text-align:center">People</th>
+              <th style="text-align:center">Rooms</th>
+              <th style="text-align:center">Blocked</th>
+              <th style="text-align:center">Left</th>
             </tr>
           </thead>
           <tbody>
@@ -350,15 +350,15 @@ tr.cancelled td { opacity: .45; }
           {{ nd.total_people }} people | {{ nd.total_rooms_used }} rooms used | {{ nd.total_blocked }} blocked
         </span>
       </div>
-      <div style="padding:0">
+      <div class="table-wrap" style="padding:0">
         <table style="width:100%">
           <thead>
             <tr>
               <th>Hotel</th>
-              <th style="text-align:center; width:100px">Rooms Blocked</th>
-              <th style="text-align:center; width:100px">Rooms Used</th>
-              <th style="text-align:center; width:100px">Left</th>
-              <th style="text-align:center; width:100px">People</th>
+              <th style="text-align:center">Blocked</th>
+              <th style="text-align:center">Used</th>
+              <th style="text-align:center">Left</th>
+              <th style="text-align:center">People</th>
             </tr>
           </thead>
           <tbody>
