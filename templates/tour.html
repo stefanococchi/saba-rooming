@@ -674,9 +674,9 @@ tr.cancelled td { opacity: .45; }
         <span class="material-icons-round">hotel</span>
         {{ h.hotel_name }} — {{ h.city }}
         <span style="font-size:12px; color: var(--on-surface-variant); margin-left:auto">
-          {{ h.rooms_blocked }} blocked |
-          <strong style="color:var(--primary)">{{ ns_htot.rooms }}</strong> used |
-          <strong style="color:{% if h.rooms_blocked - ns_htot.rooms <= 2 %}var(--error){% else %}var(--success){% endif %}">{{ h.rooms_blocked - ns_htot.rooms }}</strong> left |
+          {{ h.rooms_blocked }} original |
+          <strong style="color:var(--primary)">{{ ns_htot.rooms }}</strong> actual |
+          <strong style="color:{% if h.rooms_blocked - ns_htot.rooms > 0 %}#c62828{% else %}var(--success){% endif %}">{{ h.rooms_blocked - ns_htot.rooms }}</strong> delta |
           {{ ns_htot.people }} people
         </span>
         {% if not client_view %}
@@ -705,11 +705,10 @@ tr.cancelled td { opacity: .45; }
             <tr>
               <th>Category</th>
               <th>Code</th>
-              <th style="text-align:center">Requested</th>
-              <th style="text-align:center">Available</th>
-              <th style="text-align:center">Used</th>
-              <th style="text-align:center">Left</th>
-              <th style="text-align:center" title="Requested - Used">To Release</th>
+              <th style="text-align:center">Original Option</th>
+              <th style="text-align:center">Final Request</th>
+              <th style="text-align:center">Actual</th>
+              <th style="text-align:center" title="Final Request - Actual">Delta</th>
               <th style="text-align:center">People</th>
               <th>Guests</th>
             </tr>
@@ -717,16 +716,14 @@ tr.cancelled td { opacity: .45; }
           <tbody>
           {% for c in h.categories %}
             {% set cat_occ = occ.get(c.code, {'room_count': 0, 'people': 0, 'guests': []}) %}
-            {% set remaining = c.rooms_available - cat_occ.room_count %}
-            {% set to_release = (c.rooms_requested or 0) - cat_occ.room_count %}
+            {% set delta = (c.rooms_requested or 0) - cat_occ.room_count %}
             <tr>
               <td>{{ c.category_name }}</td>
               <td><span class="badge-room">{{ c.code }}</span></td>
-              <td style="text-align:center;color:#888">{{ c.rooms_requested or '—' }}</td>
-              <td style="text-align:center">{{ c.rooms_available }}</td>
+              <td style="text-align:center;color:#888">{{ c.rooms_available }}</td>
+              <td style="text-align:center">{{ c.rooms_requested or '—' }}</td>
               <td style="text-align:center; font-weight:600">{{ cat_occ.room_count }}</td>
-              <td style="text-align:center; font-weight:600; color:{% if remaining <= 0 %}var(--error){% elif remaining <= 2 %}#e65100{% else %}var(--success){% endif %}">{{ remaining }}</td>
-              <td style="text-align:center; font-weight:600; color:{% if to_release > 0 %}#c62828{% elif to_release == 0 %}var(--success){% else %}#888{% endif %}">{% if c.rooms_requested %}{{ to_release }}{% else %}—{% endif %}</td>
+              <td style="text-align:center; font-weight:600; color:{% if delta > 0 %}#c62828{% elif delta == 0 %}var(--success){% else %}#1565c0{% endif %}">{% if c.rooms_requested %}{{ delta }}{% else %}—{% endif %}</td>
               <td style="text-align:center">{{ cat_occ.people }}</td>
               <td style="font-size:11px; white-space:normal; overflow:hidden; text-overflow:ellipsis">
                 {% for g, rc in cat_occ.get('guests', []) %}
@@ -773,11 +770,10 @@ tr.cancelled td { opacity: .45; }
             <tr>
               <th>Category</th>
               <th>Code</th>
-              <th style="text-align:center">Requested</th>
-              <th style="text-align:center">Available</th>
-              <th style="text-align:center">Used</th>
-              <th style="text-align:center">Left</th>
-              <th style="text-align:center" title="Requested - Used">To Release</th>
+              <th style="text-align:center">Original Option</th>
+              <th style="text-align:center">Final Request</th>
+              <th style="text-align:center">Actual</th>
+              <th style="text-align:center" title="Final Request - Actual">Delta</th>
               <th style="text-align:center">People</th>
               <th>Guests</th>
             </tr>
@@ -788,9 +784,8 @@ tr.cancelled td { opacity: .45; }
               <td style="font-style:italic; color: var(--on-surface-variant)">—</td>
               <td><span class="badge-room">{{ code }}</span></td>
               <td style="text-align:center;color:#888">—</td>
-              <td style="text-align:center">-</td>
+              <td style="text-align:center">—</td>
               <td style="text-align:center; font-weight:600">{{ data.room_count }}</td>
-              <td style="text-align:center">-</td>
               <td style="text-align:center;color:#888">—</td>
               <td style="text-align:center">{{ data.people }}</td>
               <td style="font-size:11px; white-space:normal; overflow:hidden; text-overflow:ellipsis">
