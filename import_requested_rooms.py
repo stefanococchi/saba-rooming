@@ -23,14 +23,34 @@ from collections import Counter
 # Map file patterns to (night_label, hotel_name_fragment)
 FILE_PATTERNS = [
     (r'2 sett paolo vi', '2Sep', 'Paolo'),
-    (r'5 ago paolo vi', '1Sep', 'Paolo'),      # 5 agosto = night 1Sep (arrival night)
+    (r'5 ago paolo vi', '1Sep', 'Paolo'),
     (r'3Sep_Hotel_Carlton', '3Sep', 'Carlton'),
     (r'3Sep_Hotel_Casa_dEste', '3Sep', "Casa d'Este"),
     (r'3Sep_Hotel_Europa', '3Sep', 'Europa'),
-    (r'4Sep_Hotel_Arthur\.', '4Sep', 'Arthur'),
-    (r'4Sep_Hotel_Arthurino', '4Sep', 'Arthurino'),
+    (r'4Sep_Hotel_Arthurino', '4Sep', 'Arthurino'),   # must be before Arthur
+    (r'4Sep_Hotel_Arthur', '4Sep', 'Arthur'),
     (r'4Sep_Hotel_Maranello', '4Sep', 'Maranello'),
 ]
+
+# Map XLSX room type names → DB category codes
+ROOM_NAME_TO_CODE = {
+    # Paolo VI
+    'DLX': 'KINGP', 'BAL': 'PAN', 'MON': 'MONO', 'APP': 'FLAT', 'GSGL': 'GS',
+    # Carlton
+    'TWIN ROOM': 'TWIN', 'DOUBLE ROOM': 'DBL', 'TO BE CONFIRMED': 'TBC',
+    # Casa d'Este
+    'ROYAL SUITE': 'ROYAL', 'JUNIOR SUITE': 'JS', 'DELUXE DOUBLE': 'DD',
+    'SUPERIOR DOUBLE': 'SD', 'FAMILY ROOM': 'FAM', 'PREMIUM DOUBLE': 'PD',
+    'CLASSIC DOUBLE': 'CD', 'CLASSIC SINGLE': 'CS',
+    # Europa
+    'SINGLE ROOM': 'SGL',
+    # Arthur
+    'STANDARD ROOM': 'STD',
+    # Arthurino
+    'HOUSE ROOM': 'HOUSE',
+    # Maranello
+    'DELUXE': 'DLX',
+}
 
 
 def parse_rooming_file(filepath):
@@ -148,14 +168,19 @@ def main():
             categories = TourRoomCategory.query.filter_by(hotel_id=hotel.id).all()
             cat_map = {c.code.upper(): c for c in categories}
 
-            for room_code, count in counts.items():
-                cat = cat_map.get(room_code.upper())
+            for room_name, count in counts.items():
+                # Try direct code match first, then name→code mapping
+                code = room_name.upper()
+                if code not in cat_map and room_name in ROOM_NAME_TO_CODE:
+                    code = ROOM_NAME_TO_CODE[room_name].upper()
+                cat = cat_map.get(code)
                 if cat:
                     old = cat.rooms_requested
                     cat.rooms_requested = count
-                    print(f'    {room_code}: requested={count} (was {old})')
+                    mapped = f' (mapped {room_name} → {code})' if room_name.upper() != code else ''
+                    print(f'    {code}: requested={count} (was {old}){mapped}')
                 else:
-                    print(f'    {room_code}: no matching category (codes: {list(cat_map.keys())})')
+                    print(f'    {room_name}: no matching category (codes: {list(cat_map.keys())})')
 
         db.session.commit()
         print('\nDone!')
