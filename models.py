@@ -308,6 +308,22 @@ class TourRoomCategory(db.Model):
     sort_order      = db.Column(db.Integer, default=0)  # lower = more important
 
 
+class TourRoomBaseline(db.Model):
+    """Snapshot of the final request rooming list sent to each hotel."""
+    __tablename__ = 'tour_room_baselines'
+
+    id         = db.Column(db.Integer, primary_key=True)
+    hotel_id   = db.Column(db.Integer, db.ForeignKey('tour_hotels.id'), nullable=False)
+    room_code  = db.Column(db.String(50))    # SGL, KING, GS, TWIN ROOM, etc.
+    room_label = db.Column(db.String(100))   # Room 1, Room 2, etc.
+    cognome    = db.Column(db.String(100), nullable=False)
+    nome       = db.Column(db.String(100))
+    notes      = db.Column(db.String(200))   # TWIN, DOPPIA, etc.
+
+    hotel = db.relationship('TourHotel', backref=db.backref(
+                'baselines', cascade='all, delete-orphan', lazy='dynamic'))
+
+
 class TourGuest(db.Model):
     __tablename__ = 'tour_guests'
 

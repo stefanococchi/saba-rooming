@@ -695,6 +695,12 @@ tr.cancelled td { opacity: .45; }
         <a href="/api/tour/export/hotel/{{ h.id }}" class="btn-xlsx" style="margin-left:4px; font-size:12px">
           <span class="material-icons-round" style="font-size:16px">download</span> XLSX
         </a>
+        {% if not client_view %}
+        <button style="margin-left:4px;padding:4px 12px;background:#1565c0;color:#fff;border:none;border-radius:6px;font-size:12px;cursor:pointer;font-family:inherit"
+                onclick="showBaselineDelta({{ h.id }})">
+          <span class="material-icons-round" style="font-size:16px;vertical-align:middle">compare_arrows</span> Delta
+        </button>
+        {% endif %}
       </div>
       <div style="padding: 12px 20px" class="table-wrap">
         {% if h.categories %}
@@ -1290,6 +1296,45 @@ function loadAuditLog(page) {
     html += `<span style="padding:6px 12px;font-size:13px">Pagina ${auditPage} di ${totalPages}</span>`;
     if (auditPage < totalPages) html += `<button onclick="loadAuditLog(${auditPage+1})" style="padding:6px 12px;border:1px solid #ccc;border-radius:6px;background:#fff;cursor:pointer;font-family:inherit">&raquo;</button>`;
     pag.innerHTML = html;
+  });
+}
+
+function showBaselineDelta(hotelId) {
+  fetch(`/api/tour/baseline-delta/${hotelId}`).then(r=>r.json()).then(data => {
+    if (!data.ok) { alert(data.error || 'Error'); return; }
+    let html = `<div style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center" onclick="if(event.target===this)this.remove()">
+      <div style="background:#fff;border-radius:16px;padding:24px;max-width:700px;width:90%;max-height:80vh;overflow-y:auto">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+          <h3 style="font-size:16px;color:#1a237e">${data.hotel} (${data.night}) — Delta</h3>
+          <span style="font-size:13px;color:#888">Baseline: ${data.baseline_count} | Actual: ${data.actual_count}</span>
+        </div>`;
+
+    if (data.removed.length) {
+      html += `<h4 style="font-size:13px;color:#c62828;margin:12px 0 6px">Removed from baseline (${data.removed.length})</h4>
+        <table style="width:100%;border-collapse:collapse;font-size:13px">
+        <tr style="background:#fbe9e7"><th style="padding:6px 8px;text-align:left">Name</th><th style="padding:6px 8px;text-align:left">Room (baseline)</th><th style="padding:6px 8px">Notes</th></tr>`;
+      data.removed.forEach(r => { html += `<tr><td style="padding:4px 8px;border-bottom:1px solid #f0f0f0">${r.cognome} ${r.nome}</td><td style="padding:4px 8px;border-bottom:1px solid #f0f0f0">${r.baseline_room}</td><td style="padding:4px 8px;border-bottom:1px solid #f0f0f0;font-size:11px">${r.notes||''}</td></tr>`; });
+      html += '</table>';
+    }
+    if (data.added.length) {
+      html += `<h4 style="font-size:13px;color:#2e7d32;margin:12px 0 6px">Added (not in baseline) (${data.added.length})</h4>
+        <table style="width:100%;border-collapse:collapse;font-size:13px">
+        <tr style="background:#e8f5e9"><th style="padding:6px 8px;text-align:left">Name</th><th style="padding:6px 8px;text-align:left">Room (actual)</th></tr>`;
+      data.added.forEach(r => { html += `<tr><td style="padding:4px 8px;border-bottom:1px solid #f0f0f0">${r.cognome} ${r.nome}</td><td style="padding:4px 8px;border-bottom:1px solid #f0f0f0">${r.actual_room}</td></tr>`; });
+      html += '</table>';
+    }
+    if (data.changed.length) {
+      html += `<h4 style="font-size:13px;color:#1565c0;margin:12px 0 6px">Room changed (${data.changed.length})</h4>
+        <table style="width:100%;border-collapse:collapse;font-size:13px">
+        <tr style="background:#e3f2fd"><th style="padding:6px 8px;text-align:left">Name</th><th style="padding:6px 8px;text-align:left">Baseline</th><th style="padding:6px 8px;text-align:left">Actual</th></tr>`;
+      data.changed.forEach(r => { html += `<tr><td style="padding:4px 8px;border-bottom:1px solid #f0f0f0">${r.cognome} ${r.nome}</td><td style="padding:4px 8px;border-bottom:1px solid #f0f0f0"><s style="color:#c62828">${r.baseline_room}</s></td><td style="padding:4px 8px;border-bottom:1px solid #f0f0f0;color:#2e7d32;font-weight:600">${r.actual_room}</td></tr>`; });
+      html += '</table>';
+    }
+    if (!data.removed.length && !data.added.length && !data.changed.length) {
+      html += '<p style="text-align:center;color:#2e7d32;padding:20px;font-weight:600">No changes — baseline matches actual</p>';
+    }
+    html += '</div></div>';
+    document.body.insertAdjacentHTML('beforeend', html);
   });
 }
 

@@ -16,6 +16,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from models import (db, User, AuditLog, Todo, Guest, RoomingClientToken, RoomContract, EmailLog,
+                     TourRoomBaseline,
                      PartiviaQuote, PartiviaRoomRate,
                      PartiviaMeetingRoom, PartiviaFBOption,
                      BudgetOverride, PnrGroup,
@@ -4888,6 +4889,53 @@ Notes: {q.notes or 'N/A'}"""
         log_audit('tour', 'TourRoomAssignment', g.id, 'assign',
                   summary=f'Camera assegnata a {g.nome_completo}')
         return jsonify({'ok': True})
+
+    @app.get('/api/tour/baseline-delta/<int:hotel_id>')
+    def tour_baseline_delta(hotel_id):
+        """Compare baseline (final request) vs actual assignments for a hotel."""
+        hotel = TourHotel.query.get_or_404(hotel_id)
+        baselines = TourRoomBaseline.query.filter_by(hotel_id=hotel_id).all()
+        assignments = TourRoomAssignment.query.filter_by(hotel_id=hotel_id).all()
+
+        # Build sets: (COGNOME, NOME) → room info
+        baseline_map = {}
+        for b in baselines:
+            key = (b.cognome.upper().strip(), (b.nome or '').upper().strip())
+            baseline_map[key] = {'room_code': b.room_code, 'room_label': b.room_label, 'notes': b.notes}
+
+        actual_map = {}
+        for a in assignments:
+            g = TourGuest.query.get(a.guest_id)
+            if g and not g.deleted:
+                key = (g.cognome.upper().strip(), g.nome.upper().strip())
+                actual_map[key] = {'room_code': a.room_code, 'guest_id': g.id}
+
+        # Compute deltas
+        removed = []  # in baseline but not in actual
+        added = []    # in actual but not in baseline
+        changed = []  # in both but different room
+
+        for key, bdata in baseline_map.items():
+            if key not in actual_map:
+                removed.append({'cognome': key[0], 'nome': key[1],
+                               'baseline_room': bdata['room_code'], 'notes': bdata.get('notes', '')})
+            else:
+                adata = actual_map[key]
+                if bdata['room_code'] != adata['room_code']:
+                    changed.append({'cognome': key[0], 'nome': key[1],
+                                   'baseline_room': bdata['room_code'],
+                                   'actual_room': adata['room_code']})
+
+        for key, adata in actual_map.items():
+            if key not in baseline_map:
+                added.append({'cognome': key[0], 'nome': key[1],
+                             'actual_room': adata['room_code']})
+
+        return jsonify(ok=True, hotel=hotel.hotel_name, night=hotel.night_label,
+                       baseline_count=len(baseline_map), actual_count=len(actual_map),
+                       removed=sorted(removed, key=lambda x: x['cognome']),
+                       added=sorted(added, key=lambda x: x['cognome']),
+                       changed=sorted(changed, key=lambda x: x['cognome']))
 
     @app.post('/api/tour/sync-dinner-5sep')
     def sync_dinner_5sep():
