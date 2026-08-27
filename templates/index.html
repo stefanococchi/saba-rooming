@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Saba Rooming</title>
+<title>Equans Rooming</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
 <style>
@@ -520,7 +520,7 @@ textarea { resize: vertical; min-height: 120px; }
     <span class="material-icons-round">arrow_back</span>
   </a>
   <span class="material-icons-round">hotel</span>
-  <h1>Saba Rooming{% if client_view %} — Client View{% endif %}</h1>
+  <h1>Equans 8–9 Ott 2026{% if client_view %} — Client View{% endif %}</h1>
   <div class="spacer"></div>
   <span class="badge" id="countBadge">{{ guests|length }} ospiti</span>
   <a href="https://www.mangias.com/it/resort/mangias-pollina-resort-sicily" target="_blank" rel="noopener"
@@ -791,6 +791,7 @@ textarea { resize: vertical; min-height: 120px; }
             <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:#795548">Azione</th>
             <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:#795548">Riepilogo</th>
             <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:#795548">Dettagli</th>
+            <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:#795548"></th>
           </tr>
         </thead>
         <tbody id="audit-log-body"></tbody>
@@ -2435,6 +2436,9 @@ function loadAuditLog(page) {
         <td style="padding:8px 12px">${badge}</td>
         <td style="padding:8px 12px">${e.summary || ''}</td>
         <td style="padding:8px 12px;font-size:12px;max-width:300px">${details}</td>
+        <td style="padding:8px 12px">
+          ${['update','create','delete'].includes(e.action) ? `<button onclick="rollbackAudit(${e.id})" style="padding:3px 10px;background:#fff;color:#c62828;border:1px solid #ef9a9a;border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit" title="Annulla questa azione">Rollback</button>` : ''}
+        </td>
       </tr>`;
     }).join('');
 
@@ -2475,6 +2479,14 @@ function restoreGuest(id) {
   fetch(`/api/guest/${id}/restore`, {method:'POST'}).then(r => r.json()).then(data => {
     if (data.ok) { loadDeletedGuests(); location.reload(); }
     else alert(data.error || 'Errore');
+  });
+}
+
+function rollbackAudit(auditId) {
+  if (!confirm('Annullare questa azione? I dati verranno ripristinati allo stato precedente.')) return;
+  fetch(`/api/audit/${auditId}/rollback`, {method:'POST'}).then(r => r.json()).then(data => {
+    if (data.ok) { alert('Rollback completato'); loadAuditLog(); }
+    else alert(data.error || 'Errore nel rollback');
   });
 }
 </script>

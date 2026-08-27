@@ -855,6 +855,7 @@ tr.cancelled td { opacity: .45; }
             <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:#E65100">Azione</th>
             <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:#E65100">Riepilogo</th>
             <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:#E65100">Dettagli</th>
+            <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:#E65100"></th>
           </tr>
         </thead>
         <tbody id="audit-log-body"></tbody>
@@ -1160,6 +1161,9 @@ function loadAuditLog(page) {
         <td style="padding:8px 12px">${badge}</td>
         <td style="padding:8px 12px">${e.summary || ''}</td>
         <td style="padding:8px 12px;font-size:12px;max-width:300px">${details}</td>
+        <td style="padding:8px 12px">
+          ${['update','create','delete'].includes(e.action) ? `<button onclick="rollbackAudit(${e.id})" style="padding:3px 10px;background:#fff;color:#c62828;border:1px solid #ef9a9a;border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit" title="Annulla questa azione">Rollback</button>` : ''}
+        </td>
       </tr>`;
     }).join('');
     const totalPages = Math.ceil(data.total / data.per_page);
@@ -1197,6 +1201,14 @@ function restoreTourGuest(id) {
   fetch(`/api/tour/guest/${id}/restore`, {method:'POST'}).then(r => r.json()).then(data => {
     if (data.ok) { loadDeletedTourGuests(); location.reload(); }
     else alert(data.error || 'Errore');
+  });
+}
+
+function rollbackAudit(auditId) {
+  if (!confirm('Annullare questa azione? I dati verranno ripristinati allo stato precedente.')) return;
+  fetch(`/api/audit/${auditId}/rollback`, {method:'POST'}).then(r => r.json()).then(data => {
+    if (data.ok) { alert('Rollback completato'); loadAuditLog(); }
+    else alert(data.error || 'Errore nel rollback');
   });
 }
 

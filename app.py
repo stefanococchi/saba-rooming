@@ -536,6 +536,323 @@ def create_app():
     def landing():
         return render_template('landing.html')
 
+    # ── LLM GENERICO ───────────────────────────────────────────────────────
+
+    TOUR_GUEST_STR_FIELDS = (
+        'cognome', 'nome', 'email', 'telefono', 'nazionalita', 'titolo',
+        'arrivo_mezzo', 'arrivo_data', 'room_with', 'car_number', 'car_with',
+        'vip', 'client_room_note', 'payment', 'cloth_size', 'diet',
+        'notes', 'email_requests',
+    )
+    TOUR_GUEST_BOOL_FIELDS = ('dinner', 'sept2')
+
+    @app.post('/api/llm/process')
+    def llm_process():
+        import anthropic
+        text = (request.get_json() or {}).get('text', '').strip()
+        if not text:
+            return jsonify(ok=False, error='Nessun testo inserito'), 400
+
+        api_key = os.environ.get('ANTHROPIC_API_KEY')
+        if not api_key:
+            return jsonify(ok=False, error='ANTHROPIC_API_KEY non configurata'), 500
+
+        # Build context lists for matching
+        guests = Guest.query.filter_by(deleted=False).order_by(Guest.cognome).all()
+        guest_list = '\n'.join(
+            f'  ID={g.id} {g.cognome} {g.nome} (email={g.email or ""}, sede={g.sede_lavoro or ""})'
+            for g in guests) or '  (nessun ospite)'
+
+        quotes = PartiviaQuote.query.filter_by(deleted=False).order_by(PartiviaQuote.hotel_name).all()
+        quote_list = '\n'.join(
+            f'  ID={q.id} {q.hotel_name} ({q.city}, {q.stars or "?"}★, status={q.quote_status})'
+            for q in quotes) or '  (nessun preventivo)'
+
+        tour_guests = TourGuest.query.filter_by(deleted=False).order_by(TourGuest.cognome).all()
+        tour_list = '\n'.join(
+            f'  ID={g.id} {g.cognome} {g.nome} (payment={g.payment or ""}, car={g.car_number or ""})'
+            for g in tour_guests) or '  (nessun partecipante tour)'
+
+        system_prompt = f"""Sei un assistente per la gestione eventi Saba. Analizzi richieste in linguaggio naturale e determini le operazioni CRUD da eseguire.
+
+SEZIONI DISPONIBILI:
+
+1. ROOMING (Equans, 8-9 Ottobre 2026) — Gestione ospiti evento aziendale
+   Entità: Guest
+   Campi stringa: cognome (MAIUSCOLO), nome, email, telefono, sede_lavoro, volo_arrivo, volo_partenza, aeroporto_partenza, aeroporto_arrivo, pickup_bus_andata, pickup_bus_ritorno, divide_stanza_con, restrizioni_alimentari, tipo_camera, camera_assegnata, note_form, note, data_nascita
+   Campi booleani: presenza_8, presenza_9, presenza_10, presenza_11, parcheggio_linate, parcheggio_hotel
+
+   Ospiti attuali:
+{guest_list}
+
+2. PARTIVIA (N!Partivia Spain) — Preventivi hotel per viaggio incentive in Spagna
+   Entità: PartiviaQuote
+   Campi: hotel_name, city (Barcellona/Madrid/Siviglia/Valencia), stars (1-5), contact_name, contact_email, website_url, address, dates_proposed, rooms_available, min_rooms_required, cancellation_policy, payment_terms, validity_date, commission, total_estimate, included_services, notes, raw_summary, quote_status (pending_review/negotiating/confirmed/declined/expired), vat_included (yes/no/unknown)
+   Sub-tabelle: room_rates (room_type, rate_per_night con €, breakfast_included, notes), meeting_rooms (name, capacity, rate, notes), fb_options (meal_type, price_per_person, menu_description)
+
+   Preventivi attuali:
+{quote_list}
+
+3. TOUR (Liqui Moly Nexus Auto Tour, 1-5 Settembre 2026) — Tour itinerante multi-città
+   Entità: TourGuest
+   Campi stringa: cognome (MAIUSCOLO), nome, email, telefono, nazionalita, titolo (Mr/Mrs), arrivo_mezzo (Airplane/Car/Train/Other), arrivo_data, room_with, car_number, car_with, vip (VIP/ULTRA VIP), client_room_note, payment (PAID/TO COLLECT/NO NEED/PAY ON SITE), cloth_size (S-XXXL), diet, notes, email_requests
+   Campi booleani: dinner, sept2
+
+   Partecipanti tour attuali:
+{tour_list}
+
+REGOLE:
+- Determina la sezione dal contesto del testo (menzione di hotel/quote → partivia, menzione di tour/auto/car → tour, default → rooming)
+- Per update/delete: usa match_id con l'ID esatto dell'entità dalla lista sopra. Fai matching fuzzy su cognome+nome.
+- Per create: match_id = null
+- cognome sempre MAIUSCOLO
+- Campi non menzionati nel testo → null (non includerli in data)
+- Per partivia create: includi room_rates, meeting_rooms, fb_options come array (vuoti se non menzionati)
+- Tutti i testi delle quote partivia DEVONO essere in inglese
+
+Rispondi SOLO con JSON valido (no markdown, no commenti):
+{{
+  "section": "rooming|partivia|tour",
+  "operations": [
+    {{
+      "action": "create|update|delete",
+      "entity_type": "Guest|PartiviaQuote|TourGuest",
+      "data": {{}},
+      "match_id": null,
+      "preview": "Descrizione leggibile dell'operazione"
+    }}
+  ],
+  "summary": "Riassunto complessivo delle operazioni"
+}}"""
+
+        try:
+            client = anthropic.Anthropic(api_key=api_key)
+            response = client.messages.create(
+                model='claude-haiku-4-5-20251001',
+                max_tokens=8192,
+                system=system_prompt,
+                messages=[{'role': 'user', 'content': text}],
+            )
+            raw = response.content[0].text.strip()
+            if raw.startswith('```'):
+                raw = raw.split('\n', 1)[1].rsplit('```', 1)[0].strip()
+            result = json.loads(raw)
+        except json.JSONDecodeError:
+            return jsonify(ok=False, error='Risposta LLM non valida', raw=raw), 500
+        except Exception as e:
+            return jsonify(ok=False, error=str(e)), 500
+
+        # Enrich operations with current data for diff preview
+        for op in result.get('operations', []):
+            if op.get('match_id') and op.get('action') == 'update':
+                etype = op.get('entity_type')
+                mid = op['match_id']
+                if etype == 'Guest':
+                    obj = Guest.query.get(mid)
+                    if obj:
+                        op['current_data'] = {f: getattr(obj, f, None)
+                                               for f in list(op.get('data', {}).keys())}
+                elif etype == 'PartiviaQuote':
+                    obj = PartiviaQuote.query.get(mid)
+                    if obj:
+                        op['current_data'] = {f: getattr(obj, f, None)
+                                               for f in list(op.get('data', {}).keys())}
+                elif etype == 'TourGuest':
+                    obj = TourGuest.query.get(mid)
+                    if obj:
+                        op['current_data'] = {f: getattr(obj, f, None)
+                                               for f in list(op.get('data', {}).keys())}
+
+        # Save to email log
+        log = EmailLog(testo=text, summary=result.get('summary', ''), log_type='llm')
+        db.session.add(log)
+        db.session.commit()
+
+        inp = response.usage.input_tokens
+        out = response.usage.output_tokens
+        cost = (inp * 0.80 + out * 4.00) / 1_000_000
+
+        return jsonify(ok=True, **result, email_log_id=log.id,
+                       tokens={'input': inp, 'output': out, 'cost_eur': round(cost * 0.92, 4)})
+
+    @app.post('/api/llm/apply')
+    def llm_apply():
+        data = request.get_json() or {}
+        operations = data.get('operations', [])
+        email_log_id = data.get('email_log_id')
+        results = []
+
+        for op in operations:
+            action = op.get('action')
+            etype = op.get('entity_type')
+            opdata = op.get('data', {})
+            match_id = op.get('match_id')
+
+            try:
+                if etype == 'Guest':
+                    if action == 'create':
+                        g = Guest(
+                            cognome=opdata.get('cognome', ''),
+                            nome=opdata.get('nome', ''),
+                            source='llm', email_log_id=email_log_id)
+                        for f in ('email', 'telefono', 'sede_lavoro', 'volo_arrivo',
+                                  'volo_partenza', 'aeroporto_partenza', 'aeroporto_arrivo',
+                                  'pickup_bus_andata', 'pickup_bus_ritorno',
+                                  'divide_stanza_con', 'restrizioni_alimentari',
+                                  'tipo_camera', 'camera_assegnata', 'note_form', 'note',
+                                  'data_nascita'):
+                            if opdata.get(f) is not None:
+                                setattr(g, f, opdata[f])
+                        for f in ('presenza_8', 'presenza_9', 'presenza_10', 'presenza_11',
+                                  'parcheggio_linate', 'parcheggio_hotel'):
+                            if opdata.get(f) is not None:
+                                setattr(g, f, _parse_bool(opdata[f]))
+                        db.session.add(g)
+                        db.session.flush()
+                        log_audit('rooming', 'Guest', g.id, 'create',
+                                  summary=f'LLM: Aggiunto {g.nome_completo}')
+                        results.append({'ok': True, 'action': 'created', 'id': g.id,
+                                        'name': g.nome_completo})
+
+                    elif action == 'update' and match_id:
+                        g = Guest.query.get(match_id)
+                        if not g or g.deleted:
+                            results.append({'ok': False, 'error': f'Guest {match_id} non trovato'})
+                            continue
+                        changes = _diff(g, opdata,
+                                        [f for f in opdata if f not in ('presenza_8', 'presenza_9',
+                                         'presenza_10', 'presenza_11', 'parcheggio_linate', 'parcheggio_hotel')],
+                                        [f for f in opdata if f in ('presenza_8', 'presenza_9',
+                                         'presenza_10', 'presenza_11', 'parcheggio_linate', 'parcheggio_hotel')])
+                        for f in opdata:
+                            if opdata[f] is not None:
+                                if f in ('presenza_8', 'presenza_9', 'presenza_10', 'presenza_11',
+                                         'parcheggio_linate', 'parcheggio_hotel'):
+                                    setattr(g, f, _parse_bool(opdata[f]))
+                                else:
+                                    setattr(g, f, opdata[f])
+                        g.updated_at = datetime.utcnow()
+                        if changes:
+                            log_audit('rooming', 'Guest', g.id, 'update', changes=changes,
+                                      summary=f'LLM: Modificato {g.nome_completo}')
+                        results.append({'ok': True, 'action': 'updated', 'id': g.id,
+                                        'name': g.nome_completo})
+
+                    elif action == 'delete' and match_id:
+                        g = Guest.query.get(match_id)
+                        if not g or g.deleted:
+                            results.append({'ok': False, 'error': f'Guest {match_id} non trovato'})
+                            continue
+                        g.deleted = True
+                        g.deleted_at = datetime.utcnow()
+                        log_audit('rooming', 'Guest', g.id, 'delete',
+                                  summary=f'LLM: Eliminato {g.nome_completo}')
+                        results.append({'ok': True, 'action': 'deleted', 'id': g.id,
+                                        'name': g.nome_completo})
+
+                elif etype == 'PartiviaQuote':
+                    if action == 'create':
+                        q = PartiviaQuote(
+                            hotel_name=opdata.get('hotel_name', ''),
+                            city=opdata.get('city', ''),
+                            source='llm', email_log_id=email_log_id)
+                        for f in ('stars', 'contact_name', 'contact_email', 'website_url',
+                                  'address', 'dates_proposed', 'rooms_available',
+                                  'min_rooms_required', 'cancellation_policy', 'payment_terms',
+                                  'validity_date', 'commission', 'total_estimate',
+                                  'included_services', 'notes', 'raw_summary',
+                                  'quote_status', 'vat_included'):
+                            if opdata.get(f) is not None:
+                                setattr(q, f, opdata[f])
+                        db.session.add(q)
+                        db.session.flush()
+                        for rr in opdata.get('room_rates', []):
+                            db.session.add(PartiviaRoomRate(
+                                quote_id=q.id, room_type=rr.get('room_type', ''),
+                                rate_per_night=rr.get('rate_per_night'),
+                                breakfast_included=rr.get('breakfast_included'),
+                                notes=rr.get('notes')))
+                        for mr in opdata.get('meeting_rooms', []):
+                            db.session.add(PartiviaMeetingRoom(
+                                quote_id=q.id, name=mr.get('name', ''),
+                                capacity=mr.get('capacity'),
+                                rate=mr.get('rate'), notes=mr.get('notes')))
+                        for fb in opdata.get('fb_options', []):
+                            db.session.add(PartiviaFBOption(
+                                quote_id=q.id, meal_type=fb.get('meal_type', ''),
+                                price_per_person=fb.get('price_per_person'),
+                                menu_description=fb.get('menu_description')))
+                        log_audit('partivia', 'PartiviaQuote', q.id, 'create',
+                                  summary=f'LLM: Creato preventivo {q.hotel_name}')
+                        results.append({'ok': True, 'action': 'created', 'id': q.id,
+                                        'name': q.hotel_name})
+
+                    elif action == 'update' and match_id:
+                        q = PartiviaQuote.query.get(match_id)
+                        if not q or q.deleted:
+                            results.append({'ok': False, 'error': f'Quote {match_id} non trovata'})
+                            continue
+                        for f in opdata:
+                            if f not in ('room_rates', 'meeting_rooms', 'fb_options') and opdata[f] is not None:
+                                setattr(q, f, opdata[f])
+                        q.updated_at = datetime.utcnow()
+                        log_audit('partivia', 'PartiviaQuote', q.id, 'update',
+                                  summary=f'LLM: Modificato {q.hotel_name}')
+                        results.append({'ok': True, 'action': 'updated', 'id': q.id,
+                                        'name': q.hotel_name})
+
+                    elif action == 'delete' and match_id:
+                        q = PartiviaQuote.query.get(match_id)
+                        if not q or q.deleted:
+                            results.append({'ok': False, 'error': f'Quote {match_id} non trovata'})
+                            continue
+                        q.deleted = True
+                        q.deleted_at = datetime.utcnow()
+                        log_audit('partivia', 'PartiviaQuote', q.id, 'delete',
+                                  summary=f'LLM: Eliminato {q.hotel_name}')
+                        results.append({'ok': True, 'action': 'deleted', 'id': q.id,
+                                        'name': q.hotel_name})
+
+                elif etype == 'TourGuest':
+                    if action == 'update' and match_id:
+                        g = TourGuest.query.get(match_id)
+                        if not g or g.deleted:
+                            results.append({'ok': False, 'error': f'TourGuest {match_id} non trovato'})
+                            continue
+                        str_fields = [f for f in opdata if f in TOUR_GUEST_STR_FIELDS]
+                        bool_fields = [f for f in opdata if f in TOUR_GUEST_BOOL_FIELDS]
+                        changes = _diff(g, opdata, str_fields, bool_fields)
+                        for f in str_fields:
+                            if opdata[f] is not None:
+                                setattr(g, f, opdata[f])
+                        for f in bool_fields:
+                            if opdata[f] is not None:
+                                setattr(g, f, _parse_bool(opdata[f]))
+                        g.updated_at = datetime.utcnow()
+                        if changes:
+                            log_audit('tour', 'TourGuest', g.id, 'update', changes=changes,
+                                      summary=f'LLM: Modificato {g.nome_completo}')
+                        results.append({'ok': True, 'action': 'updated', 'id': g.id,
+                                        'name': g.nome_completo})
+
+                    elif action == 'delete' and match_id:
+                        g = TourGuest.query.get(match_id)
+                        if not g or g.deleted:
+                            results.append({'ok': False, 'error': f'TourGuest {match_id} non trovato'})
+                            continue
+                        g.deleted = True
+                        g.deleted_at = datetime.utcnow()
+                        log_audit('tour', 'TourGuest', g.id, 'delete',
+                                  summary=f'LLM: Eliminato {g.nome_completo}')
+                        results.append({'ok': True, 'action': 'deleted', 'id': g.id,
+                                        'name': g.nome_completo})
+
+            except Exception as e:
+                results.append({'ok': False, 'error': str(e)})
+
+        db.session.commit()
+        return jsonify(ok=True, results=results)
+
     # ── PAGINA ROOMING ──────────────────────────────────────────────────────
 
     @app.route('/rooming/client')
@@ -5040,6 +5357,89 @@ Notes: {q.notes or 'N/A'}"""
         buf.seek(0)
         return send_file(buf, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
                          as_attachment=True, download_name=f'audit_{section}.xlsx')
+
+    # ── ROLLBACK SINGOLA AZIONE ───────────────────────────────────────────
+
+    @app.post('/api/audit/<int:audit_id>/rollback')
+    @superuser_required
+    def rollback_audit(audit_id):
+        entry = AuditLog.query.get_or_404(audit_id)
+        changes = entry.changes or {}
+        etype = entry.entity_type
+        eid = entry.entity_id
+        action = entry.action
+
+        # Map entity_type to model
+        MODEL_MAP = {
+            'Guest': Guest,
+            'PartiviaQuote': PartiviaQuote,
+            'TourGuest': TourGuest,
+        }
+        Model = MODEL_MAP.get(etype)
+        if not Model:
+            return jsonify(ok=False, error=f'Rollback non supportato per {etype}'), 400
+
+        if action == 'update':
+            # Revert each field to its old value
+            if not eid:
+                return jsonify(ok=False, error='ID entità mancante'), 400
+            obj = Model.query.get(eid)
+            if not obj:
+                return jsonify(ok=False, error=f'{etype} #{eid} non trovato'), 404
+            reverted = {}
+            for field, vals in changes.items():
+                if isinstance(vals, dict) and 'old' in vals:
+                    old_val = vals['old']
+                    current_val = getattr(obj, field, None)
+                    setattr(obj, field, old_val)
+                    reverted[field] = {'old': current_val, 'new': old_val}
+            if hasattr(obj, 'updated_at'):
+                obj.updated_at = datetime.utcnow()
+            db.session.commit()
+            log_audit(entry.section, etype, eid, 'rollback',
+                      changes=reverted,
+                      summary=f'Rollback: annullata modifica #{audit_id} su {etype} #{eid}')
+            return jsonify(ok=True, reverted=reverted)
+
+        elif action == 'create':
+            # Rollback di una creazione → soft-delete
+            if not eid:
+                return jsonify(ok=False, error='ID entità mancante'), 400
+            obj = Model.query.get(eid)
+            if not obj:
+                return jsonify(ok=False, error=f'{etype} #{eid} non trovato'), 404
+            obj.deleted = True
+            obj.deleted_at = datetime.utcnow()
+            db.session.commit()
+            log_audit(entry.section, etype, eid, 'rollback',
+                      summary=f'Rollback: eliminato {etype} #{eid} (annullata creazione #{audit_id})')
+            return jsonify(ok=True, action='soft-deleted')
+
+        elif action == 'delete':
+            # Rollback di una cancellazione → restore
+            if not eid:
+                return jsonify(ok=False, error='ID entità mancante'), 400
+            obj = Model.query.get(eid)
+            if not obj:
+                return jsonify(ok=False, error=f'{etype} #{eid} non trovato'), 404
+            if not obj.deleted:
+                return jsonify(ok=False, error='Il record non è eliminato'), 400
+            obj.deleted = False
+            obj.deleted_at = None
+            # If we have a snapshot in changes, restore the fields
+            for field, val in changes.items():
+                if hasattr(obj, field) and not isinstance(val, dict):
+                    setattr(obj, field, val)
+            db.session.commit()
+            log_audit(entry.section, etype, eid, 'rollback',
+                      summary=f'Rollback: ripristinato {etype} #{eid} (annullata eliminazione #{audit_id})')
+            return jsonify(ok=True, action='restored')
+
+        elif action == 'import':
+            return jsonify(ok=False, error='Rollback di import non supportato — usa il cestino per i singoli record'), 400
+
+        else:
+            return jsonify(ok=False, error=f'Rollback non supportato per azione "{action}"'), 400
 
     # ── RESTORE & DELETED LIST ─────────────────────────────────────────────
 
