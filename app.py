@@ -5034,8 +5034,8 @@ Notes: {q.notes or 'N/A'}"""
                     actual_map[key] = {'room_code': a.room_code}
                     actual_guests[key] = g
 
-            # Build rows: (room_name, surname, name, nationality, diet, beds, status)
-            rows = []
+            # Build guest entries with raw room code for grouping
+            entries = []
             for key, adata in actual_map.items():
                 g = actual_guests[key]
                 bdata = baseline_map.get(key)
@@ -5045,25 +5045,41 @@ Notes: {q.notes or 'N/A'}"""
                     status = 'ROOM CHANGED'
                 else:
                     status = ''
-                rows.append({
+                entries.append({
+                    'raw_code': adata['room_code'],
                     'room_type': _room_name(adata['room_code']),
                     'surname': g.cognome, 'name': g.nome,
                     'nationality': g.nazionalita or '',
                     'diet': g.diet or '',
-                    'beds': '',
                     'status': status,
                 })
             for key, bdata in baseline_map.items():
                 if key not in actual_map:
-                    rows.append({
+                    entries.append({
+                        'raw_code': bdata['room_code'],
                         'room_type': _room_name(bdata['room_code']),
                         'surname': key[0], 'name': key[1],
                         'nationality': '', 'diet': '',
-                        'beds': '', 'status': 'CANCELLED',
+                        'status': 'CANCELLED',
                     })
 
+            # Group by shared room (same raw_code with suffix = same room)
+            # Suffixed codes like DBL-T4, TWIN-T4 share a room
+            from collections import OrderedDict
+            rooms = OrderedDict()  # raw_code → [entries]
             # Sort by room type then surname
-            rows.sort(key=lambda r: (r['room_type'], r['surname']))
+            entries.sort(key=lambda r: (r['room_type'], r['surname']))
+            for e in entries:
+                rc = e['raw_code']
+                # Entries with suffix share a room; entries without suffix = 1 room each
+                if '-' in rc:
+                    rooms.setdefault(rc, []).append(e)
+                else:
+                    rooms.setdefault(f"{rc}__solo_{e['surname']}_{e['name']}", []).append(e)
+
+            active_rooms = [g for g in rooms.values() if any(e['status'] != 'CANCELLED' for e in g)]
+            active_guests = sum(len(g) for g in active_rooms)
+            cancelled_entries = [e for g in rooms.values() for e in g if e['status'] == 'CANCELLED']
 
             # Create sheet
             safe_name = f"{hotel.night_label}_{hotel.hotel_name}".replace('*', '').replace('/', '-').replace('\\', '-').replace("'", '')[:31]
@@ -5071,45 +5087,54 @@ Notes: {q.notes or 'N/A'}"""
 
             checkin = night_dates.get(hotel.night_label, hotel.night_label)
             checkout = checkout_map.get(hotel.night_label, '')
-            rooms_count = len([r for r in rows if r['status'] != 'CANCELLED'])
-            guests_count = len([r for r in rows if r['status'] != 'CANCELLED'])
 
-            # Header rows (same format as hotel rooming list)
             ws.cell(row=1, column=1, value=f'{hotel.hotel_name} - {hotel.city}').font = font_title
             ws.cell(row=2, column=1, value='LIQUI MOLY NEXUS AUTO TOUR 2026 - group CARZILLA').font = font_sub
             ws.cell(row=3, column=1, value=f'Check-in {checkin}   /   Check-out {checkout}').font = font_sub
-            ws.cell(row=4, column=1, value=f'{rooms_count} rooms - {guests_count} guests').font = font_sub
+            ws.cell(row=4, column=1, value=f'{len(active_rooms)} rooms - {active_guests} guests').font = font_sub
 
-            # Column headers (row 6)
             headers = ['#', 'Room type', 'Room', 'Surname', 'Name', 'Nationality', 'Diet / notes', 'Status']
             for ci, h in enumerate(headers, 1):
                 c = ws.cell(row=6, column=ci, value=h)
                 c.font = font_hdr
                 c.fill = hdr_fill
 
-            # Data rows
-            num = 0
-            for ri, r in enumerate(rows, 7):
-                if r['status'] != 'CANCELLED':
-                    num += 1
-                fill = None
-                if r['status'] == 'NEW':
-                    fill = fill_added
-                elif r['status'] == 'CANCELLED':
-                    fill = fill_removed
-                elif r['status'] == 'ROOM CHANGED':
-                    fill = fill_changed
+            ri = 7
+            room_num = 0
+            # Write active rooms first
+            for room_key, group in rooms.items():
+                if all(e['status'] == 'CANCELLED' for e in group):
+                    continue
+                room_num += 1
+                for idx, e in enumerate(group):
+                    fill = fill_added if e['status'] == 'NEW' else (fill_changed if e['status'] == 'ROOM CHANGED' else None)
+                    is_first = (idx == 0)
+                    vals = [
+                        room_num if is_first else '',
+                        e['room_type'] if is_first else '',
+                        '',
+                        e['surname'], e['name'],
+                        e['nationality'], e['diet'],
+                        e['status']
+                    ]
+                    for ci, val in enumerate(vals, 1):
+                        cell = ws.cell(row=ri, column=ci, value=val)
+                        cell.border = thin_border
+                        if fill:
+                            cell.fill = fill
+                    ri += 1
 
-                vals = [num if r['status'] != 'CANCELLED' else '',
-                        r['room_type'], '', r['surname'], r['name'],
-                        r['nationality'], r['diet'], r['status']]
+            # Write cancelled entries at the end
+            for e in cancelled_entries:
+                room_num += 1
+                vals = [room_num, e['room_type'], '', e['surname'], e['name'],
+                        e['nationality'], e['diet'], e['status']]
                 for ci, val in enumerate(vals, 1):
                     cell = ws.cell(row=ri, column=ci, value=val)
                     cell.border = thin_border
-                    if fill:
-                        cell.fill = fill
-                    if r['status'] == 'CANCELLED':
-                        cell.font = Font(strikethrough=True, color='999999')
+                    cell.fill = fill_removed
+                    cell.font = Font(strikethrough=True, color='999999')
+                ri += 1
 
             # Column widths
             widths = [5, 20, 8, 22, 18, 14, 25, 14]
