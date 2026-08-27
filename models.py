@@ -326,6 +326,7 @@ class TourGuest(db.Model):
     vip               = db.Column(db.String(50))        # VIP, ULTRA VIP, blank
     client_room_note  = db.Column(db.Text)
     dinner            = db.Column(db.Boolean, default=False)   # cena 2 Set
+    dinner_5sep       = db.Column(db.Boolean, default=False)   # cena 5 Set
     sept2             = db.Column(db.Boolean, default=False)   # presenza 2 Set
     payment           = db.Column(db.String(50))        # PAID, TO COLLECT, NO NEED …
     cloth_size        = db.Column(db.String(10))        # S, M, L, XL, XXL, XXXL

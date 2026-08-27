@@ -321,6 +321,11 @@ tr.cancelled td { opacity: .45; }
         <div class="stat">attending</div>
       </div>
       <div class="summary-card">
+        <div class="night-label">Dinner 5 Sept</div>
+        <div style="font-size:28px; font-weight:700; color:var(--primary)">{{ payment_stats.dinner_5sep }}</div>
+        <div class="stat">attending</div>
+      </div>
+      <div class="summary-card">
         <div class="night-label">No fee needed</div>
         <div style="font-size:28px; font-weight:700; color:var(--info)">{{ payment_stats.no_need }}</div>
         <div class="stat">not attending 2 Sept</div>
@@ -477,7 +482,8 @@ tr.cancelled td { opacity: .45; }
               <th>Room With</th>
               <th>VIP</th>
               <th>Sept 2</th>
-              <th>Dinner</th>
+              <th>Dinner 2</th>
+              <th>Dinner 5</th>
               <th>Payment</th>
               <th>Size</th>
               <th>Diet</th>
@@ -520,6 +526,7 @@ tr.cancelled td { opacity: .45; }
               <td>{% if g.vip %}<span class="badge-vip">{{ g.vip }}</span>{% endif %}</td>
               <td>{% if g.sept2 %}<span class="badge-dinner">Yes</span>{% endif %}</td>
               <td>{% if g.dinner %}<span class="badge-dinner">X</span>{% endif %}</td>
+              <td>{% if g.dinner_5sep %}<span class="badge-dinner">X</span>{% endif %}</td>
               <td>
                 {% if g.payment == 'PAID-CANCELLED' %}<span class="badge-cancelled">PAID-CANCELLED</span>
                 {% elif g.payment == 'PAID' %}<span class="badge-paid">PAID</span>

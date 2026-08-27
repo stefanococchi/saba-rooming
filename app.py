@@ -131,6 +131,9 @@ def create_app():
                     if col not in tg_cols:
                         conn.execute(text(f"ALTER TABLE tour_guests ADD COLUMN {col} VARCHAR(300)"))
                         conn.commit()
+                if 'dinner_5sep' not in tg_cols:
+                    conn.execute(text("ALTER TABLE tour_guests ADD COLUMN dinner_5sep BOOLEAN DEFAULT FALSE"))
+                    conn.commit()
             except Exception:
                 pass
 
@@ -697,7 +700,7 @@ def create_app():
         'vip', 'client_room_note', 'payment', 'cloth_size', 'diet',
         'notes', 'email_requests',
     )
-    TOUR_GUEST_BOOL_FIELDS = ('dinner', 'sept2')
+    TOUR_GUEST_BOOL_FIELDS = ('dinner', 'dinner_5sep', 'sept2')
 
     @app.post('/api/llm/process')
     def llm_process():
@@ -769,7 +772,7 @@ IMPORTANTE: Tutti i testi DEVONO essere in inglese."""
 Entità gestibili:
 1. TourGuest — i partecipanti
    Campi stringa: cognome (MAIUSCOLO), nome, email, telefono, nazionalita, titolo (Mr/Mrs), arrivo_mezzo (Airplane/Car/Train/Other), arrivo_data, room_with, car_number, car_with, vip (VIP/ULTRA VIP), client_room_note, payment (PAID/TO COLLECT/NO NEED/PAY ON SITE/NO SHOW/PAID-CANCELLED), cloth_size (S-XXXL), diet, notes, email_requests
-   Campi booleani: dinner, sept2
+   Campi booleani: dinner (cena 2 set), dinner_5sep (cena 5 set), sept2
 
 2. TourRoomAssignment — assegnazioni camera per notte
    Per assegnare/rimuovere camere usa entity_type="TourRoomAssignment" con:
@@ -4780,6 +4783,7 @@ Notes: {q.notes or 'N/A'}"""
             'on_site': len([g for g in guests if g.payment == 'PAY ON SITE']),
             'no_show': len([g for g in guests if g.payment == 'NO SHOW']),
             'dinner_2sep': len([g for g in guests if g.dinner and g.payment != 'PAID-CANCELLED']),
+            'dinner_5sep': len([g for g in guests if g.dinner_5sep and g.payment != 'PAID-CANCELLED']),
         }
 
         return render_template('tour.html', guests=guests, hotels=hotels,
@@ -4831,7 +4835,7 @@ Notes: {q.notes or 'N/A'}"""
             'vip', 'client_room_note', 'payment', 'cloth_size', 'diet',
             'notes', 'email_requests',
         )
-        bool_fields = ('dinner', 'sept2')
+        bool_fields = ('dinner', 'dinner_5sep', 'sept2')
         changes = _diff(g, data, str_fields, bool_fields)
         for f in str_fields:
             if f in data:
