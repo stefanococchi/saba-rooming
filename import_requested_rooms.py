@@ -23,7 +23,7 @@ from collections import Counter
 # Map file patterns to (night_label, hotel_name_fragment)
 FILE_PATTERNS = [
     (r'2 sett paolo vi', '2Sep', 'Paolo'),
-    (r'5 ago paolo vi', '1Sep', 'Paolo'),
+    (r'5 ago paolo vi', '5Sep', 'Paolo'),
     (r'3Sep_Hotel_Carlton', '3Sep', 'Carlton'),
     (r'3Sep_Hotel_Casa_dEste', '3Sep', "Casa d'Este"),
     (r'3Sep_Hotel_Europa', '3Sep', 'Europa'),
