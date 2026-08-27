@@ -765,7 +765,7 @@ IMPORTANTE: Tutti i testi DEVONO essere in inglese."""
 
 Entità gestibili:
 1. TourGuest — i partecipanti
-   Campi stringa: cognome (MAIUSCOLO), nome, email, telefono, nazionalita, titolo (Mr/Mrs), arrivo_mezzo (Airplane/Car/Train/Other), arrivo_data, room_with, car_number, car_with, vip (VIP/ULTRA VIP), client_room_note, payment (PAID/TO COLLECT/NO NEED/PAY ON SITE), cloth_size (S-XXXL), diet, notes, email_requests
+   Campi stringa: cognome (MAIUSCOLO), nome, email, telefono, nazionalita, titolo (Mr/Mrs), arrivo_mezzo (Airplane/Car/Train/Other), arrivo_data, room_with, car_number, car_with, vip (VIP/ULTRA VIP), client_room_note, payment (PAID/TO COLLECT/NO NEED/PAY ON SITE/NO SHOW/PAID-CANCELLED), cloth_size (S-XXXL), diet, notes, email_requests
    Campi booleani: dinner, sept2
 
 2. TourRoomAssignment — assegnazioni camera per notte
@@ -4775,6 +4775,7 @@ Notes: {q.notes or 'N/A'}"""
                                and g.payment != 'PAID-CANCELLED']),
             'no_need': len([g for g in guests if g.payment == 'NO NEED']),
             'on_site': len([g for g in guests if g.payment == 'PAY ON SITE']),
+            'no_show': len([g for g in guests if g.payment == 'NO SHOW']),
             'dinner_2sep': len([g for g in guests if g.dinner and g.payment != 'PAID-CANCELLED']),
         }
 

@@ -137,6 +137,7 @@ tr:hover { background: var(--surface-variant); }
 .badge-collect { background: #fff3e0; color: #e65100; padding: 1px 5px; border-radius: 6px; font-size: 10px; font-weight: 600; }
 .badge-noneed { background: #e3f2fd; color: #1565c0; padding: 1px 5px; border-radius: 6px; font-size: 10px; font-weight: 600; }
 .badge-cancelled { background: #eceff1; color: #78909c; padding: 1px 5px; border-radius: 6px; font-size: 10px; font-weight: 600; }
+.badge-noshow { background: #fce4ec; color: #c62828; padding: 1px 5px; border-radius: 6px; font-size: 10px; font-weight: 600; }
 tr.cancelled td { opacity: .45; }
 .badge-vip { background: #fce4ec; color: #c62828; padding: 2px 8px; border-radius: 8px; font-size: 11px; font-weight: 600; }
 .badge-room { background: #f3e5f5; color: #7b1fa2; padding: 1px 4px; border-radius: 6px; font-size: 10px; font-weight: 500; }
@@ -312,7 +313,7 @@ tr.cancelled td { opacity: .45; }
       <div class="summary-card">
         <div class="night-label">Payments</div>
         <div style="font-size:28px; font-weight:700; color:var(--success)">{{ payment_stats.paid }}</div>
-        <div class="stat">paid | <strong style="color:var(--primary)">{{ payment_stats.to_collect }}</strong> to collect | {{ payment_stats.on_site }} on site</div>
+        <div class="stat">paid | <strong style="color:var(--primary)">{{ payment_stats.to_collect }}</strong> to collect | {{ payment_stats.on_site }} on site{% if payment_stats.no_show %} | <strong style="color:#c62828">{{ payment_stats.no_show }}</strong> no show{% endif %}</div>
       </div>
       <div class="summary-card">
         <div class="night-label">Dinner 2 Sept</div>
@@ -525,6 +526,7 @@ tr.cancelled td { opacity: .45; }
                 {% elif g.payment and 'COLLECT' in g.payment %}<span class="badge-collect">{{ g.payment }}</span>
                 {% elif g.payment == 'NO NEED' %}<span class="badge-noneed">NO NEED</span>
                 {% elif g.payment == 'PAY ON SITE' %}<span class="badge-collect">ON SITE</span>
+                {% elif g.payment == 'NO SHOW' %}<span class="badge-noshow">NO SHOW</span>
                 {% elif g.payment %}<span style="font-size:11px">{{ g.payment }}</span>
                 {% endif %}
               </td>
@@ -821,7 +823,7 @@ tr.cancelled td { opacity: .45; }
                 {% set ra_2sep.code = ra.room_code %}
               {% endif %}
             {% endfor %}
-            {% if g.payment and 'COLLECT' in g.payment or g.payment == 'PAY ON SITE' or g.payment == 'TO COLLECT' %}
+            {% if g.payment and ('COLLECT' in g.payment or g.payment == 'PAY ON SITE' or g.payment == 'TO COLLECT' or g.payment == 'NO SHOW') %}
             <tr>
               <td><strong>{{ g.cognome }}</strong> {{ g.nome }}</td>
               <td style="font-size:11px">{{ g.email or '' }}</td>
