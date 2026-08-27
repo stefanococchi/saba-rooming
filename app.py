@@ -15,7 +15,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from models import (db, User, AuditLog, Guest, RoomContract, EmailLog,
+from models import (db, User, AuditLog, Todo, Guest, RoomContract, EmailLog,
                      PartiviaQuote, PartiviaRoomRate,
                      PartiviaMeetingRoom, PartiviaFBOption,
                      BudgetOverride, PnrGroup,
@@ -529,6 +529,116 @@ def create_app():
                 if old != new:
                     changes[f] = {'old': old, 'new': new}
         return changes
+
+    # ── TO-DO LIST API ─────────────────────────────────────────────────────
+
+    @app.get('/api/todos/<section>')
+    def list_todos(section):
+        if section not in ('rooming', 'partivia', 'tour'):
+            return jsonify(ok=False, error='Sezione non valida'), 400
+        status_filter = request.args.get('status')
+        q = Todo.query.filter_by(section=section).order_by(
+            Todo.status.asc(), Todo.priority.desc(), Todo.due_date.asc().nullslast(), Todo.created_at.desc())
+        if status_filter:
+            q = q.filter_by(status=status_filter)
+        todos = q.all()
+        return jsonify(ok=True, todos=[{
+            'id': t.id, 'title': t.title, 'description': t.description or '',
+            'owner': t.owner or '', 'priority': t.priority or 'normal',
+            'status': t.status or 'todo',
+            'due_date': t.due_date.isoformat() if t.due_date else None,
+            'created_by': t.created_by or '',
+            'created_at': t.created_at.isoformat() if t.created_at else None,
+            'completed_at': t.completed_at.isoformat() if t.completed_at else None,
+        } for t in todos])
+
+    @app.post('/api/todos/<section>')
+    def create_todo(section):
+        if section not in ('rooming', 'partivia', 'tour'):
+            return jsonify(ok=False, error='Sezione non valida'), 400
+        data = request.get_json() or {}
+        title = (data.get('title') or '').strip()
+        if not title:
+            return jsonify(ok=False, error='Titolo obbligatorio'), 400
+        due = None
+        if data.get('due_date'):
+            try:
+                due = datetime.strptime(data['due_date'], '%Y-%m-%d').date()
+            except ValueError:
+                pass
+        t = Todo(
+            section=section, title=title,
+            description=(data.get('description') or '').strip(),
+            owner=(data.get('owner') or '').strip(),
+            priority=data.get('priority', 'normal'),
+            status='todo', due_date=due,
+            created_by=current_user.username if current_user.is_authenticated else '')
+        db.session.add(t)
+        db.session.commit()
+        log_audit(section, 'Todo', t.id, 'create',
+                  summary=f'To-Do: {t.title}')
+        return jsonify(ok=True, id=t.id)
+
+    @app.put('/api/todos/<int:todo_id>')
+    def update_todo(todo_id):
+        t = Todo.query.get_or_404(todo_id)
+        data = request.get_json() or {}
+        changes = {}
+        for f in ('title', 'description', 'owner', 'priority', 'status'):
+            if f in data and data[f] is not None:
+                old = getattr(t, f)
+                new = data[f].strip() if isinstance(data[f], str) else data[f]
+                if old != new:
+                    changes[f] = {'old': old, 'new': new}
+                    setattr(t, f, new)
+        if 'due_date' in data:
+            old_due = t.due_date.isoformat() if t.due_date else None
+            if data['due_date']:
+                try:
+                    t.due_date = datetime.strptime(data['due_date'], '%Y-%m-%d').date()
+                except ValueError:
+                    pass
+            else:
+                t.due_date = None
+            new_due = t.due_date.isoformat() if t.due_date else None
+            if old_due != new_due:
+                changes['due_date'] = {'old': old_due, 'new': new_due}
+        if t.status == 'done' and not t.completed_at:
+            t.completed_at = datetime.utcnow()
+        elif t.status != 'done':
+            t.completed_at = None
+        db.session.commit()
+        if changes:
+            log_audit(t.section, 'Todo', t.id, 'update', changes=changes,
+                      summary=f'To-Do aggiornato: {t.title}')
+        return jsonify(ok=True)
+
+    @app.delete('/api/todos/<int:todo_id>')
+    def delete_todo(todo_id):
+        t = Todo.query.get_or_404(todo_id)
+        title = t.title
+        section = t.section
+        db.session.delete(t)
+        db.session.commit()
+        log_audit(section, 'Todo', todo_id, 'delete',
+                  summary=f'To-Do eliminato: {title}')
+        return jsonify(ok=True)
+
+    @app.post('/api/todos/<int:todo_id>/toggle')
+    def toggle_todo(todo_id):
+        t = Todo.query.get_or_404(todo_id)
+        old_status = t.status
+        if t.status == 'done':
+            t.status = 'todo'
+            t.completed_at = None
+        else:
+            t.status = 'done'
+            t.completed_at = datetime.utcnow()
+        db.session.commit()
+        log_audit(t.section, 'Todo', t.id, 'update',
+                  changes={'status': {'old': old_status, 'new': t.status}},
+                  summary=f'To-Do {"completato" if t.status == "done" else "riaperto"}: {t.title}')
+        return jsonify(ok=True, status=t.status)
 
     # ── LANDING PAGE ────────────────────────────────────────────────────────
 

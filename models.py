@@ -61,6 +61,22 @@ class AuditLog(db.Model):
     ip_address   = db.Column(db.String(50))
 
 
+class Todo(db.Model):
+    __tablename__ = 'todos'
+
+    id           = db.Column(db.Integer, primary_key=True)
+    section      = db.Column(db.String(20), nullable=False, index=True)  # rooming, partivia, tour
+    title        = db.Column(db.String(300), nullable=False)
+    description  = db.Column(db.Text)
+    owner        = db.Column(db.String(100))
+    priority     = db.Column(db.String(20), default='normal')   # low, normal, high, urgent
+    status       = db.Column(db.String(20), default='todo')     # todo, in_progress, done
+    due_date     = db.Column(db.Date)
+    created_by   = db.Column(db.String(100))
+    created_at   = db.Column(db.DateTime, default=datetime.utcnow)
+    completed_at = db.Column(db.DateTime)
+
+
 # ── Rooming ───────────────────────────────────────────────────────────
 
 
