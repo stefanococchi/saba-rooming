@@ -4978,7 +4978,7 @@ Notes: {q.notes or 'N/A'}"""
                     added.append((*key, '', adata['room_code'], 'ADDED'))
 
             # Create sheet
-            safe_name = f"{hotel.night_label}_{hotel.hotel_name}"[:31]
+            safe_name = f"{hotel.night_label}_{hotel.hotel_name}".replace('*', '').replace('/', '-').replace('\\', '-').replace("'", '')[:31]
             ws = wb.create_sheet(title=safe_name)
 
             # Header info
