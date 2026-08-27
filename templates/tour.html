@@ -634,6 +634,13 @@ tr.cancelled td { opacity: .45; }
 
   <!-- ══ NIGHTS TAB ══ -->
   <div id="tab-nights" class="tab-panel">
+    {% if not client_view %}
+    <div style="margin-bottom:16px">
+      <a href="/api/tour/baseline-delta/export" style="display:inline-flex;align-items:center;gap:6px;padding:8px 16px;background:#1565c0;color:#fff;border-radius:8px;font-size:13px;font-weight:600;text-decoration:none">
+        <span class="material-icons-round" style="font-size:16px">download</span> Download Delta Report
+      </a>
+    </div>
+    {% endif %}
     {% set nights = {} %}
     {% for h in hotels %}
       {% if nights.update({h.night_label: (nights.get(h.night_label) or []) + [h]}) %}{% endif %}

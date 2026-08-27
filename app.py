@@ -4937,6 +4937,102 @@ Notes: {q.notes or 'N/A'}"""
                        added=sorted(added, key=lambda x: x['cognome']),
                        changed=sorted(changed, key=lambda x: x['cognome']))
 
+    @app.get('/api/tour/baseline-delta/export')
+    def tour_baseline_delta_export():
+        """Export all hotel deltas as multi-sheet XLSX."""
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, PatternFill, Alignment
+
+        wb = Workbook()
+        wb.remove(wb.active)
+
+        hotels = TourHotel.query.order_by(TourHotel.night_date, TourHotel.hotel_name).all()
+        today = datetime.utcnow().strftime('%d/%m/%Y')
+
+        for hotel in hotels:
+            baselines = TourRoomBaseline.query.filter_by(hotel_id=hotel.id).all()
+            assignments = TourRoomAssignment.query.filter_by(hotel_id=hotel.id).all()
+
+            baseline_map = {}
+            for b in baselines:
+                key = (b.cognome.upper().strip(), (b.nome or '').upper().strip())
+                baseline_map[key] = {'room_code': b.room_code, 'room_label': b.room_label, 'notes': b.notes}
+
+            actual_map = {}
+            for a in assignments:
+                g = TourGuest.query.get(a.guest_id)
+                if g and not g.deleted:
+                    key = (g.cognome.upper().strip(), g.nome.upper().strip())
+                    actual_map[key] = {'room_code': a.room_code}
+
+            removed, added, changed, unchanged = [], [], [], []
+            for key, bdata in baseline_map.items():
+                if key not in actual_map:
+                    removed.append((*key, bdata['room_code'], '', 'REMOVED'))
+                elif bdata['room_code'] != actual_map[key]['room_code']:
+                    changed.append((*key, bdata['room_code'], actual_map[key]['room_code'], 'CHANGED'))
+                else:
+                    unchanged.append((*key, bdata['room_code'], actual_map[key]['room_code'], 'OK'))
+            for key, adata in actual_map.items():
+                if key not in baseline_map:
+                    added.append((*key, '', adata['room_code'], 'ADDED'))
+
+            # Create sheet
+            safe_name = f"{hotel.night_label}_{hotel.hotel_name}"[:31]
+            ws = wb.create_sheet(title=safe_name)
+
+            # Header info
+            hfont = Font(bold=True, size=12)
+            ws.cell(row=1, column=1, value=f'{hotel.hotel_name} — {hotel.city}').font = hfont
+            ws.cell(row=2, column=1, value=f'Night: {hotel.night_label} | Delta report: {today}').font = Font(size=10, italic=True, color='666666')
+            ws.cell(row=2, column=5, value=f'Baseline: {len(baseline_map)} | Actual: {len(actual_map)} | Delta: {len(actual_map) - len(baseline_map)}')
+
+            # Column headers
+            col_headers = ['Surname', 'Name', 'Baseline Room', 'Actual Room', 'Status']
+            hdr_font = Font(bold=True, size=11)
+            hdr_fill = PatternFill(fgColor='E0E0E0', fill_type='solid')
+            for ci, h in enumerate(col_headers, 1):
+                c = ws.cell(row=4, column=ci, value=h)
+                c.font = hdr_font
+                c.fill = hdr_fill
+
+            # Fills
+            fill_removed = PatternFill(fgColor='FFCDD2', fill_type='solid')
+            fill_added = PatternFill(fgColor='C8E6C9', fill_type='solid')
+            fill_changed = PatternFill(fgColor='BBDEFB', fill_type='solid')
+
+            row = 5
+            all_rows = sorted(removed + added + changed + unchanged, key=lambda x: x[0])
+            for surname, name, base_room, act_room, status in all_rows:
+                for ci, val in enumerate([surname, name, base_room, act_room, status], 1):
+                    cell = ws.cell(row=row, column=ci, value=val)
+                    if status == 'REMOVED':
+                        cell.fill = fill_removed
+                    elif status == 'ADDED':
+                        cell.fill = fill_added
+                    elif status == 'CHANGED':
+                        cell.fill = fill_changed
+                row += 1
+
+            # Summary row
+            row += 1
+            ws.cell(row=row, column=1, value='Summary:').font = Font(bold=True)
+            ws.cell(row=row, column=2, value=f'{len(removed)} removed, {len(added)} added, {len(changed)} changed, {len(unchanged)} unchanged')
+
+            # Column widths
+            ws.column_dimensions['A'].width = 25
+            ws.column_dimensions['B'].width = 20
+            ws.column_dimensions['C'].width = 18
+            ws.column_dimensions['D'].width = 18
+            ws.column_dimensions['E'].width = 12
+
+        buf = BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+        return send_file(buf, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                         as_attachment=True,
+                         download_name=f'rooming_delta_{datetime.utcnow().strftime("%Y%m%d")}.xlsx')
+
     @app.post('/api/tour/sync-dinner-5sep')
     def sync_dinner_5sep():
         """Set dinner_5sep=True for all guests with a 5Sep room, False for others."""
