@@ -1117,7 +1117,16 @@ function switchTab(name) {
   if (name === 'email_history') { loadEmailHistory(); }
   if (name === 'storico') { loadAuditLog(); }
   if (name === 'todo') { loadTodos(); }
+  location.hash = name;
 }
+document.addEventListener('DOMContentLoaded', function() {
+  const hash = location.hash.replace('#', '');
+  if (hash && document.getElementById('tab-' + hash)) {
+    switchTab(hash);
+    const btn = document.querySelector(`.tab-btn[onclick*="'${hash}'"]`);
+    if (btn) { document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active')); btn.classList.add('active'); }
+  }
+});
 
 function initMap() {
   const map = L.map('hotelMap').setView([39.8, -1.5], 6);

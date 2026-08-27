@@ -975,14 +975,24 @@ tr.cancelled td { opacity: .45; }
 <script>
 // ── Tabs ──
 function switchTab(name) {
-  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab-panel').forEach(p => { p.classList.remove('active'); p.style.display = 'none'; });
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
   const panel = document.getElementById('tab-' + name);
   if (panel) { panel.classList.add('active'); panel.style.display = ''; }
-  event.target.closest('.tab-btn').classList.add('active');
+  if (event && event.target) event.target.closest('.tab-btn').classList.add('active');
+  location.hash = name;
   if (name === 'storico') loadAuditLog();
   if (name === 'todo') loadTodos();
 }
+// Restore tab from URL hash on load
+document.addEventListener('DOMContentLoaded', function() {
+  const hash = location.hash.replace('#', '');
+  if (hash && document.getElementById('tab-' + hash)) {
+    switchTab(hash);
+    const btn = document.querySelector(`.tab-btn[onclick*="'${hash}'"]`);
+    if (btn) { document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active')); btn.classList.add('active'); }
+  }
+});
 
 // ── Expand rows ──
 function toggleExpand(id) {

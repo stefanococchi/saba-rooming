@@ -2482,9 +2482,14 @@ function switchTab(tab) {
     btn.style.color = '#fff';
     btn.classList.add('tab-btn-active');
   }
+  location.hash = tab;
   if (tab === 'storico') loadAuditLog();
   if (tab === 'todo') loadTodos();
 }
+document.addEventListener('DOMContentLoaded', function() {
+  const hash = location.hash.replace('#', '');
+  if (hash && document.getElementById('tab-' + hash)) switchTab(hash);
+});
 
 // ── Audit log (Storico) ───────────────────────────────────────────────
 let auditPage = 1;
