@@ -399,7 +399,7 @@ def create_app():
             log_audit('system', 'User', current_user.id, 'logout',
                       summary=f'Logout: {current_user.username}')
         logout_user()
-        return redirect(url_for('login'))
+        return redirect(url_for('login', mode='local'))
 
     # ── ADMIN: USER MANAGEMENT ─────────────────────────────────────────────
 
