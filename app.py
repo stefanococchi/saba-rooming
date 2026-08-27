@@ -54,8 +54,7 @@ def create_app():
     app.config['MS_REDIRECT_URI'] = os.environ.get(
         'MS_REDIRECT_URI',
         'http://localhost:5005/auth/callback' if not os.environ.get('RAILWAY_ENVIRONMENT')
-        else os.environ.get('RAILWAY_PUBLIC_DOMAIN', '') and
-             f"https://{os.environ.get('RAILWAY_PUBLIC_DOMAIN', '')}/auth/callback"
+        else 'https://web-production-394e6.up.railway.app/auth/callback'
     )
     app.config['MS_SCOPES'] = ['User.Read', 'offline_access']
 
