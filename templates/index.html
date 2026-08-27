@@ -694,6 +694,20 @@ textarea { resize: vertical; min-height: 120px; }
       </div>
     </div>
   </div>
+  <!-- Client Links Card -->
+  <div class="card" style="margin-bottom:16px">
+    <div class="card-header">
+      <span class="material-icons-round">link</span>
+      Link Client
+      <div style="flex:1"></div>
+      <button class="btn btn-primary btn-sm" onclick="generateClientLink()" style="font-size:12px;padding:4px 12px">
+        <span class="material-icons-round" style="font-size:14px">add</span> Genera
+      </button>
+    </div>
+    <div class="card-body" id="clientLinksBody" style="font-size:13px">
+      <p style="color:#888">Caricamento...</p>
+    </div>
+  </div>
   {% endif %}
 
   <!-- Main Table Card -->
@@ -795,23 +809,6 @@ textarea { resize: vertical; min-height: 120px; }
       </div>
     </div>
   </div>
-
-  {% if not client_view %}
-  <!-- Client Links Card -->
-  <div class="card" style="margin-top:16px">
-    <div class="card-header">
-      <span class="material-icons-round">link</span>
-      Link Client
-      <div style="flex:1"></div>
-      <button class="btn btn-primary btn-sm" onclick="generateClientLink()" style="font-size:12px;padding:4px 12px">
-        <span class="material-icons-round" style="font-size:14px">add</span> Genera
-      </button>
-    </div>
-    <div class="card-body" id="clientLinksBody" style="font-size:13px">
-      <p style="color:#888">Caricamento...</p>
-    </div>
-  </div>
-  {% endif %}
 
   </div><!-- /tab-ospiti -->
 
