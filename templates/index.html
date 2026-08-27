@@ -519,7 +519,7 @@ textarea { resize: vertical; min-height: 120px; }
 <!-- Top Bar -->
 <div class="topbar">
   {% if client_view %}
-  <img src="/static/img/logo_saba.png" alt="Saba" style="height:32px;margin-right:8px">
+  <img src="/static/img/logo_saba.png" alt="Saba" style="height:48px;margin-right:8px">
   {% else %}
   <a href="/" style="color:rgba(255,255,255,.8);text-decoration:none;display:flex;align-items:center" title="Torna al portale">
     <span class="material-icons-round">arrow_back</span>
@@ -2772,5 +2772,8 @@ function loadTodos() {
   });
 }
 </script>
+{% if client_view %}
+<div style="text-align:center;padding:24px 0 12px;font-size:11px;color:#bbb">powered by SABAE20 Srl</div>
+{% endif %}
 </body>
 </html>
