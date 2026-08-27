@@ -10,6 +10,26 @@ import sys
 import re
 import openpyxl
 
+# Normalize room names to DB codes
+ROOM_NAME_TO_CODE = {
+    # Paolo VI
+    'DLX': 'KINGP', 'BAL': 'PAN', 'MON': 'MONO', 'APP': 'FLAT', 'GSGL': 'GS',
+    # Carlton
+    'TWIN ROOM': 'TWIN', 'DOUBLE ROOM': 'DBL', 'TO BE CONFIRMED': 'TBC',
+    # Casa d'Este
+    'ROYAL SUITE': 'ROYAL', 'JUNIOR SUITE': 'JS', 'DELUXE DOUBLE': 'DD',
+    'SUPERIOR DOUBLE': 'SD', 'FAMILY ROOM': 'FAM', 'PREMIUM DOUBLE': 'PD',
+    'CLASSIC DOUBLE': 'CD', 'CLASSIC SINGLE': 'CS',
+    # Europa
+    'SINGLE ROOM': 'SGL',
+    # Arthur / generic
+    'STANDARD ROOM': 'STD',
+    # Arthurino
+    'HOUSE ROOM': 'HOUSE',
+    # Maranello
+    'DELUXE': 'DLX',
+}
+
 FILE_PATTERNS = [
     (r'2 sett paolo vi', '2Sep', 'Paolo'),
     (r'5 ago paolo vi', '5Sep', 'Paolo'),
@@ -187,11 +207,13 @@ def main():
             # Clear existing baselines for this hotel
             TourRoomBaseline.query.filter_by(hotel_id=hotel.id).delete()
 
-            # Insert new baselines
+            # Insert new baselines (normalize room codes)
             for g in guests:
+                raw_code = g['room_code']
+                normalized = ROOM_NAME_TO_CODE.get(raw_code, raw_code)
                 db.session.add(TourRoomBaseline(
                     hotel_id=hotel.id,
-                    room_code=g['room_code'],
+                    room_code=normalized,
                     room_label=g['room_label'],
                     cognome=g['cognome'],
                     nome=g['nome'],
