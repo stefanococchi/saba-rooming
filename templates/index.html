@@ -518,9 +518,13 @@ textarea { resize: vertical; min-height: 120px; }
 
 <!-- Top Bar -->
 <div class="topbar">
+  {% if client_view %}
+  <img src="/static/img/logo_saba.png" alt="Saba" style="height:32px;margin-right:8px">
+  {% else %}
   <a href="/" style="color:rgba(255,255,255,.8);text-decoration:none;display:flex;align-items:center" title="Torna al portale">
     <span class="material-icons-round">arrow_back</span>
   </a>
+  {% endif %}
   <span class="material-icons-round">hotel</span>
   <h1>Equans 8–9 Ott 2026{% if client_view %} — Client View{% endif %}</h1>
   <div class="spacer"></div>

@@ -216,7 +216,9 @@ tr.cancelled td { opacity: .45; }
 <body>
 
 <div class="topbar">
-  {% if not client_view %}
+  {% if client_view %}
+  <img src="/static/img/logo_saba.png" alt="Saba" style="height:32px;margin-right:8px">
+  {% else %}
   <a href="/" class="home-link">
     <span class="material-icons-round">arrow_back</span> Portal
   </a>
