@@ -120,6 +120,9 @@ def create_app():
                 if 'sort_order' not in trc_cols:
                     conn.execute(text("ALTER TABLE tour_room_categories ADD COLUMN sort_order INTEGER DEFAULT 0"))
                     conn.commit()
+                if 'rooms_requested' not in trc_cols:
+                    conn.execute(text("ALTER TABLE tour_room_categories ADD COLUMN rooms_requested INTEGER DEFAULT 0"))
+                    conn.commit()
             except Exception:
                 pass  # table may not exist yet
             try:

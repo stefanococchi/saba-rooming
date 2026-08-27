@@ -304,6 +304,7 @@ class TourRoomCategory(db.Model):
     category_name   = db.Column(db.String(100), nullable=False)
     code            = db.Column(db.String(20), nullable=False)
     rooms_available = db.Column(db.Integer, default=0)
+    rooms_requested = db.Column(db.Integer, default=0)  # camere originali richieste all'hotel
     sort_order      = db.Column(db.Integer, default=0)  # lower = more important
 
 
