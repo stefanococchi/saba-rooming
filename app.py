@@ -4891,14 +4891,19 @@ Notes: {q.notes or 'N/A'}"""
         return jsonify({'ok': True})
 
     # Room name → code mapping for normalizing comparisons
+    # Long names from XLSX → DB codes (no ambiguity here)
     _ROOM_NORMALIZE = {
-        'DLX': 'KINGP', 'BAL': 'PAN', 'MON': 'MONO', 'APP': 'FLAT', 'GSGL': 'GS',
         'TWIN ROOM': 'TWIN', 'DOUBLE ROOM': 'DBL', 'TO BE CONFIRMED': 'TBC',
         'ROYAL SUITE': 'ROYAL', 'JUNIOR SUITE': 'JS', 'DELUXE DOUBLE': 'DD',
         'SUPERIOR DOUBLE': 'SD', 'FAMILY ROOM': 'FAM', 'PREMIUM DOUBLE': 'PD',
         'CLASSIC DOUBLE': 'CD', 'CLASSIC SINGLE': 'CS',
         'SINGLE ROOM': 'SGL', 'STANDARD ROOM': 'STD', 'HOUSE ROOM': 'HOUSE',
         'DELUXE': 'DLX',
+        # Paolo VI specific (XLSX code → DB code)
+        'BAL': 'PAN', 'MON': 'MONO', 'APP': 'FLAT', 'GSGL': 'GS',
+        # Note: DLX→KINGP only for Paolo VI, but DLX is also used as-is
+        # for Maranello. We skip DLX→KINGP here since it's ambiguous.
+        # The baseline import handles it per-hotel.
     }
 
     @app.get('/api/tour/baseline-delta/<int:hotel_id>')
