@@ -222,6 +222,12 @@ def create_app():
         if request.path == '/favicon.ico':
             return None
         if not current_user.is_authenticated:
+            # Allow read-only API calls from rooming client sessions
+            if session.get('rooming_client') and request.method == 'GET':
+                rooming_api = ('/api/guest', '/api/stanze', '/api/camere',
+                               '/api/voli', '/api/pnr', '/api/export')
+                if any(request.path.startswith(p) for p in rooming_api):
+                    return None
             if request.is_json or request.path.startswith('/api/'):
                 return jsonify(ok=False, error='Non autenticato'), 401
             return redirect(url_for('login'))
@@ -1109,6 +1115,7 @@ Rispondi SOLO con JSON valido (no markdown, no commenti):
     @app.route('/rooming/client/<token>')
     def rooming_client_token(token):
         RoomingClientToken.query.filter_by(token=token).first_or_404()
+        session['rooming_client'] = True
         return index(client_view=True)
 
     @app.route('/rooming')
