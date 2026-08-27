@@ -585,13 +585,34 @@ IMPORTANTE: Tutti i testi DEVONO essere in inglese."""
 
         else:  # tour
             tour_guests = TourGuest.query.filter_by(deleted=False).order_by(TourGuest.cognome).all()
+            # Build guest list with hotel assignments
+            hotels = TourHotel.query.order_by(TourHotel.night_date).all()
+            assignments = TourRoomAssignment.query.all()
+            # Map guest_id → list of hotel assignments
+            guest_hotels = {}
+            hotel_map = {h.id: h for h in hotels}
+            for a in assignments:
+                h = hotel_map.get(a.hotel_id)
+                if h:
+                    guest_hotels.setdefault(a.guest_id, []).append(
+                        f'{h.hotel_name} ({h.night_label}, room={a.room_code or "?"})')
             entity_list = '\n'.join(
-                f'  ID={g.id} {g.cognome} {g.nome} (payment={g.payment or ""}, car={g.car_number or ""})'
+                f'  ID={g.id} {g.cognome} {g.nome} (payment={g.payment or ""}, car={g.car_number or ""}, '
+                f'hotels=[{", ".join(guest_hotels.get(g.id, ["non assegnato"]))}])'
                 for g in tour_guests) or '  (nessun partecipante)'
-            section_desc = """SEZIONE: TOUR (Liqui Moly Nexus Auto Tour, 1-5 Settembre 2026) — Tour itinerante multi-città
+            # Hotel list
+            hotel_list = '\n'.join(
+                f'  {h.hotel_name} ({h.city}, notte {h.night_label}, {h.rooms_blocked} camere)'
+                for h in hotels) or '  (nessun hotel)'
+            section_desc = f"""SEZIONE: TOUR (Liqui Moly Nexus Auto Tour, 1-5 Settembre 2026) — Tour itinerante multi-città
 Entità: TourGuest
 Campi stringa: cognome (MAIUSCOLO), nome, email, telefono, nazionalita, titolo (Mr/Mrs), arrivo_mezzo (Airplane/Car/Train/Other), arrivo_data, room_with, car_number, car_with, vip (VIP/ULTRA VIP), client_room_note, payment (PAID/TO COLLECT/NO NEED/PAY ON SITE), cloth_size (S-XXXL), diet, notes, email_requests
-Campi booleani: dinner, sept2"""
+Campi booleani: dinner, sept2
+
+Hotel del tour:
+{hotel_list}
+
+Ogni partecipante ha le assegnazioni hotel indicate tra parentesi quadre."""
 
         system_prompt = f"""Sei un assistente per la gestione eventi Saba. Analizzi richieste in linguaggio naturale e determini le operazioni CRUD da eseguire.
 Lavori ESCLUSIVAMENTE sulla sezione indicata. Non mischiare dati di altre sezioni.
