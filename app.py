@@ -4893,6 +4893,11 @@ Notes: {q.notes or 'N/A'}"""
     @app.get('/api/tour/baseline-delta/<int:hotel_id>')
     def tour_baseline_delta(hotel_id):
         """Compare baseline (final request) vs actual assignments for a hotel."""
+        import re as _re
+        def _base_code(code):
+            """Strip numeric suffix: PAN-1→PAN, XL-2→XL, DBL-T4→DBL"""
+            return _re.sub(r'-[A-Z0-9]+$', '', (code or '').upper().strip())
+
         hotel = TourHotel.query.get_or_404(hotel_id)
         baselines = TourRoomBaseline.query.filter_by(hotel_id=hotel_id).all()
         assignments = TourRoomAssignment.query.filter_by(hotel_id=hotel_id).all()
@@ -4910,10 +4915,10 @@ Notes: {q.notes or 'N/A'}"""
                 key = (g.cognome.upper().strip(), g.nome.upper().strip())
                 actual_map[key] = {'room_code': a.room_code, 'guest_id': g.id}
 
-        # Compute deltas
-        removed = []  # in baseline but not in actual
-        added = []    # in actual but not in baseline
-        changed = []  # in both but different room
+        # Compute deltas (compare base codes, ignoring numeric suffixes)
+        removed = []
+        added = []
+        changed = []
 
         for key, bdata in baseline_map.items():
             if key not in actual_map:
@@ -4921,7 +4926,7 @@ Notes: {q.notes or 'N/A'}"""
                                'baseline_room': bdata['room_code'], 'notes': bdata.get('notes', '')})
             else:
                 adata = actual_map[key]
-                if bdata['room_code'] != adata['room_code']:
+                if _base_code(bdata['room_code']) != _base_code(adata['room_code']):
                     changed.append({'cognome': key[0], 'nome': key[1],
                                    'baseline_room': bdata['room_code'],
                                    'actual_room': adata['room_code']})
@@ -4948,6 +4953,9 @@ Notes: {q.notes or 'N/A'}"""
 
         hotels = TourHotel.query.order_by(TourHotel.night_date, TourHotel.hotel_name).all()
         today = datetime.utcnow().strftime('%d/%m/%Y')
+        import re as _re
+        def _base_code(code):
+            return _re.sub(r'-[A-Z0-9]+$', '', (code or '').upper().strip())
 
         for hotel in hotels:
             baselines = TourRoomBaseline.query.filter_by(hotel_id=hotel.id).all()
@@ -4969,7 +4977,7 @@ Notes: {q.notes or 'N/A'}"""
             for key, bdata in baseline_map.items():
                 if key not in actual_map:
                     removed.append((*key, bdata['room_code'], '', 'REMOVED'))
-                elif bdata['room_code'] != actual_map[key]['room_code']:
+                elif _base_code(bdata['room_code']) != _base_code(actual_map[key]['room_code']):
                     changed.append((*key, bdata['room_code'], actual_map[key]['room_code'], 'CHANGED'))
                 else:
                     unchanged.append((*key, bdata['room_code'], actual_map[key]['room_code'], 'OK'))
