@@ -1,15 +1,21 @@
 import os
 import json
+import urllib.parse
 from datetime import datetime
 from io import BytesIO
+from functools import wraps
 
+import requests as http_requests
+from itsdangerous import URLSafeTimedSerializer
 from flask import (Flask, render_template, request, jsonify,
-                   send_file, redirect, url_for)
+                   send_file, redirect, url_for, flash, session, abort)
+from flask_login import (LoginManager, login_user, logout_user,
+                         login_required, current_user)
 from dotenv import load_dotenv
 
 load_dotenv()
 
-from models import (db, Guest, RoomContract, EmailLog,
+from models import (db, User, AuditLog, Guest, RoomContract, EmailLog,
                      PartiviaQuote, PartiviaRoomRate,
                      PartiviaMeetingRoom, PartiviaFBOption,
                      BudgetOverride, PnrGroup,
@@ -37,8 +43,31 @@ def create_app():
     ).replace('postgres://', 'postgresql://', 1)
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024
+    app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+    app.config['SESSION_COOKIE_SECURE'] = bool(os.environ.get('RAILWAY_ENVIRONMENT'))
+
+    # ── Microsoft Entra ID (SSO) ───────────────────────────────────────────
+    app.config['MS_CLIENT_ID'] = os.environ.get('MS_CLIENT_ID', '')
+    app.config['MS_CLIENT_SECRET'] = os.environ.get('MS_CLIENT_SECRET', '')
+    app.config['MS_TENANT_ID'] = os.environ.get('MS_TENANT_ID', '')
+    app.config['MS_AUTHORITY'] = f"https://login.microsoftonline.com/{app.config['MS_TENANT_ID']}"
+    app.config['MS_REDIRECT_URI'] = os.environ.get(
+        'MS_REDIRECT_URI',
+        'http://localhost:5005/auth/callback' if not os.environ.get('RAILWAY_ENVIRONMENT')
+        else os.environ.get('RAILWAY_PUBLIC_DOMAIN', '') and
+             f"https://{os.environ.get('RAILWAY_PUBLIC_DOMAIN', '')}/auth/callback"
+    )
+    app.config['MS_SCOPES'] = ['User.Read', 'offline_access']
 
     db.init_app(app)
+
+    login_manager = LoginManager()
+    login_manager.init_app(app)
+    login_manager.login_view = 'login'
+
+    @login_manager.user_loader
+    def load_user(user_id):
+        return db.session.get(User, int(user_id))
 
     import re as _re
     def _parse_eur(s):
@@ -103,6 +132,31 @@ def create_app():
             except Exception:
                 pass
 
+            # Microsoft SSO columns on users
+            try:
+                u_cols = [c['name'] for c in inspect(db.engine).get_columns('users')]
+                for col, col_type in (('microsoft_id', 'VARCHAR(100)'),
+                                       ('ms_access_token', 'TEXT'),
+                                       ('ms_refresh_token', 'TEXT')):
+                    if col not in u_cols:
+                        conn.execute(text(f"ALTER TABLE users ADD COLUMN {col} {col_type}"))
+                        conn.commit()
+            except Exception:
+                pass
+
+            # Soft-delete columns
+            for _tbl in ('guests', 'partivia_quotes', 'tour_guests'):
+                try:
+                    _cols = [c['name'] for c in inspect(db.engine).get_columns(_tbl)]
+                    if 'deleted' not in _cols:
+                        conn.execute(text(f"ALTER TABLE {_tbl} ADD COLUMN deleted BOOLEAN DEFAULT FALSE"))
+                        conn.commit()
+                    if 'deleted_at' not in _cols:
+                        conn.execute(text(f"ALTER TABLE {_tbl} ADD COLUMN deleted_at TIMESTAMP"))
+                        conn.commit()
+                except Exception:
+                    pass
+
         # Migrate Italian statuses to English (one-time)
         _status_map = {
             'da_valutare': 'pending_review',
@@ -135,6 +189,348 @@ def create_app():
                         tariffa_netta=netta, tariffa_lorda=lorda, notte=notte))
             db.session.commit()
 
+        # Seed default superuser
+        if User.query.count() == 0:
+            _admin = User(username='stefano', email='stefano.cocchi@sabae20.it',
+                          is_superuser=True, role='superuser',
+                          must_change_password=True)
+            _admin.set_password('changeme')
+            _admin.must_change_password = True
+            db.session.add(_admin)
+            db.session.commit()
+
+    # ── AUTH HELPERS ───────────────────────────────────────────────────────
+
+    def superuser_required(f):
+        @wraps(f)
+        def decorated(*args, **kwargs):
+            if not current_user.is_authenticated or not current_user.is_superuser:
+                if request.is_json or request.path.startswith('/api/'):
+                    return jsonify(ok=False, error='Accesso riservato'), 403
+                flash('Accesso riservato al superuser.', 'error')
+                return redirect(url_for('landing'))
+            return f(*args, **kwargs)
+        return decorated
+
+    @app.before_request
+    def require_login():
+        open_prefixes = ('/login', '/set-password', '/static',
+                         '/auth/microsoft', '/auth/callback',
+                         '/tour/client/', '/tour/docs/')
+        if any(request.path.startswith(p) for p in open_prefixes):
+            return None
+        if request.path == '/favicon.ico':
+            return None
+        if not current_user.is_authenticated:
+            if request.is_json or request.path.startswith('/api/'):
+                return jsonify(ok=False, error='Non autenticato'), 401
+            return redirect(url_for('login'))
+        if current_user.must_change_password and request.path != '/set-password':
+            return redirect(url_for('set_password'))
+
+    # ── AUTH ROUTES ────────────────────────────────────────────────────────
+
+    def _get_signer():
+        return URLSafeTimedSerializer(app.config['SECRET_KEY'])
+
+    @app.route('/auth/microsoft')
+    def microsoft_login():
+        """Avvia il flusso OAuth2 con Microsoft Entra ID."""
+        if not app.config.get('MS_CLIENT_ID'):
+            flash('SSO Microsoft non configurato.', 'error')
+            return redirect(url_for('login', mode='local'))
+        next_url = request.args.get('next', '')
+        state = _get_signer().dumps({'next': next_url})
+        params = {
+            'client_id': app.config['MS_CLIENT_ID'],
+            'response_type': 'code',
+            'redirect_uri': app.config['MS_REDIRECT_URI'],
+            'scope': 'openid profile email ' + ' '.join(app.config['MS_SCOPES']),
+            'state': state,
+            'response_mode': 'query',
+        }
+        auth_url = f"{app.config['MS_AUTHORITY']}/oauth2/v2.0/authorize?{urllib.parse.urlencode(params)}"
+        return redirect(auth_url)
+
+    @app.route('/auth/callback')
+    def microsoft_callback():
+        """Callback OAuth2 da Microsoft."""
+        state = request.args.get('state', '')
+        try:
+            state_data = _get_signer().loads(state, max_age=600)
+            next_url = state_data.get('next', '')
+        except Exception:
+            flash('Sessione di autenticazione scaduta, riprova.', 'error')
+            return redirect(url_for('login', mode='local'))
+
+        code = request.args.get('code')
+        if not code:
+            error = request.args.get('error_description',
+                                     request.args.get('error', 'Errore sconosciuto'))
+            flash(f'Errore Microsoft: {error}', 'error')
+            return redirect(url_for('login', mode='local'))
+
+        # Scambia code per token
+        token_url = f"{app.config['MS_AUTHORITY']}/oauth2/v2.0/token"
+        token_data = {
+            'client_id': app.config['MS_CLIENT_ID'],
+            'client_secret': app.config['MS_CLIENT_SECRET'],
+            'code': code,
+            'redirect_uri': app.config['MS_REDIRECT_URI'],
+            'grant_type': 'authorization_code',
+            'scope': 'openid profile email ' + ' '.join(app.config['MS_SCOPES']),
+        }
+        r = http_requests.post(token_url, data=token_data, timeout=15)
+        if r.status_code != 200:
+            app.logger.error('SSO token exchange failed: status=%s', r.status_code)
+            flash('Errore nello scambio del token con Microsoft.', 'error')
+            return redirect(url_for('login', mode='local'))
+
+        tokens = r.json()
+        access_token = tokens.get('access_token')
+
+        # Profilo utente da Graph API
+        headers = {'Authorization': f'Bearer {access_token}'}
+        me = http_requests.get('https://graph.microsoft.com/v1.0/me',
+                               headers=headers, timeout=10).json()
+        ms_id = me.get('id')
+        ms_email = (me.get('mail') or me.get('userPrincipalName') or '').lower()
+
+        if not ms_id or not ms_email:
+            flash('Impossibile recuperare dati utente da Microsoft.', 'error')
+            return redirect(url_for('login', mode='local'))
+
+        # Cerca utente per microsoft_id oppure email
+        user = User.query.filter_by(microsoft_id=ms_id, is_active=True).first()
+        if not user:
+            user = User.query.filter_by(email=ms_email, is_active=True).first()
+            if user:
+                user.microsoft_id = ms_id
+                db.session.commit()
+
+        if not user:
+            app.logger.warning('SSO: nessun utente trovato per ms_id=%s email=%s', ms_id, ms_email)
+            flash(f'Account Microsoft ({ms_email}) non autorizzato. '
+                  'Chiedi a un amministratore di creare il tuo utente.', 'error')
+            return redirect(url_for('login', mode='local'))
+
+        # Salva token
+        user.ms_access_token = access_token
+        if tokens.get('refresh_token'):
+            user.ms_refresh_token = tokens['refresh_token']
+        db.session.commit()
+
+        login_user(user)
+        log_audit('system', 'User', user.id, 'login',
+                  summary=f'Login SSO Microsoft: {ms_email}')
+
+        if user.must_change_password:
+            # SSO non richiede cambio password locale
+            user.must_change_password = False
+            db.session.commit()
+
+        return redirect(next_url or url_for('landing'))
+
+    @app.route('/login', methods=['GET', 'POST'])
+    def login():
+        if current_user.is_authenticated:
+            return redirect(url_for('landing'))
+
+        sso_enabled = bool(app.config.get('MS_CLIENT_ID'))
+
+        # GET senza mode=local e SSO attivo → redirect automatico a Microsoft
+        if request.method == 'GET' and request.args.get('mode') != 'local' and sso_enabled:
+            return redirect(url_for('microsoft_login',
+                                    next=request.args.get('next', '')))
+
+        if request.method == 'POST':
+            username = request.form.get('username', '').strip()
+            password = request.form.get('password', '')
+            user = User.query.filter_by(username=username).first()
+            if user and not user.is_active:
+                flash('Account disattivato. Contatta un amministratore.', 'error')
+                return render_template('login.html', sso_enabled=sso_enabled)
+            if user and not user.password_hash:
+                flash('Password resettata. Contatta un amministratore.', 'error')
+                return render_template('login.html', sso_enabled=sso_enabled)
+            if user and user.check_password(password):
+                user.reset_failed_logins()
+                db.session.commit()
+                login_user(user)
+                log_audit('system', 'User', user.id, 'login',
+                          summary=f'Login: {user.username}')
+                if user.must_change_password:
+                    return redirect(url_for('set_password'))
+                return redirect(url_for('landing'))
+            if user:
+                user.register_failed_login()
+                db.session.commit()
+                if not user.password_hash:
+                    flash('Troppi tentativi falliti. Password resettata — contatta un amministratore.', 'error')
+                else:
+                    flash('Password errata.', 'error')
+            else:
+                flash('Utente non trovato.', 'error')
+            return render_template('login.html', sso_enabled=sso_enabled)
+        return render_template('login.html', sso_enabled=sso_enabled)
+
+    @app.route('/set-password', methods=['GET', 'POST'])
+    def set_password():
+        if not current_user.is_authenticated:
+            return redirect(url_for('login'))
+        if request.method == 'POST':
+            pw = request.form.get('password', '')
+            pw2 = request.form.get('password2', '')
+            if len(pw) < 6:
+                flash('La password deve avere almeno 6 caratteri.', 'error')
+                return render_template('set_password.html')
+            if pw != pw2:
+                flash('Le password non corrispondono.', 'error')
+                return render_template('set_password.html')
+            current_user.set_password(pw)
+            current_user.must_change_password = False
+            db.session.commit()
+            flash('Password impostata con successo.', 'success')
+            return redirect(url_for('landing'))
+        return render_template('set_password.html')
+
+    @app.route('/logout')
+    def logout():
+        if current_user.is_authenticated:
+            log_audit('system', 'User', current_user.id, 'logout',
+                      summary=f'Logout: {current_user.username}')
+        logout_user()
+        return redirect(url_for('login'))
+
+    # ── ADMIN: USER MANAGEMENT ─────────────────────────────────────────────
+
+    @app.route('/admin/users')
+    @superuser_required
+    def admin_users():
+        users = User.query.order_by(User.created_at.desc()).all()
+        return render_template('admin_users.html', users=users)
+
+    @app.route('/admin/users', methods=['POST'])
+    @superuser_required
+    def admin_create_user():
+        username = request.form.get('username', '').strip()
+        email = request.form.get('email', '').strip()
+        role = request.form.get('role', 'user')
+        if not username or not email:
+            flash('Username e email sono obbligatori.', 'error')
+            return redirect(url_for('admin_users'))
+        if User.query.filter((User.username == username) | (User.email == email)).first():
+            flash('Username o email già esistente.', 'error')
+            return redirect(url_for('admin_users'))
+        u = User(username=username, email=email, role=role,
+                 is_superuser=(role == 'superuser'),
+                 must_change_password=True)
+        u.set_password('changeme')
+        u.must_change_password = True
+        db.session.add(u)
+        db.session.commit()
+        log_audit('system', 'User', u.id, 'create',
+                  summary=f'Creato utente {u.username} ({u.role})')
+        flash(f'Utente {username} creato. Password temporanea: changeme', 'success')
+        return redirect(url_for('admin_users'))
+
+    @app.post('/admin/users/<int:uid>/toggle-role')
+    @superuser_required
+    def admin_toggle_role(uid):
+        u = User.query.get_or_404(uid)
+        if u.id == current_user.id:
+            flash('Non puoi cambiare il tuo stesso ruolo.', 'error')
+            return redirect(url_for('admin_users'))
+        cycle = {'user': 'superuser', 'superuser': 'client', 'client': 'user'}
+        old_role = u.role or 'user'
+        u.role = cycle.get(old_role, 'user')
+        u.is_superuser = (u.role == 'superuser')
+        db.session.commit()
+        log_audit('system', 'User', u.id, 'update',
+                  changes={'role': {'old': old_role, 'new': u.role}},
+                  summary=f'Ruolo {u.username}: {old_role} → {u.role}')
+        flash(f'Ruolo di {u.username} cambiato a {u.role}.', 'success')
+        return redirect(url_for('admin_users'))
+
+    @app.post('/admin/users/<int:uid>/reset-password')
+    @superuser_required
+    def admin_reset_password(uid):
+        u = User.query.get_or_404(uid)
+        u.set_password('changeme')
+        u.must_change_password = True
+        u.failed_login_attempts = 0
+        db.session.commit()
+        log_audit('system', 'User', u.id, 'update',
+                  summary=f'Password resettata per {u.username}')
+        flash(f'Password di {u.username} resettata a "changeme".', 'success')
+        return redirect(url_for('admin_users'))
+
+    @app.post('/admin/users/<int:uid>/toggle-active')
+    @superuser_required
+    def admin_toggle_active(uid):
+        u = User.query.get_or_404(uid)
+        if u.id == current_user.id:
+            flash('Non puoi disattivare te stesso.', 'error')
+            return redirect(url_for('admin_users'))
+        u.is_active = not u.is_active
+        db.session.commit()
+        status = 'attivato' if u.is_active else 'disattivato'
+        log_audit('system', 'User', u.id, 'update',
+                  changes={'is_active': {'old': not u.is_active, 'new': u.is_active}},
+                  summary=f'Utente {u.username} {status}')
+        flash(f'Utente {u.username} {status}.', 'success')
+        return redirect(url_for('admin_users'))
+
+    # ── AUDIT HELPERS ──────────────────────────────────────────────────────
+
+    def log_audit(section, entity_type, entity_id, action, changes=None, summary=None):
+        try:
+            ip = request.headers.get('X-Forwarded-For', request.remote_addr or '')
+            entry = AuditLog(
+                timestamp=datetime.utcnow(),
+                user_id=current_user.id if current_user.is_authenticated else None,
+                user_email=(current_user.email if current_user.is_authenticated
+                            else 'system'),
+                section=section,
+                entity_type=entity_type,
+                entity_id=entity_id,
+                action=action,
+                changes=changes,
+                summary=summary or f'{action} {entity_type} #{entity_id}',
+                ip_address=str(ip)[:45]
+            )
+            db.session.add(entry)
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+
+    def _snapshot(obj, fields):
+        """Dict of current field values for audit logging."""
+        result = {}
+        for f in fields:
+            v = getattr(obj, f, None)
+            if isinstance(v, datetime):
+                v = v.isoformat()
+            result[f] = v
+        return result
+
+    def _diff(obj, data, str_fields, bool_fields=()):
+        """Return {field: {old, new}} for fields that actually changed."""
+        changes = {}
+        for f in str_fields:
+            if f in data:
+                old = getattr(obj, f, None) or ''
+                new = data[f] if data[f] is not None else ''
+                if str(old) != str(new):
+                    changes[f] = {'old': old, 'new': new}
+        for f in bool_fields:
+            if f in data:
+                old = getattr(obj, f, None) or False
+                new = _parse_bool(data[f])
+                if old != new:
+                    changes[f] = {'old': old, 'new': new}
+        return changes
+
     # ── LANDING PAGE ────────────────────────────────────────────────────────
 
     @app.route('/')
@@ -149,7 +545,7 @@ def create_app():
 
     @app.route('/rooming')
     def index(client_view=False):
-        guests = Guest.query.order_by(Guest.cognome, Guest.nome).all()
+        guests = Guest.query.filter_by(deleted=False).order_by(Guest.cognome, Guest.nome).all()
         return render_template('index.html', guests=guests, client_view=client_view)
 
     # ── CRUD API ─────────────────────────────────────────────────────────────
@@ -183,12 +579,16 @@ def create_app():
             return jsonify(ok=False, error='Cognome obbligatorio'), 400
         db.session.add(g)
         db.session.commit()
+        log_audit('rooming', 'Guest', g.id, 'create',
+                  changes=_snapshot(g, GUEST_STR_FIELDS),
+                  summary=f'Aggiunto {g.nome_completo}')
         return jsonify(ok=True, id=g.id)
 
     @app.put('/api/guest/<int:gid>')
     def update_guest(gid):
         g = Guest.query.get_or_404(gid)
         data = request.get_json()
+        changes = _diff(g, data, GUEST_STR_FIELDS, GUEST_BOOL_FIELDS)
         for field in GUEST_STR_FIELDS:
             if field in data:
                 setattr(g, field, data[field].strip() if data[field] else None)
@@ -197,13 +597,21 @@ def create_app():
                 setattr(g, field, _parse_bool(data[field]))
         g.updated_at = datetime.utcnow()
         db.session.commit()
+        if changes:
+            log_audit('rooming', 'Guest', g.id, 'update',
+                      changes=changes,
+                      summary=f'Modificato {g.nome_completo}')
         return jsonify(ok=True)
 
     @app.delete('/api/guest/<int:gid>')
     def delete_guest(gid):
         g = Guest.query.get_or_404(gid)
-        db.session.delete(g)
+        g.deleted = True
+        g.deleted_at = datetime.utcnow()
         db.session.commit()
+        log_audit('rooming', 'Guest', g.id, 'delete',
+                  changes=_snapshot(g, GUEST_STR_FIELDS),
+                  summary=f'Eliminato {g.nome_completo}')
         return jsonify(ok=True)
 
     # ── IMPORT XLSX (LLM-guided) ─────────────────────────────────────────────
@@ -493,6 +901,9 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
                 added += 1
 
             db.session.commit()
+            log_audit('rooming', 'Guest', None, 'import',
+                      changes={'count': added},
+                      summary=f'Importati {added} ospiti da XLSX')
             cost = (total_inp * 0.80 + total_out * 4.00) / 1_000_000
 
             try:
@@ -579,6 +990,9 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
             added += 1
 
         db.session.commit()
+        log_audit('rooming', 'Guest', None, 'import',
+                  changes={'count': added},
+                  summary=f'Importati {added} ospiti da XLSX')
 
         try:
             os.remove(tmp_path)
@@ -596,7 +1010,7 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
             return jsonify(ok=False, error='Giorno non valido'), 400
 
         campo = f'presenza_{giorno}'
-        presenti = Guest.query.filter(getattr(Guest, campo) == True).order_by(
+        presenti = Guest.query.filter(Guest.deleted==False, getattr(Guest, campo) == True).order_by(
             Guest.cognome, Guest.nome).all()
 
         # Raggruppa per stanze: chi condivide conta come 1 stanza
@@ -660,7 +1074,7 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
             return jsonify(ok=False, error='Tipo non valido (andata/ritorno)'), 400
 
         campo = Guest.volo_arrivo if tipo == 'andata' else Guest.volo_partenza
-        guests = Guest.query.filter(campo.isnot(None), campo != '').order_by(
+        guests = Guest.query.filter(Guest.deleted==False, campo.isnot(None), campo != '').order_by(
             campo, Guest.cognome, Guest.nome).all()
 
         # Raggruppa per codice volo
@@ -688,7 +1102,7 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
                 'totale': len(gruppi[volo]),
             })
 
-        senza_volo = Guest.query.filter(
+        senza_volo = Guest.query.filter(Guest.deleted==False).filter(
             (campo.is_(None)) | (campo == '')
         ).count()
 
@@ -708,7 +1122,7 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
         """Lista PNR groups con ospiti assegnati e statistiche."""
         import re as _re
         groups = PnrGroup.query.order_by(PnrGroup.volo_andata, PnrGroup.pnr_code).all()
-        senza_pnr = Guest.query.filter(Guest.pnr_group_id.is_(None)).count()
+        senza_pnr = Guest.query.filter(Guest.deleted==False, Guest.pnr_group_id.is_(None)).count()
 
         result = []
         totale_assegnati = 0
@@ -859,6 +1273,9 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
                 results.append({'pnr_code': pnr_code, 'action': 'added', 'id': pg.id})
 
         db.session.commit()
+        log_audit('rooming', 'PnrGroup', None, 'import',
+                  changes={'count': len(results)},
+                  summary=f'Importati {len(results)} gruppi PNR')
         return jsonify(ok=True, results=results)
 
     @app.post('/api/pnr/<int:group_id>/assign')
@@ -884,10 +1301,16 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
                     guest.aeroporto_arrivo = dest_r
                 assigned += 1
 
-        current_count = Guest.query.filter_by(pnr_group_id=group_id).count()
+        current_count = Guest.query.filter_by(deleted=False, pnr_group_id=group_id).count()
         overbooking = current_count > pg.seats
 
         db.session.commit()
+        for gid in guest_ids:
+            guest = Guest.query.get(gid)
+            if guest:
+                log_audit('rooming', 'Guest', guest.id, 'assign',
+                          changes={'pnr_group_id': {'old': None, 'new': group_id}},
+                          summary=f'{guest.nome_completo} assegnato a PNR {pg.pnr_code}')
         return jsonify(ok=True, assigned=assigned, total=current_count,
                        seats=pg.seats, overbooking=overbooking)
 
@@ -897,19 +1320,25 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
         data = request.get_json()
         guest_ids = data.get('guest_ids', [])
 
+        unassigned_guests = []
         for gid in guest_ids:
             guest = Guest.query.get(gid)
             if guest and guest.pnr_group_id == group_id:
+                unassigned_guests.append(guest)
                 guest.pnr_group_id = None
 
         db.session.commit()
+        for guest in unassigned_guests:
+            log_audit('rooming', 'Guest', guest.id, 'unassign',
+                      changes={'pnr_group_id': {'old': group_id, 'new': None}},
+                      summary=f'{guest.nome_completo} rimosso da PNR')
         return jsonify(ok=True)
 
     @app.delete('/api/pnr/<int:group_id>')
     def pnr_delete(group_id):
         """Elimina un PNR group (scollega ospiti)."""
         pg = PnrGroup.query.get_or_404(group_id)
-        Guest.query.filter_by(pnr_group_id=group_id).update({'pnr_group_id': None})
+        Guest.query.filter_by(deleted=False, pnr_group_id=group_id).update({'pnr_group_id': None})
         db.session.delete(pg)
         db.session.commit()
         return jsonify(ok=True)
@@ -944,11 +1373,11 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
         # Conta posti già occupati per PNR
         seats_used = {}
         for pg in groups:
-            seats_used[pg.id] = Guest.query.filter_by(pnr_group_id=pg.id).count()
+            seats_used[pg.id] = Guest.query.filter_by(deleted=False, pnr_group_id=pg.id).count()
 
         # Ospiti non ancora assegnati
         unassigned = Guest.query.filter(
-            Guest.pnr_group_id.is_(None)
+            Guest.deleted==False, Guest.pnr_group_id.is_(None)
         ).order_by(Guest.cognome, Guest.nome).all()
 
         matched = []       # match esatto andata+ritorno
@@ -1065,6 +1494,9 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
                             guest.aeroporto_arrivo = dest
                     applied += 1
             db.session.commit()
+            log_audit('rooming', 'PnrGroup', None, 'assign',
+                      changes={'count': applied},
+                      summary=f'Auto-assegnazione PNR: {applied} ospiti')
 
         # Riepilogo posti per PNR
         pnr_summary = []
@@ -1138,7 +1570,7 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
     def pnr_unassigned():
         """Lista ospiti non assegnati a nessun PNR."""
         guests = Guest.query.filter(
-            Guest.pnr_group_id.is_(None)
+            Guest.deleted==False, Guest.pnr_group_id.is_(None)
         ).order_by(Guest.cognome, Guest.nome).all()
         return jsonify(ok=True, guests=[{
             'id': g.id, 'cognome': g.cognome, 'nome': g.nome,
@@ -1158,7 +1590,7 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
             RoomContract.tariffa_netta).all()
 
         campo = f'presenza_{notte}'
-        presenti = Guest.query.filter(getattr(Guest, campo) == True).order_by(
+        presenti = Guest.query.filter(Guest.deleted==False, getattr(Guest, campo) == True).order_by(
             Guest.cognome, Guest.nome).all()
 
         # Calcola stanze necessarie (come endpoint stanze)
@@ -1236,6 +1668,7 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
             return jsonify(ok=False, error='guest_id e tipo_camera obbligatori'), 400
 
         g = Guest.query.get_or_404(guest_id)
+        old_room = g.camera_assegnata
         g.camera_assegnata = tipo_camera
         g.updated_at = datetime.utcnow()
 
@@ -1243,7 +1676,7 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
         assegnati = [g.id]
         if g.divide_stanza_con and g.divide_stanza_con.strip():
             compagni = [n.strip().lower() for n in g.divide_stanza_con.split(',')]
-            tutti = Guest.query.all()
+            tutti = Guest.query.filter_by(deleted=False).all()
             for p in tutti:
                 if p.id == g.id:
                     continue
@@ -1258,6 +1691,9 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
                         break
 
         db.session.commit()
+        log_audit('rooming', 'Guest', g.id, 'assign',
+                  changes={'camera_assegnata': {'old': old_room, 'new': tipo_camera}},
+                  summary=f'Camera assegnata a {g.nome_completo}')
         return jsonify(ok=True, assegnati=assegnati)
 
     @app.post('/api/camere/auto-assegna/<int:notte>')
@@ -1270,7 +1706,7 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
             RoomContract.tariffa_netta).all()
 
         campo = f'presenza_{notte}'
-        presenti = Guest.query.filter(getattr(Guest, campo) == True).order_by(
+        presenti = Guest.query.filter(Guest.deleted==False, getattr(Guest, campo) == True).order_by(
             Guest.cognome, Guest.nome).all()
 
         # Calcola stanze
@@ -1317,6 +1753,9 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
 
         overflow = len(stanze_da_assegnare)
         db.session.commit()
+        log_audit('rooming', 'RoomContract', None, 'assign',
+                  changes={'count': assegnate, 'notte': notte},
+                  summary=f'Auto-assegnazione camere notte {notte}: {assegnate} ospiti')
 
         return jsonify(ok=True, assegnate=assegnate, overflow=overflow,
                        messaggio=f'{assegnate} stanze assegnate' +
@@ -1329,11 +1768,14 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
             return jsonify(ok=False, error='Notte non valida'), 400
 
         campo = f'presenza_{notte}'
-        presenti = Guest.query.filter(getattr(Guest, campo) == True).all()
+        presenti = Guest.query.filter(Guest.deleted==False, getattr(Guest, campo) == True).all()
         for g in presenti:
             g.camera_assegnata = None
             g.updated_at = datetime.utcnow()
         db.session.commit()
+        log_audit('rooming', 'RoomContract', None, 'update',
+                  changes={'notte': notte},
+                  summary=f'Reset assegnazioni camere notte {notte}')
         return jsonify(ok=True)
 
     # ── EXPORT XLSX ──────────────────────────────────────────────────────────
@@ -1343,7 +1785,7 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
         from openpyxl import Workbook
         from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 
-        guests = Guest.query.order_by(Guest.cognome, Guest.nome).all()
+        guests = Guest.query.filter_by(deleted=False).order_by(Guest.cognome, Guest.nome).all()
         wb = Workbook()
 
         header_font = Font(bold=True, color='FFFFFF', size=11)
@@ -1421,7 +1863,7 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
             return jsonify(ok=False, error='Giorno non valido'), 400
 
         campo = f'presenza_{giorno}'
-        presenti = Guest.query.filter(getattr(Guest, campo) == True).order_by(
+        presenti = Guest.query.filter(Guest.deleted==False, getattr(Guest, campo) == True).order_by(
             Guest.cognome, Guest.nome).all()
 
         # Raggruppa per stanze
@@ -1491,7 +1933,7 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
             return jsonify(ok=False, error='Tipo non valido'), 400
 
         campo = Guest.volo_arrivo if tipo == 'andata' else Guest.volo_partenza
-        guests = Guest.query.filter(campo.isnot(None), campo != '').order_by(
+        guests = Guest.query.filter(Guest.deleted==False, campo.isnot(None), campo != '').order_by(
             campo, Guest.cognome, Guest.nome).all()
 
         wb = Workbook()
@@ -1557,7 +1999,7 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
 
         row = 2
         for pg in groups:
-            guests = Guest.query.filter_by(pnr_group_id=pg.id).order_by(
+            guests = Guest.query.filter_by(deleted=False, pnr_group_id=pg.id).order_by(
                 Guest.cognome, Guest.nome).all()
             if not guests:
                 vals = [pg.pnr_code, pg.seats, pg.volo_andata, pg.rotta_andata,
@@ -1592,7 +2034,7 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
                     row += 1
 
         # Unassigned guests
-        unassigned = Guest.query.filter(Guest.pnr_group_id.is_(None)).order_by(
+        unassigned = Guest.query.filter(Guest.deleted==False, Guest.pnr_group_id.is_(None)).order_by(
             Guest.cognome, Guest.nome).all()
         if unassigned:
             row += 1
@@ -1628,7 +2070,7 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
             RoomContract.tariffa_netta).all()
 
         campo = f'presenza_{notte}'
-        presenti = Guest.query.filter(getattr(Guest, campo) == True).order_by(
+        presenti = Guest.query.filter(Guest.deleted==False, getattr(Guest, campo) == True).order_by(
             Guest.cognome, Guest.nome).all()
 
         # Raggruppa per stanze
@@ -1733,7 +2175,7 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
             return jsonify(ok=False, error='Testo vuoto'), 400
 
         # Raccogli ospiti esistenti per contesto
-        guests = Guest.query.order_by(Guest.cognome).all()
+        guests = Guest.query.filter_by(deleted=False).order_by(Guest.cognome).all()
         guest_list = '\n'.join(
             f'- [id={g.id}] {g.cognome} {g.nome} (camera: {g.tipo_camera or "n/a"}, '
             f'arrivo: {g.volo_arrivo or "n/a"}, partenza: {g.volo_partenza or "n/a"}, '
@@ -1829,12 +2271,14 @@ Per "azione": "update", valorizza "match_id" con l'ID dell'ospite corrispondente
                     nome_up = (g.get('nome') or '').strip().upper()
                     # Match case-insensitive su cognome + nome
                     match = Guest.query.filter(
+                        Guest.deleted==False,
                         db.func.upper(Guest.cognome) == cognome_up,
                         db.func.upper(Guest.nome) == nome_up
                     ).first() if cognome_up and nome_up else None
                     # Fallback: solo cognome se nome non disponibile
                     if not match and cognome_up:
                         match = Guest.query.filter(
+                            Guest.deleted==False,
                             db.func.upper(Guest.cognome) == cognome_up
                         ).first()
                     if match:
@@ -1912,6 +2356,7 @@ Per "azione": "update", valorizza "match_id" con l'ID dell'ospite corrispondente
                 existing = None
                 if cognome:
                     q = Guest.query.filter(
+                        Guest.deleted==False,
                         db.func.upper(Guest.cognome) == cognome.upper()
                     )
                     if nome:
@@ -1944,6 +2389,11 @@ Per "azione": "update", valorizza "match_id" con l'ID dell'ospite corrispondente
                     results.append({'cognome': cognome, 'ok': True, 'action': 'added', 'id': g.id})
 
         db.session.commit()
+        added_count = sum(1 for r in results if r.get('ok') and r.get('action') == 'added')
+        updated_count = sum(1 for r in results if r.get('ok') and 'updated' in (r.get('action') or ''))
+        log_audit('rooming', 'Guest', None, 'import',
+                  changes={'added': added_count, 'updated': updated_count},
+                  summary=f'Email import: {added_count} aggiunti, {updated_count} aggiornati')
         return jsonify(ok=True, results=results)
 
     # ── EMAIL LOG ─────────────────────────────────────────────────────────
@@ -1959,7 +2409,7 @@ Per "azione": "update", valorizza "match_id" con l'ID dell'ospite corrispondente
             'testo': l.testo,
             'created_at': l.created_at.isoformat(),
             'guests': [{'id': g.id, 'nome_completo': g.nome_completo}
-                        for g in Guest.query.filter_by(email_log_id=l.id).all()]
+                        for g in Guest.query.filter_by(deleted=False, email_log_id=l.id).all()]
         } for l in logs])
 
     @app.get('/api/partivia/email-logs')
@@ -1971,7 +2421,7 @@ Per "azione": "update", valorizza "match_id" con l'ID dell'ospite corrispondente
             'testo': l.testo,
             'created_at': l.created_at.isoformat(),
             'quotes': [{'id': q.id, 'hotel_name': q.hotel_name}
-                        for q in PartiviaQuote.query.filter_by(email_log_id=l.id).all()]
+                        for q in PartiviaQuote.query.filter_by(deleted=False, email_log_id=l.id).all()]
         } for l in logs])
 
     @app.get('/api/email-log/<int:log_id>')
@@ -2009,7 +2459,7 @@ Per "azione": "update", valorizza "match_id" con l'ID dell'ospite corrispondente
                 if unicodedata.category(c) != 'Mn'
             )
 
-        guests = Guest.query.all()
+        guests = Guest.query.filter_by(deleted=False).all()
         lookup = {}
         for g in guests:
             lookup[_norm(f"{g.cognome} {g.nome}")] = g
@@ -2035,16 +2485,20 @@ Per "azione": "update", valorizza "match_id" con l'ID dell'ospite corrispondente
 
     @app.delete('/api/guests')
     def delete_all():
-        Guest.query.delete()
+        Guest.query.filter_by(deleted=False).update({'deleted': True, 'deleted_at': datetime.utcnow()})
         db.session.commit()
+        log_audit('rooming', 'Guest', None, 'delete',
+                  summary='Eliminati tutti gli ospiti')
         return jsonify(ok=True)
 
     @app.delete('/api/partivia/quotes-all')
     def delete_all_partivia():
         """Delete all Partivia quotes and their partivia email logs."""
-        PartiviaQuote.query.delete()
+        PartiviaQuote.query.filter_by(deleted=False).update({'deleted': True, 'deleted_at': datetime.utcnow()})
         EmailLog.query.filter_by(log_type='partivia').delete()
         db.session.commit()
+        log_audit('partivia', 'PartiviaQuote', None, 'delete',
+                  summary='Eliminati tutti i preventivi')
         return jsonify(ok=True)
 
     # ══════════════════════════════════════════════════════════════════════════
@@ -2059,7 +2513,7 @@ Per "azione": "update", valorizza "match_id" con l'ID dell'ospite corrispondente
     def partivia(client_view=False):
         import re
 
-        quotes = (PartiviaQuote.query
+        quotes = (PartiviaQuote.query.filter_by(deleted=False)
                   .order_by(PartiviaQuote.city, PartiviaQuote.hotel_name)
                   .all())
 
@@ -2249,7 +2703,7 @@ Per "azione": "update", valorizza "match_id" con l'ID dell'ospite corrispondente
             return jsonify(ok=False, error='Testo vuoto'), 400
 
         # Contesto: preventivi già in DB
-        existing = PartiviaQuote.query.order_by(PartiviaQuote.city).all()
+        existing = PartiviaQuote.query.filter_by(deleted=False).order_by(PartiviaQuote.city).all()
         existing_list = '\n'.join(
             f'- [id={q.id}] {q.hotel_name} ({q.city}, {q.stars or "?"}★) '
             f'— stato: {q.quote_status}, date: {q.dates_proposed or "n/a"}'
@@ -2455,6 +2909,7 @@ Reply ONLY with valid JSON (no markdown):
                 existing_q = None
                 if hotel_name_raw:
                     eq = PartiviaQuote.query.filter(
+                        PartiviaQuote.deleted==False,
                         db.func.upper(PartiviaQuote.hotel_name) == hotel_name_raw.upper()
                     )
                     if city_raw:
@@ -2555,6 +3010,10 @@ Reply ONLY with valid JSON (no markdown):
                                 'action': 'added', 'id': q.id})
 
         db.session.commit()
+        count = sum(1 for r in results if r.get('ok'))
+        log_audit('partivia', 'PartiviaQuote', None, 'import',
+                  changes={'count': count},
+                  summary=f'Applicati {count} preventivi da email')
         return jsonify(ok=True, results=results)
 
     # ── Re-parse all quotes from original emails ────────────────────────
@@ -2570,7 +3029,7 @@ Reply ONLY with valid JSON (no markdown):
 
         # Get all quotes that have an email_log
         quotes = PartiviaQuote.query.filter(
-            PartiviaQuote.email_log_id.isnot(None)
+            PartiviaQuote.deleted==False, PartiviaQuote.email_log_id.isnot(None)
         ).order_by(PartiviaQuote.city, PartiviaQuote.hotel_name).all()
 
         for q in quotes:
@@ -2676,9 +3135,9 @@ EMAIL TEXT:
         batch_offset = data.get('offset', 0)
         batch_limit = data.get('limit', 5)  # default 5 at a time
 
-        quotes = PartiviaQuote.query.order_by(PartiviaQuote.id)\
+        quotes = PartiviaQuote.query.filter_by(deleted=False).order_by(PartiviaQuote.id)\
             .offset(batch_offset).limit(batch_limit).all()
-        total_quotes = PartiviaQuote.query.count()
+        total_quotes = PartiviaQuote.query.filter_by(deleted=False).count()
         if not quotes:
             return jsonify(ok=False, error='No quotes found (or offset past end)')
 
@@ -2903,6 +3362,8 @@ Notes: {q.notes or 'N/A'}"""
             _time.sleep(0.3)  # rate limiting
 
         db.session.commit()
+        log_audit('partivia', 'PartiviaQuote', None, 'import',
+                  summary='Reparse completo di tutti i preventivi')
         next_offset = batch_offset + batch_limit
         return jsonify(ok=True, results=results,
                        cost_eur=round(total_cost * 0.92, 4),
@@ -2913,7 +3374,7 @@ Notes: {q.notes or 'N/A'}"""
 
     @app.get('/api/partivia/debug-rates')
     def partivia_debug_rates():
-        quotes = PartiviaQuote.query.order_by(PartiviaQuote.city, PartiviaQuote.hotel_name).all()
+        quotes = PartiviaQuote.query.filter_by(deleted=False).order_by(PartiviaQuote.city, PartiviaQuote.hotel_name).all()
         out = []
         for q in quotes:
             out.append({
@@ -2937,13 +3398,15 @@ Notes: {q.notes or 'N/A'}"""
     def partivia_update_quote(qid):
         q = PartiviaQuote.query.get_or_404(qid)
         data = request.get_json()
-        for field in ('hotel_name', 'city', 'stars', 'contact_name',
-                      'contact_email', 'dates_proposed', 'rooms_available',
-                      'min_rooms_required', 'cancellation_policy',
-                      'payment_terms', 'validity_date', 'commission',
-                      'total_estimate', 'included_services', 'notes',
-                      'raw_summary', 'quote_status', 'image_url',
-                      'website_url', 'address', 'vat_included', 'hidden'):
+        QUOTE_STR_FIELDS = ('hotel_name', 'city', 'stars', 'contact_name',
+                            'contact_email', 'dates_proposed', 'rooms_available',
+                            'min_rooms_required', 'cancellation_policy',
+                            'payment_terms', 'validity_date', 'commission',
+                            'total_estimate', 'included_services', 'notes',
+                            'raw_summary', 'quote_status', 'image_url',
+                            'website_url', 'address', 'vat_included', 'hidden')
+        changes = _diff(q, data, QUOTE_STR_FIELDS)
+        for field in QUOTE_STR_FIELDS:
             if field in data:
                 val = data[field]
                 if field == 'stars' and val is not None:
@@ -2951,13 +3414,20 @@ Notes: {q.notes or 'N/A'}"""
                 setattr(q, field, val)
         q.updated_at = datetime.utcnow()
         db.session.commit()
+        if changes:
+            log_audit('partivia', 'PartiviaQuote', q.id, 'update',
+                      changes=changes,
+                      summary=f'Modificato preventivo {q.hotel_name}')
         return jsonify(ok=True)
 
     @app.delete('/api/partivia/quote/<int:qid>')
     def partivia_delete_quote(qid):
         q = PartiviaQuote.query.get_or_404(qid)
-        db.session.delete(q)
+        q.deleted = True
+        q.deleted_at = datetime.utcnow()
         db.session.commit()
+        log_audit('partivia', 'PartiviaQuote', q.id, 'delete',
+                  summary=f'Eliminato preventivo {q.hotel_name}')
         return jsonify(ok=True)
 
     @app.post('/api/partivia/delete-hotel')
@@ -2965,11 +3435,14 @@ Notes: {q.notes or 'N/A'}"""
         data = request.get_json()
         hotel_key = data.get('hotel_key', '').lower().strip()
         deleted = 0
-        for q in PartiviaQuote.query.all():
+        for q in PartiviaQuote.query.filter_by(deleted=False).all():
             if q.hotel_name.lower().strip() == hotel_key:
-                db.session.delete(q)
+                q.deleted = True
+                q.deleted_at = datetime.utcnow()
                 deleted += 1
         db.session.commit()
+        log_audit('partivia', 'PartiviaQuote', None, 'delete',
+                  summary=f'Eliminati preventivi hotel {hotel_key}')
         return jsonify(ok=True, deleted=deleted)
 
     @app.post('/api/partivia/toggle-hotel')
@@ -2978,12 +3451,15 @@ Notes: {q.notes or 'N/A'}"""
         data = request.get_json()
         visibility = data.get('hotels', {})
         updated = 0
-        for q in PartiviaQuote.query.all():
+        for q in PartiviaQuote.query.filter_by(deleted=False).all():
             key = q.hotel_name.lower().strip()
             if key in visibility:
                 q.hidden = visibility[key]
                 updated += 1
         db.session.commit()
+        hotel_keys = ', '.join(visibility.keys())
+        log_audit('partivia', 'PartiviaQuote', None, 'update',
+                  summary=f'Visibilità hotel {hotel_keys} cambiata')
         return jsonify(ok=True, updated=updated)
 
     # ── Edit inline sotto-tabelle ─────────────────────────────────────────
@@ -2996,6 +3472,8 @@ Notes: {q.notes or 'N/A'}"""
             if f in data:
                 setattr(rr, f, data[f])
         db.session.commit()
+        log_audit('partivia', 'PartiviaRoomRate', rid, 'update',
+                  summary='Aggiornata tariffa camera')
         return jsonify(ok=True)
 
     @app.put('/api/partivia/meeting-room/<int:mid>')
@@ -3006,6 +3484,8 @@ Notes: {q.notes or 'N/A'}"""
             if f in data:
                 setattr(mr, f, data[f])
         db.session.commit()
+        log_audit('partivia', 'PartiviaMeetingRoom', mid, 'update',
+                  summary='Aggiornata sala meeting')
         return jsonify(ok=True)
 
     @app.put('/api/partivia/fb-option/<int:fid>')
@@ -3016,6 +3496,8 @@ Notes: {q.notes or 'N/A'}"""
             if f in data:
                 setattr(fb, f, data[f])
         db.session.commit()
+        log_audit('partivia', 'PartiviaFBOption', fid, 'update',
+                  summary='Aggiornata opzione F&B')
         return jsonify(ok=True)
 
     # ── Bulk set option deadline ───────────────────────────────────────────
@@ -3024,7 +3506,7 @@ Notes: {q.notes or 'N/A'}"""
     def partivia_bulk_deadline():
         data = request.get_json()
         deadline = data.get('deadline', '')
-        quotes = PartiviaQuote.query.all()
+        quotes = PartiviaQuote.query.filter_by(deleted=False).all()
         for q in quotes:
             q.validity_date = deadline
             q.updated_at = datetime.utcnow()
@@ -3103,7 +3585,7 @@ Notes: {q.notes or 'N/A'}"""
             c.border = thin_border
 
         # ── Hotel rows ──
-        quotes = (PartiviaQuote.query
+        quotes = (PartiviaQuote.query.filter_by(deleted=False)
                   .order_by(PartiviaQuote.city, PartiviaQuote.hotel_name)
                   .all())
 
@@ -3274,7 +3756,7 @@ Notes: {q.notes or 'N/A'}"""
         from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
         from openpyxl.utils import get_column_letter
 
-        quotes = (PartiviaQuote.query
+        quotes = (PartiviaQuote.query.filter_by(deleted=False)
                   .order_by(PartiviaQuote.city, PartiviaQuote.hotel_name)
                   .all())
 
@@ -3521,6 +4003,8 @@ Notes: {q.notes or 'N/A'}"""
         )
         db.session.add(q)
         db.session.commit()
+        log_audit('partivia', 'PartiviaQuote', q.id, 'create',
+                  summary=f'Creato preventivo {q.hotel_name}')
         return jsonify(ok=True, id=q.id)
 
     # ── Deadline monitor ─────────────────────────────────────────────
@@ -3591,7 +4075,7 @@ Notes: {q.notes or 'N/A'}"""
 
     def _tour_render(client_view=False):
         import re as _re_tour
-        guests = TourGuest.query.order_by(TourGuest.cognome, TourGuest.nome).all()
+        guests = TourGuest.query.filter_by(deleted=False).order_by(TourGuest.cognome, TourGuest.nome).all()
         hotels = TourHotel.query.order_by(TourHotel.night_date, TourHotel.hotel_name).all()
 
         # Build occupancy data per hotel
@@ -3732,6 +4216,7 @@ Notes: {q.notes or 'N/A'}"""
             'notes', 'email_requests',
         )
         bool_fields = ('dinner', 'sept2')
+        changes = _diff(g, data, str_fields, bool_fields)
         for f in str_fields:
             if f in data:
                 setattr(g, f, data[f] or None)
@@ -3739,6 +4224,10 @@ Notes: {q.notes or 'N/A'}"""
             if f in data:
                 setattr(g, f, _parse_bool(data[f]))
         db.session.commit()
+        if changes:
+            log_audit('tour', 'TourGuest', g.id, 'update',
+                      changes=changes,
+                      summary=f'Modificato {g.nome_completo}')
         return jsonify({'ok': True})
 
     @app.route('/api/tour/guest/<int:gid>/room', methods=['PUT'])
@@ -3763,6 +4252,8 @@ Notes: {q.notes or 'N/A'}"""
                 db.session.delete(existing)
 
         db.session.commit()
+        log_audit('tour', 'TourRoomAssignment', g.id, 'assign',
+                  summary=f'Camera assegnata a {g.nome_completo}')
         return jsonify({'ok': True})
 
     # ── TOUR EXPORT XLSX ─────────────────────────────────────────────────
@@ -3772,7 +4263,7 @@ Notes: {q.notes or 'N/A'}"""
         from openpyxl import Workbook
         from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 
-        guests = TourGuest.query.order_by(TourGuest.cognome, TourGuest.nome).all()
+        guests = TourGuest.query.filter_by(deleted=False).order_by(TourGuest.cognome, TourGuest.nome).all()
         hotels = TourHotel.query.order_by(TourHotel.night_date, TourHotel.hotel_name).all()
 
         # Hotel lookup by column_key
@@ -3965,7 +4456,7 @@ Notes: {q.notes or 'N/A'}"""
         from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
         import re as _re_din
 
-        guests = TourGuest.query.order_by(TourGuest.cognome, TourGuest.nome).all()
+        guests = TourGuest.query.filter_by(deleted=False).order_by(TourGuest.cognome, TourGuest.nome).all()
         hotels = TourHotel.query.order_by(TourHotel.night_date, TourHotel.hotel_name).all()
 
         # Build assignment lookup: guest_id → {night_label → (hotel_name, city, room_code)}
@@ -4458,6 +4949,176 @@ Notes: {q.notes or 'N/A'}"""
         safe_name = hotel.hotel_name.replace(' ', '_').replace("'", '')
         return send_file(buf, mimetype='application/zip', as_attachment=True,
                          download_name=f'docs_{hotel.night_label}_{safe_name}.zip')
+
+    # ── AUDIT LOG API ──────────────────────────────────────────────────────
+
+    @app.get('/api/audit/<section>')
+    def get_audit_log(section):
+        if section not in ('rooming', 'partivia', 'tour', 'system'):
+            return jsonify(ok=False, error='Sezione non valida'), 400
+        page = request.args.get('page', 1, type=int)
+        per_page = request.args.get('per_page', 50, type=int)
+        q = AuditLog.query.filter_by(section=section).order_by(AuditLog.timestamp.desc())
+
+        entity_type = request.args.get('entity_type')
+        if entity_type:
+            q = q.filter_by(entity_type=entity_type)
+        action = request.args.get('action')
+        if action:
+            q = q.filter_by(action=action)
+        entity_id = request.args.get('entity_id', type=int)
+        if entity_id:
+            q = q.filter_by(entity_id=entity_id)
+
+        total = q.count()
+        entries = q.offset((page - 1) * per_page).limit(per_page).all()
+        return jsonify(
+            ok=True, total=total, page=page, per_page=per_page,
+            entries=[{
+                'id': e.id,
+                'timestamp': e.timestamp.isoformat() if e.timestamp else None,
+                'user_email': e.user_email,
+                'entity_type': e.entity_type,
+                'entity_id': e.entity_id,
+                'action': e.action,
+                'changes': e.changes,
+                'summary': e.summary,
+            } for e in entries]
+        )
+
+    @app.get('/api/audit/entity/<entity_type>/<int:entity_id>')
+    def get_entity_audit(entity_type, entity_id):
+        entries = AuditLog.query.filter_by(
+            entity_type=entity_type, entity_id=entity_id
+        ).order_by(AuditLog.timestamp.desc()).limit(200).all()
+        return jsonify(
+            ok=True,
+            entries=[{
+                'id': e.id,
+                'timestamp': e.timestamp.isoformat() if e.timestamp else None,
+                'user_email': e.user_email,
+                'section': e.section,
+                'action': e.action,
+                'changes': e.changes,
+                'summary': e.summary,
+            } for e in entries]
+        )
+
+    @app.get('/api/audit/<section>/export')
+    def export_audit_log(section):
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, PatternFill
+
+        q = AuditLog.query.filter_by(section=section).order_by(AuditLog.timestamp.desc())
+        entries = q.limit(5000).all()
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = 'Audit Log'
+        headers = ['Data/Ora', 'Utente', 'Azione', 'Entità', 'ID', 'Riepilogo', 'Dettagli']
+        hfont = Font(bold=True, size=11)
+        hfill = PatternFill(fgColor='E0E0E0', fill_type='solid')
+        for ci, h in enumerate(headers, 1):
+            c = ws.cell(row=1, column=ci, value=h)
+            c.font = hfont
+            c.fill = hfill
+
+        for ri, e in enumerate(entries, 2):
+            ws.cell(row=ri, column=1, value=e.timestamp.strftime('%d/%m/%Y %H:%M') if e.timestamp else '')
+            ws.cell(row=ri, column=2, value=e.user_email or '')
+            ws.cell(row=ri, column=3, value=e.action or '')
+            ws.cell(row=ri, column=4, value=e.entity_type or '')
+            ws.cell(row=ri, column=5, value=e.entity_id)
+            ws.cell(row=ri, column=6, value=e.summary or '')
+            ws.cell(row=ri, column=7, value=json.dumps(e.changes, ensure_ascii=False) if e.changes else '')
+
+        for col in ws.columns:
+            max_len = max((len(str(c.value or '')) for c in col), default=10)
+            ws.column_dimensions[col[0].column_letter].width = min(max_len + 4, 60)
+
+        buf = BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+        return send_file(buf, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                         as_attachment=True, download_name=f'audit_{section}.xlsx')
+
+    # ── RESTORE & DELETED LIST ─────────────────────────────────────────────
+
+    @app.get('/api/guests/deleted')
+    @superuser_required
+    def list_deleted_guests():
+        deleted = Guest.query.filter_by(deleted=True).order_by(Guest.deleted_at.desc()).all()
+        return jsonify(ok=True, guests=[{
+            'id': g.id,
+            'cognome': g.cognome,
+            'nome': g.nome,
+            'email': g.email,
+            'deleted_at': g.deleted_at.isoformat() if g.deleted_at else None,
+        } for g in deleted])
+
+    @app.post('/api/guest/<int:gid>/restore')
+    @superuser_required
+    def restore_guest(gid):
+        g = Guest.query.get_or_404(gid)
+        if not g.deleted:
+            return jsonify(ok=False, error='Non è eliminato'), 400
+        g.deleted = False
+        g.deleted_at = None
+        db.session.commit()
+        log_audit('rooming', 'Guest', g.id, 'restore',
+                  summary=f'Ripristinato {g.nome_completo}')
+        return jsonify(ok=True)
+
+    @app.get('/api/partivia/quotes/deleted')
+    @superuser_required
+    def list_deleted_quotes():
+        deleted = PartiviaQuote.query.filter_by(deleted=True).order_by(
+            PartiviaQuote.deleted_at.desc()).all()
+        return jsonify(ok=True, quotes=[{
+            'id': q.id,
+            'hotel_name': q.hotel_name,
+            'city': q.city,
+            'deleted_at': q.deleted_at.isoformat() if q.deleted_at else None,
+        } for q in deleted])
+
+    @app.post('/api/partivia/quote/<int:qid>/restore')
+    @superuser_required
+    def restore_partivia_quote(qid):
+        q = PartiviaQuote.query.get_or_404(qid)
+        if not q.deleted:
+            return jsonify(ok=False, error='Non è eliminato'), 400
+        q.deleted = False
+        q.deleted_at = None
+        db.session.commit()
+        log_audit('partivia', 'PartiviaQuote', q.id, 'restore',
+                  summary=f'Ripristinato preventivo {q.hotel_name}')
+        return jsonify(ok=True)
+
+    @app.get('/api/tour/guests/deleted')
+    @superuser_required
+    def list_deleted_tour_guests():
+        deleted = TourGuest.query.filter_by(deleted=True).order_by(
+            TourGuest.deleted_at.desc()).all()
+        return jsonify(ok=True, guests=[{
+            'id': g.id,
+            'cognome': g.cognome,
+            'nome': g.nome,
+            'email': g.email,
+            'deleted_at': g.deleted_at.isoformat() if g.deleted_at else None,
+        } for g in deleted])
+
+    @app.post('/api/tour/guest/<int:gid>/restore')
+    @superuser_required
+    def restore_tour_guest(gid):
+        g = TourGuest.query.get_or_404(gid)
+        if not g.deleted:
+            return jsonify(ok=False, error='Non è eliminato'), 400
+        g.deleted = False
+        g.deleted_at = None
+        db.session.commit()
+        log_audit('tour', 'TourGuest', g.id, 'restore',
+                  summary=f'Ripristinato {g.nome_completo}')
+        return jsonify(ok=True)
 
     return app
 

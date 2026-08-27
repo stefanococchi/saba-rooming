@@ -1,9 +1,11 @@
 flask
 flask-sqlalchemy
+flask-login
 openpyxl
 anthropic
 python-dotenv
 gunicorn
 psycopg2-binary
+requests
 msal
 httpx

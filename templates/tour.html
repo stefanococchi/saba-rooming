@@ -228,6 +228,19 @@ tr.cancelled td { opacity: .45; }
   <a href="/api/tour/export/dinners" class="home-link btn-xlsx">
     <span class="material-icons-round" style="font-size:18px">restaurant</span> Dinners
   </a>
+  {% if not client_view %}
+  <div style="display:flex;align-items:center;gap:12px;margin-left:auto;">
+    <span style="font-size:13px;opacity:.8">{{ current_user.username }}</span>
+    {% if current_user.is_superuser %}
+    <a href="/admin/users" title="Gestione utenti" style="color:inherit;opacity:.8;text-decoration:none">
+      <span class="material-icons-round" style="font-size:18px;vertical-align:middle">admin_panel_settings</span>
+    </a>
+    {% endif %}
+    <a href="/logout" style="color:inherit;opacity:.8;text-decoration:none;font-size:13px;display:flex;align-items:center;gap:4px">
+      <span class="material-icons-round" style="font-size:18px">logout</span>
+    </a>
+  </div>
+  {% endif %}
 </div>
 
 <div class="container">
@@ -240,6 +253,9 @@ tr.cancelled td { opacity: .45; }
     <button class="tab-btn" onclick="switchTab('payments')">Payments</button>
     {% if not client_view %}
     <button class="tab-btn" onclick="switchTab('access')">Hotel Access</button>
+    <button class="tab-btn" data-tab="storico" onclick="switchTab('storico')">
+      <span class="material-icons-round" style="font-size:18px;vertical-align:middle">history</span> Storico
+    </button>
     {% endif %}
   </div>
 
@@ -810,6 +826,55 @@ tr.cancelled td { opacity: .45; }
     </div>
   </div>
 
+  {% if not client_view %}
+  <!-- ══ STORICO TAB ══ -->
+  <div class="tab-panel" id="tab-storico" style="display:none">
+    <div style="display:flex;gap:12px;align-items:center;margin-bottom:16px;flex-wrap:wrap">
+      <select id="audit-action-filter" style="padding:8px 12px;border:1.5px solid #ffccbc;border-radius:8px;font-size:13px;font-family:inherit">
+        <option value="">Tutte le azioni</option>
+        <option value="create">Creazione</option>
+        <option value="update">Modifica</option>
+        <option value="delete">Eliminazione</option>
+        <option value="restore">Ripristino</option>
+        <option value="import">Import</option>
+        <option value="assign">Assegnazione</option>
+      </select>
+      <button onclick="loadAuditLog()" style="padding:8px 16px;background:#E65100;color:#fff;border:none;border-radius:8px;font-size:13px;cursor:pointer;font-family:inherit">Aggiorna</button>
+      <a href="/api/audit/tour/export" style="padding:8px 16px;background:#fff;color:#E65100;border:1.5px solid #E65100;border-radius:8px;font-size:13px;text-decoration:none;font-family:inherit">Esporta XLSX</a>
+      {% if current_user.is_superuser %}
+      <button onclick="loadDeletedTourGuests()" style="padding:8px 16px;background:#c62828;color:#fff;border:none;border-radius:8px;font-size:13px;cursor:pointer;font-family:inherit;margin-left:auto">Cestino</button>
+      {% endif %}
+    </div>
+
+    <div id="audit-log-table" style="overflow-x:auto">
+      <table style="width:100%;border-collapse:collapse;font-size:13px">
+        <thead>
+          <tr style="background:#fff3e0">
+            <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:#E65100">Data/Ora</th>
+            <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:#E65100">Utente</th>
+            <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:#E65100">Azione</th>
+            <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:#E65100">Riepilogo</th>
+            <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:#E65100">Dettagli</th>
+          </tr>
+        </thead>
+        <tbody id="audit-log-body"></tbody>
+      </table>
+    </div>
+    <div id="audit-pagination" style="display:flex;gap:8px;justify-content:center;margin-top:16px"></div>
+
+    <!-- Cestino modal -->
+    <div id="trash-modal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.5);z-index:9999;align-items:center;justify-content:center">
+      <div style="background:#fff;border-radius:16px;padding:32px;max-width:600px;width:90%;max-height:80vh;overflow-y:auto">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+          <h3 style="font-size:18px;color:#bf360c">Cestino — Partecipanti eliminati</h3>
+          <button onclick="document.getElementById('trash-modal').style.display='none'" style="background:none;border:none;font-size:24px;cursor:pointer;color:#888">&times;</button>
+        </div>
+        <div id="trash-list"></div>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
 </div>
 
 <script>
@@ -817,8 +882,10 @@ tr.cancelled td { opacity: .45; }
 function switchTab(name) {
   document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-  document.getElementById('tab-' + name).classList.add('active');
-  event.target.classList.add('active');
+  const panel = document.getElementById('tab-' + name);
+  if (panel) { panel.classList.add('active'); panel.style.display = ''; }
+  event.target.closest('.tab-btn').classList.add('active');
+  if (name === 'storico') loadAuditLog();
 }
 
 // ── Expand rows ──
@@ -1048,6 +1115,90 @@ if (accessTab) accessTab.addEventListener('click', function() { loadAccessLogs()
   const allPts = [...stops, ...day3_waypoints, ...day4_waypoints, ...day5_waypoints].map(s => [s.lat, s.lng]);
   map.fitBounds(allPts, {padding: [30, 30]});
 })();
+
+// ── Audit Log (Storico) ──
+let auditPage = 1;
+function loadAuditLog(page) {
+  auditPage = page || 1;
+  const action = document.getElementById('audit-action-filter').value;
+  let url = `/api/audit/tour?page=${auditPage}&per_page=30`;
+  if (action) url += `&action=${action}`;
+  fetch(url).then(r => r.json()).then(data => {
+    const tbody = document.getElementById('audit-log-body');
+    if (!data.entries || !data.entries.length) {
+      tbody.innerHTML = '<tr><td colspan="5" style="padding:20px;text-align:center;color:#888">Nessun record</td></tr>';
+      document.getElementById('audit-pagination').innerHTML = '';
+      return;
+    }
+    tbody.innerHTML = data.entries.map(e => {
+      const dt = e.timestamp ? new Date(e.timestamp).toLocaleString('it-IT') : '';
+      const actionBadge = {
+        create: '<span style="background:#e8f5e9;color:#2e7d32;padding:2px 8px;border-radius:10px;font-size:11px">Creazione</span>',
+        update: '<span style="background:#e3f2fd;color:#1565c0;padding:2px 8px;border-radius:10px;font-size:11px">Modifica</span>',
+        delete: '<span style="background:#fbe9e7;color:#c62828;padding:2px 8px;border-radius:10px;font-size:11px">Eliminazione</span>',
+        restore: '<span style="background:#f3e5f5;color:#7b1fa2;padding:2px 8px;border-radius:10px;font-size:11px">Ripristino</span>',
+        import: '<span style="background:#fff3e0;color:#e65100;padding:2px 8px;border-radius:10px;font-size:11px">Import</span>',
+        assign: '<span style="background:#e0f2f1;color:#00695c;padding:2px 8px;border-radius:10px;font-size:11px">Assegnazione</span>',
+      };
+      const badge = actionBadge[e.action] || `<span style="padding:2px 8px;border-radius:10px;font-size:11px;background:#eee">${e.action}</span>`;
+      let details = '';
+      if (e.changes && typeof e.changes === 'object') {
+        const keys = Object.keys(e.changes);
+        if (keys.length <= 4) {
+          details = keys.map(k => {
+            const c = e.changes[k];
+            if (c && c.old !== undefined) return `<b>${k}</b>: ${c.old || '—'} → ${c.new || '—'}`;
+            return `<b>${k}</b>: ${JSON.stringify(c)}`;
+          }).join('<br>');
+        } else {
+          details = `${keys.length} campi modificati`;
+        }
+      }
+      return `<tr>
+        <td style="padding:8px 12px;white-space:nowrap">${dt}</td>
+        <td style="padding:8px 12px">${e.user_email || ''}</td>
+        <td style="padding:8px 12px">${badge}</td>
+        <td style="padding:8px 12px">${e.summary || ''}</td>
+        <td style="padding:8px 12px;font-size:12px;max-width:300px">${details}</td>
+      </tr>`;
+    }).join('');
+    const totalPages = Math.ceil(data.total / data.per_page);
+    const pag = document.getElementById('audit-pagination');
+    if (totalPages <= 1) { pag.innerHTML = ''; return; }
+    let html = '';
+    if (auditPage > 1) html += `<button onclick="loadAuditLog(${auditPage-1})" style="padding:6px 12px;border:1px solid #ccc;border-radius:6px;background:#fff;cursor:pointer;font-family:inherit">&laquo;</button>`;
+    html += `<span style="padding:6px 12px;font-size:13px">Pagina ${auditPage} di ${totalPages}</span>`;
+    if (auditPage < totalPages) html += `<button onclick="loadAuditLog(${auditPage+1})" style="padding:6px 12px;border:1px solid #ccc;border-radius:6px;background:#fff;cursor:pointer;font-family:inherit">&raquo;</button>`;
+    pag.innerHTML = html;
+  });
+}
+
+function loadDeletedTourGuests() {
+  document.getElementById('trash-modal').style.display = 'flex';
+  fetch('/api/tour/guests/deleted').then(r => r.json()).then(data => {
+    const list = document.getElementById('trash-list');
+    if (!data.guests || !data.guests.length) {
+      list.innerHTML = '<p style="color:#888;text-align:center;padding:20px">Nessun partecipante nel cestino</p>';
+      return;
+    }
+    list.innerHTML = '<table style="width:100%;border-collapse:collapse;font-size:13px">' +
+      '<tr style="background:#f5f5f5"><th style="padding:8px;text-align:left">Nome</th><th style="padding:8px;text-align:left">Eliminato il</th><th style="padding:8px"></th></tr>' +
+      data.guests.map(g => `<tr>
+        <td style="padding:8px;border-bottom:1px solid #eee">${g.cognome} ${g.nome}</td>
+        <td style="padding:8px;border-bottom:1px solid #eee;font-size:12px;color:#888">${g.deleted_at ? new Date(g.deleted_at).toLocaleString('it-IT') : ''}</td>
+        <td style="padding:8px;border-bottom:1px solid #eee">
+          <button onclick="restoreTourGuest(${g.id})" style="padding:4px 12px;background:#2e7d32;color:#fff;border:none;border-radius:6px;font-size:12px;cursor:pointer">Ripristina</button>
+        </td>
+      </tr>`).join('') + '</table>';
+  });
+}
+
+function restoreTourGuest(id) {
+  fetch(`/api/tour/guest/${id}/restore`, {method:'POST'}).then(r => r.json()).then(data => {
+    if (data.ok) { loadDeletedTourGuests(); location.reload(); }
+    else alert(data.error || 'Errore');
+  });
+}
 
 </script>
 </body>

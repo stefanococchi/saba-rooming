@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gestione Utenti — Saba Portal</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: 'Inter', system-ui, sans-serif;
+  background: #f5f0eb;
+  min-height: 100vh;
+  padding: 32px 24px;
+}
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 32px;
+}
+.topbar h1 {
+  font-size: 24px;
+  font-weight: 700;
+  color: #3e2723;
+}
+.topbar a {
+  font-size: 14px;
+  color: #795548;
+  text-decoration: none;
+}
+.topbar a:hover { text-decoration: underline; }
+
+.card {
+  background: #fff;
+  border-radius: 16px;
+  padding: 32px;
+  box-shadow: 0 2px 12px rgba(0,0,0,.08);
+  margin-bottom: 24px;
+  max-width: 900px;
+  margin-left: auto;
+  margin-right: auto;
+}
+.card h2 {
+  font-size: 18px;
+  font-weight: 600;
+  color: #3e2723;
+  margin-bottom: 20px;
+}
+
+/* Form */
+.form-row {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: flex-end;
+}
+.form-group {
+  flex: 1;
+  min-width: 140px;
+}
+.form-group label {
+  display: block;
+  font-size: 12px;
+  font-weight: 500;
+  color: #5d4037;
+  margin-bottom: 4px;
+}
+.form-group input, .form-group select {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1.5px solid #d7ccc8;
+  border-radius: 8px;
+  font-size: 14px;
+  font-family: inherit;
+  outline: none;
+}
+.form-group input:focus, .form-group select:focus {
+  border-color: #795548;
+}
+.btn-sm {
+  padding: 8px 18px;
+  background: #795548;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.btn-sm:hover { background: #5d4037; }
+
+/* Table */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+th, td {
+  text-align: left;
+  padding: 10px 12px;
+  border-bottom: 1px solid #efebe9;
+}
+th {
+  font-size: 12px;
+  font-weight: 600;
+  color: #795548;
+  text-transform: uppercase;
+  letter-spacing: .5px;
+}
+.badge {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: none;
+  transition: opacity .2s;
+}
+.badge:hover { opacity: .8; }
+.badge-superuser { background: #fce4ec; color: #c62828; }
+.badge-user { background: #e8f5e9; color: #2e7d32; }
+.badge-client { background: #e3f2fd; color: #1565c0; }
+.badge-inactive { background: #f5f5f5; color: #9e9e9e; }
+
+.actions {
+  display: flex;
+  gap: 6px;
+}
+.actions form { display: inline; }
+.btn-icon {
+  background: none;
+  border: 1px solid #d7ccc8;
+  border-radius: 8px;
+  padding: 4px 8px;
+  cursor: pointer;
+  font-size: 13px;
+  color: #5d4037;
+  font-family: inherit;
+  transition: background .15s;
+}
+.btn-icon:hover { background: #efebe9; }
+.btn-icon.danger { color: #c62828; border-color: #ef9a9a; }
+.btn-icon.danger:hover { background: #fbe9e7; }
+
+/* Flash */
+.alert {
+  padding: 10px 14px;
+  border-radius: 10px;
+  font-size: 13px;
+  margin-bottom: 18px;
+  max-width: 900px;
+  margin-left: auto;
+  margin-right: auto;
+}
+.alert-error { background: #fbe9e7; color: #bf360c; }
+.alert-success { background: #e8f5e9; color: #2e7d32; }
+</style>
+</head>
+<body>
+
+<div style="max-width:900px;margin:0 auto">
+  <div class="topbar">
+    <h1>Gestione Utenti</h1>
+    <a href="/">&larr; Torna al portale</a>
+  </div>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for cat, msg in messages %}
+      <div class="alert alert-{{ cat }}">{{ msg }}</div>
+    {% endfor %}
+  {% endwith %}
+
+  <div class="card">
+    <h2>Nuovo utente</h2>
+    <form method="POST" action="/admin/users">
+      <div class="form-row">
+        <div class="form-group">
+          <label>Username</label>
+          <input type="text" name="username" required>
+        </div>
+        <div class="form-group">
+          <label>Email</label>
+          <input type="email" name="email" required>
+        </div>
+        <div class="form-group" style="min-width:100px;flex:.5">
+          <label>Ruolo</label>
+          <select name="role">
+            <option value="user">User</option>
+            <option value="superuser">Superuser</option>
+            <option value="client">Client</option>
+          </select>
+        </div>
+        <button type="submit" class="btn-sm">Crea</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>Utenti</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Username</th>
+          <th>Email</th>
+          <th>Ruolo</th>
+          <th>Stato</th>
+          <th>Creato</th>
+          <th>Azioni</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for u in users %}
+        <tr>
+          <td><strong>{{ u.username }}</strong></td>
+          <td>{{ u.email }}</td>
+          <td>
+            <form method="POST" action="/admin/users/{{ u.id }}/toggle-role" style="display:inline">
+              <button type="submit" class="badge badge-{{ u.role or 'user' }}"
+                      title="Clicca per cambiare ruolo"
+                      {% if u.id == current_user.id %}disabled style="cursor:default;opacity:.6"{% endif %}>
+                {{ u.role or 'user' }}
+              </button>
+            </form>
+          </td>
+          <td>
+            {% if u.is_active %}
+              <span style="color:#2e7d32;font-size:13px">Attivo</span>
+            {% else %}
+              <span class="badge badge-inactive">Disattivato</span>
+            {% endif %}
+          </td>
+          <td style="font-size:13px;color:#888">{{ u.created_at.strftime('%d/%m/%Y') if u.created_at else '' }}</td>
+          <td>
+            <div class="actions">
+              <form method="POST" action="/admin/users/{{ u.id }}/reset-password">
+                <button type="submit" class="btn-icon" title="Reset password"
+                        onclick="return confirm('Resettare la password di {{ u.username }}?')">
+                  Reset PW
+                </button>
+              </form>
+              {% if u.id != current_user.id %}
+              <form method="POST" action="/admin/users/{{ u.id }}/toggle-active">
+                <button type="submit" class="btn-icon {% if u.is_active %}danger{% endif %}"
+                        title="{{ 'Disattiva' if u.is_active else 'Riattiva' }}">
+                  {{ 'Disattiva' if u.is_active else 'Riattiva' }}
+                </button>
+              </form>
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+</body>
+</html>

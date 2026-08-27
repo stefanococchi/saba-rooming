@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Login — Saba Portal</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: 'Inter', system-ui, sans-serif;
+  background: #f5f0eb;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.card {
+  background: #fff;
+  border-radius: 16px;
+  padding: 48px 40px;
+  width: 380px;
+  max-width: 90vw;
+  box-shadow: 0 2px 12px rgba(0,0,0,.08);
+}
+.card h1 {
+  font-size: 24px;
+  font-weight: 700;
+  color: #3e2723;
+  text-align: center;
+  margin-bottom: 8px;
+}
+.card p.sub {
+  font-size: 14px;
+  color: #795548;
+  text-align: center;
+  margin-bottom: 28px;
+}
+.form-group {
+  margin-bottom: 18px;
+}
+.form-group label {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  color: #5d4037;
+  margin-bottom: 6px;
+}
+.form-group input {
+  width: 100%;
+  padding: 10px 14px;
+  border: 1.5px solid #d7ccc8;
+  border-radius: 10px;
+  font-size: 15px;
+  font-family: inherit;
+  outline: none;
+  transition: border-color .2s;
+}
+.form-group input:focus {
+  border-color: #795548;
+}
+.btn {
+  width: 100%;
+  padding: 12px;
+  background: #795548;
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  font-size: 15px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background .2s;
+  margin-top: 6px;
+}
+.btn:hover { background: #5d4037; }
+.btn-ms {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  padding: 12px;
+  background: #fff;
+  color: #3e2723;
+  border: 1.5px solid #d7ccc8;
+  border-radius: 10px;
+  font-size: 15px;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background .2s, border-color .2s;
+  text-decoration: none;
+}
+.btn-ms:hover { background: #f5f0eb; border-color: #795548; }
+.btn-ms img { width: 20px; height: 20px; }
+.divider {
+  display: flex;
+  align-items: center;
+  margin: 20px 0;
+  gap: 12px;
+  color: #bbb;
+  font-size: 13px;
+}
+.divider::before, .divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: #e0e0e0;
+}
+.alert {
+  padding: 10px 14px;
+  border-radius: 10px;
+  font-size: 13px;
+  margin-bottom: 18px;
+  line-height: 1.4;
+}
+.alert-error { background: #fbe9e7; color: #bf360c; }
+.alert-success { background: #e8f5e9; color: #2e7d32; }
+</style>
+</head>
+<body>
+
+<div class="card">
+  <h1>Saba Portal</h1>
+  <p class="sub">Accedi per continuare</p>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for cat, msg in messages %}
+      <div class="alert alert-{{ cat }}">{{ msg }}</div>
+    {% endfor %}
+  {% endwith %}
+
+  {% if sso_enabled is defined and sso_enabled %}
+  <a href="{{ url_for('microsoft_login', next=request.args.get('next', '')) }}" class="btn-ms">
+    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 23 23">
+      <path fill="#f35325" d="M1 1h10v10H1z"/>
+      <path fill="#81bc06" d="M12 1h10v10H12z"/>
+      <path fill="#05a6f0" d="M1 12h10v10H1z"/>
+      <path fill="#ffba08" d="M12 12h10v10H12z"/>
+    </svg>
+    Accedi con Microsoft
+  </a>
+  <div class="divider"><span>oppure</span></div>
+  {% endif %}
+
+  <form method="POST" action="{{ url_for('login', mode='local') }}">
+    <div class="form-group">
+      <label for="username">Username</label>
+      <input type="text" id="username" name="username" required autofocus>
+    </div>
+    <div class="form-group">
+      <label for="password">Password</label>
+      <input type="password" id="password" name="password" required>
+    </div>
+    <button type="submit" class="btn">Accedi</button>
+  </form>
+</div>
+
+</body>
+</html>

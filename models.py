@@ -1,7 +1,67 @@
 from datetime import datetime
 from flask_sqlalchemy import SQLAlchemy
+from flask_login import UserMixin
+from werkzeug.security import generate_password_hash, check_password_hash
 
 db = SQLAlchemy()
+
+
+# ── Auth & Audit ──────────────────────────────────────────────────────
+
+
+class User(UserMixin, db.Model):
+    __tablename__ = 'users'
+
+    id                   = db.Column(db.Integer, primary_key=True)
+    username             = db.Column(db.String(80), unique=True, nullable=False)
+    email                = db.Column(db.String(150), unique=True, nullable=False)
+    password_hash        = db.Column(db.String(256))
+    is_superuser         = db.Column(db.Boolean, default=False)
+    role                 = db.Column(db.String(20), default='user')   # superuser, user, client
+    is_active            = db.Column(db.Boolean, default=True)
+    must_change_password = db.Column(db.Boolean, default=True)
+    failed_login_attempts = db.Column(db.Integer, default=0)
+    microsoft_id         = db.Column(db.String(100), unique=True, nullable=True)
+    ms_access_token      = db.Column(db.Text, nullable=True)
+    ms_refresh_token     = db.Column(db.Text, nullable=True)
+    created_at           = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def set_password(self, pw):
+        self.password_hash = generate_password_hash(pw)
+
+    def check_password(self, pw):
+        if not self.password_hash:
+            return False
+        return check_password_hash(self.password_hash, pw)
+
+    def register_failed_login(self):
+        self.failed_login_attempts = (self.failed_login_attempts or 0) + 1
+        if self.failed_login_attempts >= 3:
+            self.password_hash = None
+            self.failed_login_attempts = 0
+            self.must_change_password = True
+
+    def reset_failed_logins(self):
+        self.failed_login_attempts = 0
+
+
+class AuditLog(db.Model):
+    __tablename__ = 'audit_logs'
+
+    id           = db.Column(db.Integer, primary_key=True)
+    timestamp    = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+    user_id      = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    user_email   = db.Column(db.String(150))
+    section      = db.Column(db.String(20))       # rooming, partivia, tour
+    entity_type  = db.Column(db.String(50))        # Guest, PartiviaQuote, TourGuest, ...
+    entity_id    = db.Column(db.Integer)
+    action       = db.Column(db.String(20))        # create, update, delete, restore, import, assign, unassign
+    changes      = db.Column(db.JSON)              # {field: {old: X, new: Y}}
+    summary      = db.Column(db.Text)
+    ip_address   = db.Column(db.String(50))
+
+
+# ── Rooming ───────────────────────────────────────────────────────────
 
 
 class Guest(db.Model):
@@ -37,6 +97,8 @@ class Guest(db.Model):
     email_log_id          = db.Column(db.Integer, db.ForeignKey('email_logs.id'))
     created_at            = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at            = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    deleted               = db.Column(db.Boolean, default=False, index=True)
+    deleted_at            = db.Column(db.DateTime)
 
     @property
     def nome_completo(self):
@@ -118,6 +180,8 @@ class PartiviaQuote(db.Model):
     created_at          = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at          = db.Column(db.DateTime, default=datetime.utcnow,
                                     onupdate=datetime.utcnow)
+    deleted             = db.Column(db.Boolean, default=False, index=True)
+    deleted_at          = db.Column(db.DateTime)
 
     room_rates    = db.relationship('PartiviaRoomRate', backref='quote',
                                     cascade='all, delete-orphan', lazy='joined')
@@ -232,6 +296,8 @@ class TourGuest(db.Model):
     created_at        = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at        = db.Column(db.DateTime, default=datetime.utcnow,
                                    onupdate=datetime.utcnow)
+    deleted           = db.Column(db.Boolean, default=False, index=True)
+    deleted_at        = db.Column(db.DateTime)
 
     room_assignments = db.relationship('TourRoomAssignment', backref='guest',
                                         cascade='all, delete-orphan', lazy='joined')

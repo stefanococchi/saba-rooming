@@ -83,9 +83,42 @@ body {
   color: #666;
   line-height: 1.5;
 }
+.user-bar {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 16px;
+  padding: 12px 24px;
+  font-size: 13px;
+  color: #795548;
+  z-index: 100;
+}
+.user-bar a {
+  color: #795548;
+  text-decoration: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.user-bar a:hover { text-decoration: underline; }
+.user-bar .material-icons-round { font-size: 18px; }
 </style>
 </head>
 <body>
+
+<div class="user-bar">
+  <span>{{ current_user.username }}</span>
+  {% if current_user.is_superuser %}
+  <a href="/admin/users" title="Gestione utenti">
+    <span class="material-icons-round">admin_panel_settings</span>
+  </a>
+  {% endif %}
+  <a href="/logout">
+    <span class="material-icons-round">logout</span> Esci
+  </a>
+</div>
 
 <div class="header">
   <h1>Saba Portal</h1>
