@@ -38,30 +38,47 @@ def parse_rooming_file(filepath):
     wb = openpyxl.load_workbook(filepath, data_only=True)
     ws = wb.active
 
-    # Find header row (look for "Tipo" or "N" in first column)
+    # Strategy 1: Find header row with known keywords
     header_row = None
-    for row_idx, row in enumerate(ws.iter_rows(min_row=1, max_row=10, values_only=False), 1):
+    tipo_col = None
+    for row_idx, row in enumerate(ws.iter_rows(min_row=1, max_row=15, values_only=False), 1):
         vals = [str(c.value or '').strip().lower() for c in row]
-        if 'tipo' in vals or 'n' in vals:
-            header_row = row_idx
+        # Look for "tipo", "room type", "tipologia", "cat", "category"
+        for i, v in enumerate(vals):
+            if v in ('tipo', 'room type', 'tipologia', 'cat', 'category', 'cat.'):
+                header_row = row_idx
+                tipo_col = i
+                break
+            # Also check for "n" + "tipo" pattern
+            if v == 'n' and i + 1 < len(vals) and vals[i + 1] in ('tipo', 'room type', 'tipologia'):
+                header_row = row_idx
+                tipo_col = i + 1
+                break
+        if header_row:
             break
 
     if not header_row:
-        print(f'  WARNING: No header found in {filepath}')
+        # Strategy 2: Scan all rows looking for known room codes
+        known_codes = {'SGL', 'GSGL', 'DBL', 'KING', 'DLX', 'BAL', 'MON', 'APP', 'XL',
+                       'TWN', 'TWIN', 'STD', 'SUP', 'JUN', 'SUITE', 'SINGLE', 'DOUBLE'}
+        print(f'  No header found, scanning for room codes...')
+        room_types = Counter()
+        for row in ws.iter_rows(min_row=1, values_only=True):
+            for cell in row:
+                val = str(cell or '').strip().upper()
+                if val in known_codes:
+                    room_types[val] += 1
+        if room_types:
+            print(f'  Found codes by scanning: {dict(room_types)}')
+            return dict(room_types)
+        # Strategy 3: dump first rows for debugging
+        print(f'  WARNING: No room type data found in {filepath}')
+        print(f'  First 5 rows:')
+        for row in ws.iter_rows(min_row=1, max_row=5, values_only=True):
+            print(f'    {list(row)}')
         return {}
 
-    # Find "Tipo" and "Camera" column indices
-    headers = [str(c.value or '').strip().lower() for c in ws[header_row]]
-    tipo_col = headers.index('tipo') if 'tipo' in headers else None
-    camera_col = headers.index('camera') if 'camera' in headers else None
-
-    if tipo_col is None:
-        print(f'  WARNING: No "Tipo" column in {filepath}')
-        return {}
-
-    # Count unique rooms per type
-    # A room is identified by "Camera" value; if two guests share a room,
-    # they have the same Camera value (second guest has no Tipo)
+    # Count rooms per type
     room_types = Counter()
     for row in ws.iter_rows(min_row=header_row + 1, values_only=True):
         vals = list(row)
@@ -86,7 +103,7 @@ def main():
     # First, just parse and show what we found
     results = []
     for fname in os.listdir(folder):
-        if not fname.endswith('.xlsx'):
+        if not fname.endswith('.xlsx') or fname.startswith('~$'):
             continue
         night, hotel_frag = match_file_to_hotel(fname)
         if not night:
