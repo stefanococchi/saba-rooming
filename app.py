@@ -744,19 +744,43 @@ IMPORTANTE: Tutti i testi DEVONO essere in inglese."""
                 f'  ID={g.id} {g.cognome} {g.nome} (payment={g.payment or ""}, car={g.car_number or ""}, '
                 f'hotels=[{", ".join(guest_hotels.get(g.id, ["non assegnato"]))}])'
                 for g in tour_guests) or '  (nessun partecipante)'
-            # Hotel list
+            # Hotel list with IDs
             hotel_list = '\n'.join(
-                f'  {h.hotel_name} ({h.city}, notte {h.night_label}, {h.rooms_blocked} camere)'
+                f'  hotel_id={h.id} {h.hotel_name} ({h.city}, notte {h.night_label}, {h.rooms_blocked} camere)'
                 for h in hotels) or '  (nessun hotel)'
+            # Guest-hotel assignment detail
+            guest_assign_detail = {}
+            for a in assignments:
+                h = hotel_map.get(a.hotel_id)
+                if h:
+                    guest_assign_detail.setdefault(a.guest_id, []).append(
+                        f'hotel_id={h.id}/{h.hotel_name}/{h.night_label}/room={a.room_code or "?"}')
             section_desc = f"""SEZIONE: TOUR (Liqui Moly Nexus Auto Tour, 1-5 Settembre 2026) — Tour itinerante multi-città
-Entità: TourGuest
-Campi stringa: cognome (MAIUSCOLO), nome, email, telefono, nazionalita, titolo (Mr/Mrs), arrivo_mezzo (Airplane/Car/Train/Other), arrivo_data, room_with, car_number, car_with, vip (VIP/ULTRA VIP), client_room_note, payment (PAID/TO COLLECT/NO NEED/PAY ON SITE), cloth_size (S-XXXL), diet, notes, email_requests
-Campi booleani: dinner, sept2
 
-Hotel del tour:
+Entità gestibili:
+1. TourGuest — i partecipanti
+   Campi stringa: cognome (MAIUSCOLO), nome, email, telefono, nazionalita, titolo (Mr/Mrs), arrivo_mezzo (Airplane/Car/Train/Other), arrivo_data, room_with, car_number, car_with, vip (VIP/ULTRA VIP), client_room_note, payment (PAID/TO COLLECT/NO NEED/PAY ON SITE), cloth_size (S-XXXL), diet, notes, email_requests
+   Campi booleani: dinner, sept2
+
+2. TourRoomAssignment — assegnazioni camera per notte
+   Per assegnare/rimuovere camere usa entity_type="TourRoomAssignment" con:
+   - action="assign": data deve contenere guest_id, hotel_id, room_code
+   - action="unassign": data deve contenere guest_id, hotel_id
+   match_id non serve per le assegnazioni.
+
+Hotel del tour (usa hotel_id per le assegnazioni):
 {hotel_list}
 
-Ogni partecipante ha le assegnazioni hotel indicate tra parentesi quadre."""
+Ogni partecipante ha le assegnazioni indicate tra parentesi quadre.
+
+IMPORTANTE per sostituzioni di persone:
+- Se qualcuno subentra a un altro, devi: 1) creare il nuovo partecipante, 2) rimuovere le assegnazioni camera del vecchio per le notti coinvolte (unassign), 3) assegnare le stesse camere al nuovo (assign), 4) aggiornare note del vecchio
+- Usa TUTTE le operazioni necessarie per completare la sostituzione.
+
+CROSS-REFERENCE per nuovi partecipanti:
+- Quando crei un TourGuest e devi poi assegnargli camere, aggiungi "ref": "new_1" nell'operazione create.
+- Nelle operazioni TourRoomAssignment successive, usa guest_id: "new_1" (il sistema lo risolverà all'ID reale).
+- Esempio: crea guest con ref:"new_1", poi assign con guest_id:"new_1", hotel_id:5, room_code:"DBL"."""
 
         system_prompt = f"""Sei un assistente per la gestione eventi Saba. Analizzi richieste in linguaggio naturale e determini le operazioni CRUD da eseguire.
 Lavori ESCLUSIVAMENTE sulla sezione indicata. Non mischiare dati di altre sezioni.
@@ -844,6 +868,8 @@ Rispondi SOLO con JSON valido (no markdown, no commenti):
         operations = data.get('operations', [])
         email_log_id = data.get('email_log_id')
         results = []
+        # Track created IDs for cross-reference (e.g. "new_guest_1" → real ID)
+        created_ids = {}
 
         for op in operations:
             action = op.get('action')
@@ -977,7 +1003,29 @@ Rispondi SOLO con JSON valido (no markdown, no commenti):
                                         'name': q.hotel_name})
 
                 elif etype == 'TourGuest':
-                    if action == 'update' and match_id:
+                    if action == 'create':
+                        g = TourGuest(
+                            cognome=opdata.get('cognome', ''),
+                            nome=opdata.get('nome', ''),
+                            source='llm')
+                        for f in TOUR_GUEST_STR_FIELDS:
+                            if opdata.get(f) is not None:
+                                setattr(g, f, opdata[f])
+                        for f in TOUR_GUEST_BOOL_FIELDS:
+                            if opdata.get(f) is not None:
+                                setattr(g, f, _parse_bool(opdata[f]))
+                        db.session.add(g)
+                        db.session.flush()
+                        # Store ID for cross-reference in room assignments
+                        ref = op.get('ref')
+                        if ref:
+                            created_ids[ref] = g.id
+                        log_audit('tour', 'TourGuest', g.id, 'create',
+                                  summary=f'LLM: Aggiunto {g.nome_completo}')
+                        results.append({'ok': True, 'action': 'created', 'id': g.id,
+                                        'name': g.nome_completo})
+
+                    elif action == 'update' and match_id:
                         g = TourGuest.query.get(match_id)
                         if not g or g.deleted:
                             results.append({'ok': False, 'error': f'TourGuest {match_id} non trovato'})
@@ -1009,6 +1057,46 @@ Rispondi SOLO con JSON valido (no markdown, no commenti):
                                   summary=f'LLM: Eliminato {g.nome_completo}')
                         results.append({'ok': True, 'action': 'deleted', 'id': g.id,
                                         'name': g.nome_completo})
+
+                elif etype == 'TourRoomAssignment':
+                    guest_id = opdata.get('guest_id')
+                    # Resolve placeholder references like "new_1" to real IDs
+                    if isinstance(guest_id, str) and guest_id.startswith('new_'):
+                        guest_id = created_ids.get(guest_id, guest_id)
+                    hotel_id = opdata.get('hotel_id')
+                    room_code = (opdata.get('room_code') or '').strip()
+
+                    if action == 'assign' and guest_id and hotel_id:
+                        existing = TourRoomAssignment.query.filter_by(
+                            guest_id=guest_id, hotel_id=hotel_id).first()
+                        if existing:
+                            existing.room_code = room_code or existing.room_code
+                        else:
+                            db.session.add(TourRoomAssignment(
+                                guest_id=guest_id, hotel_id=hotel_id,
+                                room_code=room_code))
+                        hotel = TourHotel.query.get(hotel_id)
+                        guest = TourGuest.query.get(guest_id)
+                        h_name = hotel.hotel_name if hotel else f'#{hotel_id}'
+                        g_name = guest.nome_completo if guest else f'#{guest_id}'
+                        log_audit('tour', 'TourRoomAssignment', guest_id, 'assign',
+                                  summary=f'LLM: {g_name} → {h_name} ({room_code})')
+                        results.append({'ok': True, 'action': 'assigned',
+                                        'name': f'{g_name} → {h_name}'})
+
+                    elif action == 'unassign' and guest_id and hotel_id:
+                        existing = TourRoomAssignment.query.filter_by(
+                            guest_id=guest_id, hotel_id=hotel_id).first()
+                        if existing:
+                            db.session.delete(existing)
+                        hotel = TourHotel.query.get(hotel_id)
+                        guest = TourGuest.query.get(guest_id)
+                        h_name = hotel.hotel_name if hotel else f'#{hotel_id}'
+                        g_name = guest.nome_completo if guest else f'#{guest_id}'
+                        log_audit('tour', 'TourRoomAssignment', guest_id, 'unassign',
+                                  summary=f'LLM: {g_name} rimosso da {h_name}')
+                        results.append({'ok': True, 'action': 'unassigned',
+                                        'name': f'{g_name} rimosso da {h_name}'})
 
             except Exception as e:
                 results.append({'ok': False, 'error': str(e)})
