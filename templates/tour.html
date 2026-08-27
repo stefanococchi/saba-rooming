@@ -1321,7 +1321,7 @@ async function processLLM() {
     const data = await r.json();
     if (!data.ok) { alert(data.error || 'Error'); return; }
     _llmResult = data;
-    const actionLabels = {create:{l:'New',bg:'#e8f5e9',c:'#2e7d32'},update:{l:'Update',bg:'#e3f2fd',c:'#1565c0'},delete:{l:'Delete',bg:'#fbe9e7',c:'#c62828'}};
+    const actionLabels = {create:{l:'New',bg:'#e8f5e9',c:'#2e7d32'},update:{l:'Update',bg:'#e3f2fd',c:'#1565c0'},delete:{l:'Delete',bg:'#fbe9e7',c:'#c62828'},assign:{l:'Assign',bg:'#e0f2f1',c:'#00695c'},unassign:{l:'Unassign',bg:'#fce4ec',c:'#880e4f'}};
     document.getElementById('llmSummary').textContent = data.summary || '';
     document.getElementById('llmOps').innerHTML = (data.operations||[]).map((op,i) => {
       const a = actionLabels[op.action]||{l:op.action,bg:'#eee',c:'#333'};

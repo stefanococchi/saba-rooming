@@ -1071,6 +1071,13 @@ Rispondi SOLO con JSON valido (no markdown, no commenti):
                         guest_id = created_ids.get(guest_id, guest_id)
                     hotel_id = opdata.get('hotel_id')
                     room_code = (opdata.get('room_code') or '').strip()
+                    # Ensure int types
+                    try:
+                        guest_id = int(guest_id) if guest_id else None
+                        hotel_id = int(hotel_id) if hotel_id else None
+                    except (ValueError, TypeError):
+                        results.append({'ok': False, 'error': f'guest_id={guest_id} o hotel_id={hotel_id} non validi'})
+                        continue
 
                     if action == 'assign' and guest_id and hotel_id:
                         existing = TourRoomAssignment.query.filter_by(
