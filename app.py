@@ -5378,6 +5378,11 @@ Notes: {q.notes or 'N/A'}"""
             db.session.add(TourGuestDocument(
                 guest_id=guest_id, doc_type=doc_type,
                 filename=file.filename, mime_type=mime, data=data))
+        # Update the flag on TourGuest so the template shows the link
+        if doc_type == 'passport':
+            g.passport_file = file.filename
+        else:
+            g.driving_file = file.filename
         db.session.commit()
         log_audit('tour', 'TourGuestDocument', guest_id, 'create',
                   summary=f'Upload {doc_type} per {g.nome_completo}')
