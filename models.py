@@ -20,6 +20,7 @@ class User(UserMixin, db.Model):
     role                 = db.Column(db.String(20), default='user')   # superuser, user, client
     is_active            = db.Column(db.Boolean, default=True)
     must_change_password = db.Column(db.Boolean, default=True)
+    sections             = db.Column(db.String(200), default='')  # comma-separated: rooming,partivia,tour
     failed_login_attempts = db.Column(db.Integer, default=0)
     microsoft_id         = db.Column(db.String(100), unique=True, nullable=True)
     ms_access_token      = db.Column(db.Text, nullable=True)
@@ -43,6 +44,21 @@ class User(UserMixin, db.Model):
 
     def reset_failed_logins(self):
         self.failed_login_attempts = 0
+
+    def can_access(self, section):
+        if self.is_superuser:
+            return True
+        allowed = [s.strip() for s in (self.sections or '').split(',') if s.strip()]
+        if not allowed:
+            return True  # no restriction = all sections
+        return section in allowed
+
+    @property
+    def allowed_sections(self):
+        if self.is_superuser:
+            return ['rooming', 'partivia', 'tour']
+        allowed = [s.strip() for s in (self.sections or '').split(',') if s.strip()]
+        return allowed if allowed else ['rooming', 'partivia', 'tour']
 
 
 class AuditLog(db.Model):

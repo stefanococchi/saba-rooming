@@ -131,12 +131,13 @@ def create_app():
             except Exception:
                 pass
 
-            # Microsoft SSO columns on users
+            # User table columns
             try:
                 u_cols = [c['name'] for c in inspect(db.engine).get_columns('users')]
                 for col, col_type in (('microsoft_id', 'VARCHAR(100)'),
                                        ('ms_access_token', 'TEXT'),
-                                       ('ms_refresh_token', 'TEXT')):
+                                       ('ms_refresh_token', 'TEXT'),
+                                       ('sections', "VARCHAR(200) DEFAULT ''")):
                     if col not in u_cols:
                         conn.execute(text(f"ALTER TABLE users ADD COLUMN {col} {col_type}"))
                         conn.commit()
@@ -226,6 +227,24 @@ def create_app():
             return redirect(url_for('login'))
         if current_user.must_change_password and request.path != '/set-password':
             return redirect(url_for('set_password'))
+        # Section access control
+        section_prefixes = {
+            '/rooming': 'rooming', '/api/guest': 'rooming', '/api/import': 'rooming',
+            '/api/parse-email': 'rooming', '/api/apply-parsed': 'rooming',
+            '/api/pnr': 'rooming', '/api/stanze': 'rooming', '/api/camere': 'rooming',
+            '/api/voli': 'rooming', '/api/export': 'rooming',
+            '/partivia': 'partivia', '/api/partivia': 'partivia',
+            '/api/deadline': 'partivia',
+            '/tour': 'tour', '/api/tour': 'tour',
+        }
+        for prefix, section in section_prefixes.items():
+            if request.path.startswith(prefix):
+                if not current_user.can_access(section):
+                    if request.is_json or request.path.startswith('/api/'):
+                        return jsonify(ok=False, error='Accesso non autorizzato a questa sezione'), 403
+                    flash('Non hai accesso a questa sezione.', 'error')
+                    return redirect(url_for('landing'))
+                break
 
     # ── AUTH ROUTES ────────────────────────────────────────────────────────
 
@@ -421,15 +440,17 @@ def create_app():
         if User.query.filter((User.username == username) | (User.email == email)).first():
             flash('Username o email già esistente.', 'error')
             return redirect(url_for('admin_users'))
+        sections = ','.join(request.form.getlist('sections'))
         u = User(username=username, email=email, role=role,
                  is_superuser=(role == 'superuser'),
+                 sections=sections,
                  must_change_password=True)
         u.set_password('changeme')
         u.must_change_password = True
         db.session.add(u)
         db.session.commit()
         log_audit('system', 'User', u.id, 'create',
-                  summary=f'Creato utente {u.username} ({u.role})')
+                  summary=f'Creato utente {u.username} ({u.role}, sezioni={sections or "tutte"})')
         flash(f'Utente {username} creato. Password temporanea: changeme', 'success')
         return redirect(url_for('admin_users'))
 
@@ -478,6 +499,19 @@ def create_app():
                   changes={'is_active': {'old': not u.is_active, 'new': u.is_active}},
                   summary=f'Utente {u.username} {status}')
         flash(f'Utente {u.username} {status}.', 'success')
+        return redirect(url_for('admin_users'))
+
+    @app.post('/admin/users/<int:uid>/sections')
+    @superuser_required
+    def admin_update_sections(uid):
+        u = User.query.get_or_404(uid)
+        old_sections = u.sections or ''
+        u.sections = ','.join(request.form.getlist('sections'))
+        db.session.commit()
+        log_audit('system', 'User', u.id, 'update',
+                  changes={'sections': {'old': old_sections, 'new': u.sections}},
+                  summary=f'Sezioni {u.username}: {u.sections or "tutte"}')
+        flash(f'Sezioni di {u.username} aggiornate.', 'success')
         return redirect(url_for('admin_users'))
 
     # ── AUDIT HELPERS ──────────────────────────────────────────────────────

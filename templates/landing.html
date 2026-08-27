@@ -126,6 +126,7 @@ body {
 </div>
 
 <div class="cards">
+  {% if 'rooming' in current_user.allowed_sections %}
   <a href="/rooming" class="portal-card card-rooming">
     <div class="icon">
       <span class="material-icons-round">hotel</span>
@@ -133,7 +134,9 @@ body {
     <h2>Equans</h2>
     <p>Rooming 8–9 Ott 2026 — guests, flights, rooms and transport</p>
   </a>
+  {% endif %}
 
+  {% if 'partivia' in current_user.allowed_sections %}
   <a href="/partivia" class="portal-card card-partivia">
     <div class="icon">
       <span class="material-icons-round">apartment</span>
@@ -141,7 +144,9 @@ body {
     <h2>Partivia Spain</h2>
     <p>Hotel quotes, rate comparison, meeting rooms and F&B</p>
   </a>
+  {% endif %}
 
+  {% if 'tour' in current_user.allowed_sections %}
   <a href="/tour" class="portal-card card-tour">
     <div class="icon">
       <span class="material-icons-round">directions_car</span>
@@ -149,6 +154,7 @@ body {
     <h2>Liqui Moly Tour</h2>
     <p>Participants, multi-hotel rooming, car groups and payments</p>
   </a>
+  {% endif %}
 </div>
 
 
