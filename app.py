@@ -2545,7 +2545,7 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
         wb.save(buf)
         buf.seek(0)
         return send_file(buf, as_attachment=True,
-                         download_name=f'stanze_{giorno}_ott.xlsx',
+                         download_name=f'stanze_{giorno}_ott_{datetime.utcnow().strftime("%Y%m%d")}.xlsx',
                          mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
 
     @app.get('/api/export/voli/<tipo>')
@@ -2592,7 +2592,7 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
         wb.save(buf)
         buf.seek(0)
         return send_file(buf, as_attachment=True,
-                         download_name=f'voli_{tipo}.xlsx',
+                         download_name=f'voli_{tipo}_{datetime.utcnow().strftime("%Y%m%d")}.xlsx',
                          mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
 
     @app.get('/api/export/pnr')
@@ -2679,7 +2679,7 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
         wb.save(buf)
         buf.seek(0)
         return send_file(buf, as_attachment=True,
-                         download_name='pnr_groups.xlsx',
+                         download_name=f'pnr_groups_{datetime.utcnow().strftime("%Y%m%d")}.xlsx',
                          mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
 
     @app.get('/api/export/camere/<int:notte>')
@@ -2784,7 +2784,7 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
         wb.save(buf)
         buf.seek(0)
         return send_file(buf, as_attachment=True,
-                         download_name=f'camere_notte_{notte}_ott.xlsx',
+                         download_name=f'camere_notte_{notte}_ott_{datetime.utcnow().strftime("%Y%m%d")}.xlsx',
                          mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
 
     # ── EMAIL PARSING (LLM) ─────────────────────────────────────────────────
@@ -5260,7 +5260,7 @@ Notes: {q.notes or 'N/A'}"""
         wb.save(buf)
         buf.seek(0)
         return send_file(buf, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                         as_attachment=True, download_name='dinners_LMNAT2026.xlsx')
+                         as_attachment=True, download_name=f'dinners_LMNAT2026_{datetime.utcnow().strftime("%Y%m%d")}.xlsx')
 
     # ── TOUR: per-hotel export ───────────────────────────────────────────
 
@@ -5817,7 +5817,7 @@ Notes: {q.notes or 'N/A'}"""
         wb.save(buf)
         buf.seek(0)
         return send_file(buf, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                         as_attachment=True, download_name=f'audit_{section}.xlsx')
+                         as_attachment=True, download_name=f'audit_{section}_{datetime.utcnow().strftime("%Y%m%d")}.xlsx')
 
     # ── ROLLBACK SINGOLA AZIONE ───────────────────────────────────────────
 
