@@ -44,8 +44,8 @@ ROOM_NAME_TO_CODE = {
     'CLASSIC DOUBLE': 'CD', 'CLASSIC SINGLE': 'CS',
     # Europa
     'SINGLE ROOM': 'SGL',
-    # Arthur
-    'STANDARD ROOM': 'STD',
+    # Arthur / generic
+    'STANDARD ROOM': 'STD', 'JUNIOR SUITE': 'JS',
     # Arthurino
     'HOUSE ROOM': 'HOUSE',
     # Maranello
@@ -154,10 +154,10 @@ def main():
             # Find matching hotel
             hotels = TourHotel.query.filter_by(night_label=night).all()
             hotel = None
-            for h in hotels:
-                if hotel_frag.lower() in h.hotel_name.lower():
-                    hotel = h
-                    break
+            # Prefer shortest name match to avoid "Arthur" matching "Arthurino"
+            candidates = [h for h in hotels if hotel_frag.lower() in h.hotel_name.lower()]
+            if candidates:
+                hotel = min(candidates, key=lambda h: len(h.hotel_name))
 
             if not hotel:
                 print(f'  WARNING: No hotel found for night={night} fragment="{hotel_frag}"')
