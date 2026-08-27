@@ -796,6 +796,23 @@ textarea { resize: vertical; min-height: 120px; }
     </div>
   </div>
 
+  {% if not client_view %}
+  <!-- Client Links Card -->
+  <div class="card" style="margin-top:16px">
+    <div class="card-header">
+      <span class="material-icons-round">link</span>
+      Link Client
+      <div style="flex:1"></div>
+      <button class="btn btn-primary btn-sm" onclick="generateClientLink()" style="font-size:12px;padding:4px 12px">
+        <span class="material-icons-round" style="font-size:14px">add</span> Genera
+      </button>
+    </div>
+    <div class="card-body" id="clientLinksBody" style="font-size:13px">
+      <p style="color:#888">Caricamento...</p>
+    </div>
+  </div>
+  {% endif %}
+
   </div><!-- /tab-ospiti -->
 
   {% if not client_view %}
@@ -2563,6 +2580,47 @@ function rollbackAudit(auditId) {
     else alert(data.error || 'Errore nel rollback');
   });
 }
+
+// ── Client Links ──
+function loadClientLinks() {
+  fetch('/api/rooming/client-links').then(r => r.json()).then(links => {
+    const body = document.getElementById('clientLinksBody');
+    if (!body) return;
+    if (!links.length) {
+      body.innerHTML = '<p style="color:#888;font-size:13px">Nessun link generato. Clicca "Genera" per creare un link di accesso client.</p>';
+      return;
+    }
+    body.innerHTML = links.map(l => {
+      const url = location.origin + '/rooming/client/' + l.token;
+      return `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #f0ebe6">
+        <span style="font-weight:500">${l.label}</span>
+        <input value="${url}" readonly onclick="this.select()" style="flex:1;padding:4px 8px;border:1px solid #d7ccc8;border-radius:6px;font-size:12px;font-family:monospace">
+        <button onclick="navigator.clipboard.writeText('${url}');this.textContent='Copiato!';setTimeout(()=>this.textContent='Copia',1500)" style="padding:4px 10px;border:1px solid #d7ccc8;border-radius:6px;font-size:12px;cursor:pointer;background:#fff;font-family:inherit">Copia</button>
+        <button onclick="deleteClientLink(${l.id})" style="padding:4px 8px;border:1px solid #ef9a9a;border-radius:6px;font-size:12px;cursor:pointer;background:#fff;color:#c62828;font-family:inherit">Elimina</button>
+        <span style="font-size:11px;color:#999">${l.created_at}</span>
+      </div>`;
+    }).join('');
+  });
+}
+function generateClientLink() {
+  const label = prompt('Nome del link (es. Equans Team):', 'Equans');
+  if (!label) return;
+  fetch('/api/rooming/client-link', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({label})
+  }).then(r => r.json()).then(data => {
+    if (data.ok) loadClientLinks();
+    else alert(data.error || 'Errore');
+  });
+}
+function deleteClientLink(id) {
+  if (!confirm('Eliminare questo link?')) return;
+  fetch(`/api/rooming/client-link/${id}`, {method: 'DELETE'}).then(r => r.json()).then(data => {
+    if (data.ok) loadClientLinks();
+  });
+}
+// Load on page init
+if (!{{ 'true' if client_view else 'false' }}) { document.addEventListener('DOMContentLoaded', loadClientLinks); }
 
 // ── LLM Assistant ──
 let _llmResult = null;

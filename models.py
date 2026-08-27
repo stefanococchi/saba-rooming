@@ -137,6 +137,15 @@ class Guest(db.Model):
         return f'{self.cognome} {self.nome}'.strip()
 
 
+class RoomingClientToken(db.Model):
+    __tablename__ = 'rooming_client_tokens'
+
+    id         = db.Column(db.Integer, primary_key=True)
+    label      = db.Column(db.String(100))
+    token      = db.Column(db.String(64), nullable=False, unique=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
 class PnrGroup(db.Model):
     __tablename__ = 'pnr_groups'
 

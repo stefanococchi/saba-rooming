@@ -15,7 +15,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from models import (db, User, AuditLog, Todo, Guest, RoomContract, EmailLog,
+from models import (db, User, AuditLog, Todo, Guest, RoomingClientToken, RoomContract, EmailLog,
                      PartiviaQuote, PartiviaRoomRate,
                      PartiviaMeetingRoom, PartiviaFBOption,
                      BudgetOverride, PnrGroup,
@@ -216,7 +216,7 @@ def create_app():
     def require_login():
         open_prefixes = ('/login', '/set-password', '/static',
                          '/auth/microsoft', '/auth/callback',
-                         '/tour/client/', '/tour/docs/')
+                         '/rooming/client/', '/tour/client/', '/tour/docs/')
         if any(request.path.startswith(p) for p in open_prefixes):
             return None
         if request.path == '/favicon.ico':
@@ -1106,14 +1106,45 @@ Rispondi SOLO con JSON valido (no markdown, no commenti):
 
     # ── PAGINA ROOMING ──────────────────────────────────────────────────────
 
-    @app.route('/rooming/client')
-    def rooming_client():
+    @app.route('/rooming/client/<token>')
+    def rooming_client_token(token):
+        RoomingClientToken.query.filter_by(token=token).first_or_404()
         return index(client_view=True)
 
     @app.route('/rooming')
     def index(client_view=False):
         guests = Guest.query.filter_by(deleted=False).order_by(Guest.cognome, Guest.nome).all()
         return render_template('index.html', guests=guests, client_view=client_view)
+
+    # ── ROOMING CLIENT LINK API ──────────────────────────────────────────
+
+    @app.post('/api/rooming/client-link')
+    def rooming_generate_client_link():
+        import secrets
+        data = request.json or {}
+        label = (data.get('label') or 'Client').strip()
+        token = secrets.token_urlsafe(24)
+        ct = RoomingClientToken(label=label, token=token)
+        db.session.add(ct)
+        db.session.commit()
+        return jsonify(ok=True, token=ct.token,
+                       url=f'/rooming/client/{ct.token}',
+                       label=ct.label, id=ct.id)
+
+    @app.get('/api/rooming/client-links')
+    def rooming_client_links():
+        tokens = RoomingClientToken.query.order_by(
+            RoomingClientToken.created_at.desc()).all()
+        return jsonify([{'id': t.id, 'label': t.label, 'token': t.token,
+                         'created_at': t.created_at.strftime('%d/%m/%Y %H:%M') if t.created_at else ''}
+                        for t in tokens])
+
+    @app.delete('/api/rooming/client-link/<int:tid>')
+    def rooming_delete_client_link(tid):
+        t = RoomingClientToken.query.get_or_404(tid)
+        db.session.delete(t)
+        db.session.commit()
+        return jsonify(ok=True)
 
     # ── CRUD API ─────────────────────────────────────────────────────────────
 
