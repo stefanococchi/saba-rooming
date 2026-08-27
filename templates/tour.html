@@ -1349,7 +1349,14 @@ async function applyLLM() {
   try {
     const r = await fetch('/api/llm/apply', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({operations:sel, email_log_id:_llmResult.email_log_id})});
     const data = await r.json();
-    if (data.ok) { const ok=data.results.filter(r=>r.ok).length; alert(`${ok} operation(s) completed`); location.reload(); }
+    if (data.ok) {
+      const ok=data.results.filter(r=>r.ok).length;
+      const errs=data.results.filter(r=>!r.ok);
+      let msg = `${ok} operation(s) completed`;
+      if (errs.length) msg += '\nErrors: ' + errs.map(e=>e.error).join(', ');
+      alert(msg);
+      location.reload();
+    }
     else alert(data.error||'Error');
   } finally { btn.disabled=false; btn.innerHTML='<span class="material-icons-round">check_circle</span> Confirm'; }
 }
