@@ -4962,97 +4962,159 @@ Notes: {q.notes or 'N/A'}"""
 
     @app.get('/api/tour/baseline-delta/export')
     def tour_baseline_delta_export():
-        """Export all hotel deltas as multi-sheet XLSX."""
+        """Export all hotel deltas in hotel rooming list format."""
         from openpyxl import Workbook
-        from openpyxl.styles import Font, PatternFill, Alignment
-
-        wb = Workbook()
-        wb.remove(wb.active)
-
-        hotels = TourHotel.query.order_by(TourHotel.night_date, TourHotel.hotel_name).all()
-        today = datetime.utcnow().strftime('%d/%m/%Y')
+        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
         import re as _re
+
+        # Reverse map: DB code → hotel-friendly name
+        _CODE_TO_NAME = {
+            'TWIN': 'Twin Room', 'DBL': 'Double Room', 'TBC': 'To Be Confirmed',
+            'ROYAL': 'Royal Suite', 'JS': 'Junior Suite', 'DD': 'Deluxe Double',
+            'SD': 'Superior Double', 'FAM': 'Family Room', 'PD': 'Premium Double',
+            'CD': 'Classic Double', 'CS': 'Classic Single', 'SUITE': 'Suite',
+            'SGL': 'Single Room', 'STD': 'Standard Room', 'HOUSE': 'House Room',
+            'DLX': 'Deluxe',
+            # Paolo VI
+            'GS': 'Singola Giardino', 'PAN': 'Panorama', 'MONO': 'MonoloK',
+            'FLAT': 'FlatS', 'KINGP': 'King+', 'KING': 'King',
+            'XL': 'XL', 'APP': 'App',
+        }
+
         def _base_code(code):
             c = (code or '').strip()
             c = _ROOM_NORMALIZE.get(c, _ROOM_NORMALIZE.get(c.upper(), c))
             return _re.sub(r'-[A-Z0-9]+$', '', c.upper())
 
+        def _room_name(code):
+            base = _base_code(code)
+            return _CODE_TO_NAME.get(base, base)
+
+        night_dates = {
+            '1Sep': '1 September 2026', '2Sep': '2 September 2026',
+            '3Sep': '3 September 2026', '4Sep': '4 September 2026',
+            '5Sep': '5 September 2026',
+        }
+        checkout_map = {
+            '1Sep': '2 September 2026', '2Sep': '3 September 2026',
+            '3Sep': '4 September 2026', '4Sep': '5 September 2026',
+            '5Sep': '6 September 2026',
+        }
+
+        wb = Workbook()
+        wb.remove(wb.active)
+
+        hotels = TourHotel.query.order_by(TourHotel.night_date, TourHotel.hotel_name).all()
+
+        fill_removed = PatternFill(fgColor='FFCDD2', fill_type='solid')
+        fill_added = PatternFill(fgColor='C8E6C9', fill_type='solid')
+        fill_changed = PatternFill(fgColor='BBDEFB', fill_type='solid')
+        font_title = Font(bold=True, size=12)
+        font_sub = Font(size=10, italic=True, color='666666')
+        font_hdr = Font(bold=True, size=11)
+        hdr_fill = PatternFill(fgColor='E0E0E0', fill_type='solid')
+        thin_border = Border(bottom=Side(style='thin', color='CCCCCC'))
+
         for hotel in hotels:
             baselines = TourRoomBaseline.query.filter_by(hotel_id=hotel.id).all()
             assignments = TourRoomAssignment.query.filter_by(hotel_id=hotel.id).all()
 
+            # Build maps
             baseline_map = {}
             for b in baselines:
                 key = (b.cognome.upper().strip(), (b.nome or '').upper().strip())
-                baseline_map[key] = {'room_code': b.room_code, 'room_label': b.room_label, 'notes': b.notes}
+                baseline_map[key] = {'room_code': b.room_code, 'notes': b.notes}
 
             actual_map = {}
+            actual_guests = {}
             for a in assignments:
                 g = TourGuest.query.get(a.guest_id)
                 if g and not g.deleted:
                     key = (g.cognome.upper().strip(), g.nome.upper().strip())
                     actual_map[key] = {'room_code': a.room_code}
+                    actual_guests[key] = g
 
-            removed, added, changed, unchanged = [], [], [], []
+            # Build rows: (room_name, surname, name, nationality, diet, beds, status)
+            rows = []
+            for key, adata in actual_map.items():
+                g = actual_guests[key]
+                bdata = baseline_map.get(key)
+                if not bdata:
+                    status = 'NEW'
+                elif _base_code(bdata['room_code']) != _base_code(adata['room_code']):
+                    status = 'ROOM CHANGED'
+                else:
+                    status = ''
+                rows.append({
+                    'room_type': _room_name(adata['room_code']),
+                    'surname': g.cognome, 'name': g.nome,
+                    'nationality': g.nazionalita or '',
+                    'diet': g.diet or '',
+                    'beds': '',
+                    'status': status,
+                })
             for key, bdata in baseline_map.items():
                 if key not in actual_map:
-                    removed.append((*key, bdata['room_code'], '', 'REMOVED'))
-                elif _base_code(bdata['room_code']) != _base_code(actual_map[key]['room_code']):
-                    changed.append((*key, bdata['room_code'], actual_map[key]['room_code'], 'CHANGED'))
-                else:
-                    unchanged.append((*key, bdata['room_code'], actual_map[key]['room_code'], 'OK'))
-            for key, adata in actual_map.items():
-                if key not in baseline_map:
-                    added.append((*key, '', adata['room_code'], 'ADDED'))
+                    rows.append({
+                        'room_type': _room_name(bdata['room_code']),
+                        'surname': key[0], 'name': key[1],
+                        'nationality': '', 'diet': '',
+                        'beds': '', 'status': 'CANCELLED',
+                    })
+
+            # Sort by room type then surname
+            rows.sort(key=lambda r: (r['room_type'], r['surname']))
 
             # Create sheet
             safe_name = f"{hotel.night_label}_{hotel.hotel_name}".replace('*', '').replace('/', '-').replace('\\', '-').replace("'", '')[:31]
             ws = wb.create_sheet(title=safe_name)
 
-            # Header info
-            hfont = Font(bold=True, size=12)
-            ws.cell(row=1, column=1, value=f'{hotel.hotel_name} — {hotel.city}').font = hfont
-            ws.cell(row=2, column=1, value=f'Night: {hotel.night_label} | Delta report: {today}').font = Font(size=10, italic=True, color='666666')
-            ws.cell(row=2, column=5, value=f'Baseline: {len(baseline_map)} | Actual: {len(actual_map)} | Delta: {len(actual_map) - len(baseline_map)}')
+            checkin = night_dates.get(hotel.night_label, hotel.night_label)
+            checkout = checkout_map.get(hotel.night_label, '')
+            rooms_count = len([r for r in rows if r['status'] != 'CANCELLED'])
+            guests_count = len([r for r in rows if r['status'] != 'CANCELLED'])
 
-            # Column headers
-            col_headers = ['Surname', 'Name', 'Baseline Room', 'Actual Room', 'Status']
-            hdr_font = Font(bold=True, size=11)
-            hdr_fill = PatternFill(fgColor='E0E0E0', fill_type='solid')
-            for ci, h in enumerate(col_headers, 1):
-                c = ws.cell(row=4, column=ci, value=h)
-                c.font = hdr_font
+            # Header rows (same format as hotel rooming list)
+            ws.cell(row=1, column=1, value=f'{hotel.hotel_name} - {hotel.city}').font = font_title
+            ws.cell(row=2, column=1, value='LIQUI MOLY NEXUS AUTO TOUR 2026 - group CARZILLA').font = font_sub
+            ws.cell(row=3, column=1, value=f'Check-in {checkin}   /   Check-out {checkout}').font = font_sub
+            ws.cell(row=4, column=1, value=f'{rooms_count} rooms - {guests_count} guests').font = font_sub
+
+            # Column headers (row 6)
+            headers = ['#', 'Room type', 'Room', 'Surname', 'Name', 'Nationality', 'Diet / notes', 'Status']
+            for ci, h in enumerate(headers, 1):
+                c = ws.cell(row=6, column=ci, value=h)
+                c.font = font_hdr
                 c.fill = hdr_fill
 
-            # Fills
-            fill_removed = PatternFill(fgColor='FFCDD2', fill_type='solid')
-            fill_added = PatternFill(fgColor='C8E6C9', fill_type='solid')
-            fill_changed = PatternFill(fgColor='BBDEFB', fill_type='solid')
+            # Data rows
+            num = 0
+            for ri, r in enumerate(rows, 7):
+                if r['status'] != 'CANCELLED':
+                    num += 1
+                fill = None
+                if r['status'] == 'NEW':
+                    fill = fill_added
+                elif r['status'] == 'CANCELLED':
+                    fill = fill_removed
+                elif r['status'] == 'ROOM CHANGED':
+                    fill = fill_changed
 
-            row = 5
-            all_rows = sorted(removed + added + changed + unchanged, key=lambda x: x[0])
-            for surname, name, base_room, act_room, status in all_rows:
-                for ci, val in enumerate([surname, name, base_room, act_room, status], 1):
-                    cell = ws.cell(row=row, column=ci, value=val)
-                    if status == 'REMOVED':
-                        cell.fill = fill_removed
-                    elif status == 'ADDED':
-                        cell.fill = fill_added
-                    elif status == 'CHANGED':
-                        cell.fill = fill_changed
-                row += 1
-
-            # Summary row
-            row += 1
-            ws.cell(row=row, column=1, value='Summary:').font = Font(bold=True)
-            ws.cell(row=row, column=2, value=f'{len(removed)} removed, {len(added)} added, {len(changed)} changed, {len(unchanged)} unchanged')
+                vals = [num if r['status'] != 'CANCELLED' else '',
+                        r['room_type'], '', r['surname'], r['name'],
+                        r['nationality'], r['diet'], r['status']]
+                for ci, val in enumerate(vals, 1):
+                    cell = ws.cell(row=ri, column=ci, value=val)
+                    cell.border = thin_border
+                    if fill:
+                        cell.fill = fill
+                    if r['status'] == 'CANCELLED':
+                        cell.font = Font(strikethrough=True, color='999999')
 
             # Column widths
-            ws.column_dimensions['A'].width = 25
-            ws.column_dimensions['B'].width = 20
-            ws.column_dimensions['C'].width = 18
-            ws.column_dimensions['D'].width = 18
-            ws.column_dimensions['E'].width = 12
+            widths = [5, 20, 8, 22, 18, 14, 25, 14]
+            for ci, w in enumerate(widths):
+                ws.column_dimensions[chr(65 + ci)].width = w
 
         buf = BytesIO()
         wb.save(buf)
