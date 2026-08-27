@@ -1096,6 +1096,9 @@ Rispondi SOLO con JSON valido (no markdown, no commenti):
                                 room_code=room_code))
                         hotel = TourHotel.query.get(hotel_id)
                         guest = TourGuest.query.get(guest_id)
+                        # Auto dinner_5sep
+                        if hotel and hotel.night_label == '5Sep' and guest:
+                            guest.dinner_5sep = True
                         h_name = hotel.hotel_name if hotel else f'#{hotel_id}'
                         g_name = guest.nome_completo if guest else f'#{guest_id}'
                         log_audit('tour', 'TourRoomAssignment', guest_id, 'assign',
@@ -1110,6 +1113,9 @@ Rispondi SOLO con JSON valido (no markdown, no commenti):
                             db.session.delete(existing)
                         hotel = TourHotel.query.get(hotel_id)
                         guest = TourGuest.query.get(guest_id)
+                        # Auto dinner_5sep off
+                        if hotel and hotel.night_label == '5Sep' and guest:
+                            guest.dinner_5sep = False
                         h_name = hotel.hotel_name if hotel else f'#{hotel_id}'
                         g_name = guest.nome_completo if guest else f'#{guest_id}'
                         log_audit('tour', 'TourRoomAssignment', guest_id, 'unassign',
@@ -4861,20 +4867,52 @@ Notes: {q.notes or 'N/A'}"""
         existing = TourRoomAssignment.query.filter_by(
             guest_id=gid, hotel_id=hotel_id).first()
 
+        hotel = TourHotel.query.get(hotel_id)
         if room_code:
             if existing:
                 existing.room_code = room_code
             else:
                 db.session.add(TourRoomAssignment(
                     guest_id=gid, hotel_id=hotel_id, room_code=room_code))
+            # Auto-enable dinner_5sep when assigning a 5Sep room
+            if hotel and hotel.night_label == '5Sep':
+                g.dinner_5sep = True
         else:
             if existing:
                 db.session.delete(existing)
+            # Auto-disable dinner_5sep when removing a 5Sep room
+            if hotel and hotel.night_label == '5Sep':
+                g.dinner_5sep = False
 
         db.session.commit()
         log_audit('tour', 'TourRoomAssignment', g.id, 'assign',
                   summary=f'Camera assegnata a {g.nome_completo}')
         return jsonify({'ok': True})
+
+    @app.post('/api/tour/sync-dinner-5sep')
+    def sync_dinner_5sep():
+        """Set dinner_5sep=True for all guests with a 5Sep room, False for others."""
+        hotels_5sep = TourHotel.query.filter_by(night_label='5Sep').all()
+        hotel_ids_5sep = {h.id for h in hotels_5sep}
+        assignments_5sep = TourRoomAssignment.query.filter(
+            TourRoomAssignment.hotel_id.in_(hotel_ids_5sep)).all()
+        guest_ids_with_5sep = {a.guest_id for a in assignments_5sep}
+
+        guests = TourGuest.query.filter_by(deleted=False).all()
+        on = off = 0
+        for g in guests:
+            if g.id in guest_ids_with_5sep:
+                if not g.dinner_5sep:
+                    g.dinner_5sep = True
+                    on += 1
+            else:
+                if g.dinner_5sep:
+                    g.dinner_5sep = False
+                    off += 1
+        db.session.commit()
+        log_audit('tour', 'TourGuest', None, 'update',
+                  summary=f'Sync dinner 5Sep: {on} accesi, {off} spenti')
+        return jsonify(ok=True, turned_on=on, turned_off=off)
 
     # ── TOUR EXPORT XLSX ─────────────────────────────────────────────────
 
