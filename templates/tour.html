@@ -217,7 +217,10 @@ tr.cancelled td { opacity: .45; }
 
 <div class="topbar">
   {% if client_view %}
-  <img src="/static/img/logo_saba.png" alt="Saba" style="height:48px;margin-right:8px">
+  <div style="display:flex;flex-direction:column;align-items:center;margin-right:12px">
+    <img src="/static/img/logo_saba.png" alt="Saba" style="height:40px">
+    <span style="font-size:8px;color:rgba(255,255,255,.6);margin-top:1px">powered by SABAE20 Srl</span>
+  </div>
   {% else %}
   <a href="/" class="home-link">
     <span class="material-icons-round">arrow_back</span> Portal
@@ -1482,8 +1485,5 @@ function loadTodos() {
 }
 
 </script>
-{% if client_view %}
-<div style="text-align:center;padding:24px 0 12px;font-size:11px;color:#bbb">powered by SABAE20 Srl</div>
-{% endif %}
 </body>
 </html>
