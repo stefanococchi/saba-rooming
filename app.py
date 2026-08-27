@@ -4890,13 +4890,26 @@ Notes: {q.notes or 'N/A'}"""
                   summary=f'Camera assegnata a {g.nome_completo}')
         return jsonify({'ok': True})
 
+    # Room name → code mapping for normalizing comparisons
+    _ROOM_NORMALIZE = {
+        'DLX': 'KINGP', 'BAL': 'PAN', 'MON': 'MONO', 'APP': 'FLAT', 'GSGL': 'GS',
+        'TWIN ROOM': 'TWIN', 'DOUBLE ROOM': 'DBL', 'TO BE CONFIRMED': 'TBC',
+        'ROYAL SUITE': 'ROYAL', 'JUNIOR SUITE': 'JS', 'DELUXE DOUBLE': 'DD',
+        'SUPERIOR DOUBLE': 'SD', 'FAMILY ROOM': 'FAM', 'PREMIUM DOUBLE': 'PD',
+        'CLASSIC DOUBLE': 'CD', 'CLASSIC SINGLE': 'CS',
+        'SINGLE ROOM': 'SGL', 'STANDARD ROOM': 'STD', 'HOUSE ROOM': 'HOUSE',
+        'DELUXE': 'DLX',
+    }
+
     @app.get('/api/tour/baseline-delta/<int:hotel_id>')
     def tour_baseline_delta(hotel_id):
         """Compare baseline (final request) vs actual assignments for a hotel."""
         import re as _re
         def _base_code(code):
-            """Strip numeric suffix: PAN-1→PAN, XL-2→XL, DBL-T4→DBL"""
-            return _re.sub(r'-[A-Z0-9]+$', '', (code or '').upper().strip())
+            """Normalize: name→code, strip suffix: PAN-1→PAN, XL-2→XL"""
+            c = (code or '').strip()
+            c = _ROOM_NORMALIZE.get(c, _ROOM_NORMALIZE.get(c.upper(), c))
+            return _re.sub(r'-[A-Z0-9]+$', '', c.upper())
 
         hotel = TourHotel.query.get_or_404(hotel_id)
         baselines = TourRoomBaseline.query.filter_by(hotel_id=hotel_id).all()
@@ -4955,7 +4968,9 @@ Notes: {q.notes or 'N/A'}"""
         today = datetime.utcnow().strftime('%d/%m/%Y')
         import re as _re
         def _base_code(code):
-            return _re.sub(r'-[A-Z0-9]+$', '', (code or '').upper().strip())
+            c = (code or '').strip()
+            c = _ROOM_NORMALIZE.get(c, _ROOM_NORMALIZE.get(c.upper(), c))
+            return _re.sub(r'-[A-Z0-9]+$', '', c.upper())
 
         for hotel in hotels:
             baselines = TourRoomBaseline.query.filter_by(hotel_id=hotel.id).all()
