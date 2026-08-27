@@ -5352,6 +5352,37 @@ Notes: {q.notes or 'N/A'}"""
         return send_file(buf, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
                          as_attachment=True, download_name=filename)
 
+    # ── TOUR: upload documents ────────────────────────────────────────
+
+    @app.post('/api/tour/doc/<int:guest_id>/<doc_type>')
+    def tour_upload_doc(guest_id, doc_type):
+        """Upload a passport or driving licence image/PDF."""
+        if doc_type not in ('passport', 'driving'):
+            return jsonify(ok=False, error='doc_type must be passport or driving'), 400
+        g = TourGuest.query.get_or_404(guest_id)
+        file = request.files.get('file')
+        if not file or not file.filename:
+            return jsonify(ok=False, error='Nessun file selezionato'), 400
+        data = file.read()
+        if len(data) > 10 * 1024 * 1024:
+            return jsonify(ok=False, error='File troppo grande (max 10MB)'), 400
+        mime = file.content_type or 'application/octet-stream'
+        # Update or create
+        existing = TourGuestDocument.query.filter_by(
+            guest_id=guest_id, doc_type=doc_type).first()
+        if existing:
+            existing.data = data
+            existing.filename = file.filename
+            existing.mime_type = mime
+        else:
+            db.session.add(TourGuestDocument(
+                guest_id=guest_id, doc_type=doc_type,
+                filename=file.filename, mime_type=mime, data=data))
+        db.session.commit()
+        log_audit('tour', 'TourGuestDocument', guest_id, 'create',
+                  summary=f'Upload {doc_type} per {g.nome_completo}')
+        return jsonify(ok=True)
+
     # ── TOUR: serve documents from DB (admin) ──────────────────────────
 
     @app.route('/api/tour/doc/<int:guest_id>/<doc_type>')

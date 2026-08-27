@@ -571,10 +571,9 @@ tr.cancelled td { opacity: .45; }
                     <div class="detail-label">Client Room Note</div>
                     <div class="detail-value">{{ g.client_room_note or '-' }}</div>
                   </div>
-                  {% if g.passport_file or g.driving_file %}
                   <div>
                     <div class="detail-label">Documents</div>
-                    <div class="detail-value" style="display:flex; gap:8px; flex-wrap:wrap">
+                    <div class="detail-value" style="display:flex; gap:8px; flex-wrap:wrap; align-items:center">
                       {% if g.passport_file %}
                       <a href="/api/tour/doc/{{ g.id }}/passport" target="_blank"
                          style="display:inline-flex; align-items:center; gap:4px; padding:4px 10px; border-radius:6px; background:#e3f2fd; color:#1565c0; text-decoration:none; font-size:12px; font-weight:600">
@@ -587,9 +586,18 @@ tr.cancelled td { opacity: .45; }
                         <span class="material-icons-round" style="font-size:16px">directions_car</span> Driving Licence
                       </a>
                       {% endif %}
+                      {% if not client_view %}
+                      <label style="display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border-radius:6px;background:#fff3e0;color:#E65100;font-size:12px;font-weight:600;cursor:pointer;border:1px solid #ffccbc">
+                        <span class="material-icons-round" style="font-size:16px">upload</span> {{ 'Replace' if g.passport_file else 'Upload' }} Passport
+                        <input type="file" accept="image/*,.pdf" style="display:none" onchange="uploadDoc({{ g.id }}, 'passport', this)">
+                      </label>
+                      <label style="display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border-radius:6px;background:#fff3e0;color:#E65100;font-size:12px;font-weight:600;cursor:pointer;border:1px solid #ffccbc">
+                        <span class="material-icons-round" style="font-size:16px">upload</span> {{ 'Replace' if g.driving_file else 'Upload' }} Driving
+                        <input type="file" accept="image/*,.pdf" style="display:none" onchange="uploadDoc({{ g.id }}, 'driving', this)">
+                      </label>
+                      {% endif %}
                     </div>
                   </div>
-                  {% endif %}
                   <div style="grid-column: 1/-1">
                     <div class="detail-label">Notes</div>
                     <div class="detail-value" style="white-space:pre-wrap">{{ g.notes or '-' }}</div>
@@ -1276,6 +1284,18 @@ function restoreTourGuest(id) {
     if (data.ok) { loadDeletedTourGuests(); location.reload(); }
     else alert(data.error || 'Errore');
   });
+}
+
+function uploadDoc(guestId, docType, input) {
+  const file = input.files[0];
+  if (!file) return;
+  const fd = new FormData();
+  fd.append('file', file);
+  fetch(`/api/tour/doc/${guestId}/${docType}`, {method:'POST', body: fd})
+    .then(r => r.json()).then(data => {
+      if (data.ok) { alert('Documento caricato'); location.reload(); }
+      else alert(data.error || 'Errore nel caricamento');
+    });
 }
 
 function rollbackAudit(auditId) {
