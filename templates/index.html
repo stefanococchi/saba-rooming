@@ -639,13 +639,15 @@ textarea { resize: vertical; min-height: 120px; }
   <div class="tab-panel" id="tab-ospiti">
 
   {% if not client_view %}
-  <!-- Email Parser Card -->
-  <div class="card" style="margin-bottom:16px">
+  <div style="display:flex;gap:16px;margin-bottom:16px;flex-wrap:wrap">
+    <!-- Email Parser Card -->
+    <div class="card" style="flex:1;min-width:300px;margin-bottom:0">
       <div class="card-header">
-        <span class="material-icons-round">smart_toy</span>
+        <span class="material-icons-round">email</span>
         Incolla Email
       </div>
       <div class="card-body">
+        <p style="font-size:12px;color:var(--on-surface-variant);margin-bottom:8px">Incolla il testo di un'email con dati ospiti, voli o camere. L'AI estrae automaticamente i dati strutturati.</p>
         <textarea id="emailText" placeholder="Incolla qui il testo dell'email con i dati di volo e camera..."></textarea>
         <div style="margin-top:10px; display:flex; align-items:center; gap:10px">
           <button class="btn btn-primary" onclick="parseEmail()" id="parseBtn">
@@ -657,6 +659,36 @@ textarea { resize: vertical; min-height: 120px; }
         <div id="parseResults"></div>
       </div>
     </div>
+
+    <!-- AI Assistant Card -->
+    <div class="card" style="flex:1;min-width:300px;margin-bottom:0">
+      <div class="card-header">
+        <span class="material-icons-round">auto_awesome</span>
+        Assistente AI
+      </div>
+      <div class="card-body">
+        <p style="font-size:12px;color:var(--on-surface-variant);margin-bottom:8px">Scrivi in linguaggio naturale cosa vuoi fare: aggiungere, modificare o eliminare ospiti.</p>
+        <textarea id="llmText" placeholder="Es: Aggiungi Mario Rossi, presente 8 e 9 ottobre, volo AZ1234..."></textarea>
+        <div style="margin-top:10px;display:flex;align-items:center;gap:10px">
+          <button class="btn btn-primary" onclick="processLLM()" id="llmBtn">
+            <span class="material-icons-round">auto_awesome</span>
+            Elabora
+          </button>
+          <span id="llmCost" style="font-size:12px;color:var(--on-surface-variant)"></span>
+        </div>
+        <div id="llmPreview" style="display:none;margin-top:12px;border-top:1px solid var(--outline-variant);padding-top:12px">
+          <div id="llmSummary" style="font-size:13px;font-weight:500;margin-bottom:8px"></div>
+          <div id="llmOps"></div>
+          <div style="display:flex;gap:8px;margin-top:12px">
+            <button class="btn btn-primary" onclick="applyLLM()" id="llmApplyBtn" style="background:#2e7d32">
+              <span class="material-icons-round">check_circle</span> Conferma
+            </button>
+            <button class="btn btn-outline" onclick="document.getElementById('llmPreview').style.display='none'">Annulla</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
   {% endif %}
 
   <!-- Main Table Card -->
@@ -2488,6 +2520,54 @@ function rollbackAudit(auditId) {
     if (data.ok) { alert('Rollback completato'); loadAuditLog(); }
     else alert(data.error || 'Errore nel rollback');
   });
+}
+
+// ── LLM Assistant ──
+let _llmResult = null;
+async function processLLM() {
+  const text = document.getElementById('llmText').value.trim();
+  if (!text) return;
+  const btn = document.getElementById('llmBtn');
+  btn.disabled = true; btn.innerHTML = '<span class="material-icons-round">sync</span> Elaboro...';
+  try {
+    const r = await fetch('/api/llm/process', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({text, section: 'rooming'})
+    });
+    const data = await r.json();
+    if (!data.ok) { alert(data.error || 'Errore'); return; }
+    _llmResult = data;
+    const actionLabels = {create:{l:'Nuovo',bg:'#e8f5e9',c:'#2e7d32'},update:{l:'Modifica',bg:'#e3f2fd',c:'#1565c0'},delete:{l:'Elimina',bg:'#fbe9e7',c:'#c62828'}};
+    document.getElementById('llmSummary').textContent = data.summary || '';
+    document.getElementById('llmOps').innerHTML = (data.operations||[]).map((op,i) => {
+      const a = actionLabels[op.action]||{l:op.action,bg:'#eee',c:'#333'};
+      let diff = '';
+      if (op.action==='update' && op.current_data && op.data) {
+        diff = '<div style="margin-top:4px;font-size:12px;color:#666">' +
+          Object.entries(op.data).filter(([k,v])=>v!==null && op.current_data[k]!==undefined && String(op.current_data[k]||'')!==String(v||''))
+          .map(([k,v])=>`<b>${k}</b>: <s style="color:#c62828">${op.current_data[k]||'—'}</s> → <span style="color:#2e7d32">${v}</span>`).join(', ') + '</div>';
+      }
+      return `<div style="padding:8px 10px;background:#fafafa;border-radius:8px;margin-bottom:6px;display:flex;align-items:flex-start;gap:8px">
+        <input type="checkbox" checked class="llm-op-check" data-index="${i}" style="margin-top:2px">
+        <div><span style="padding:2px 8px;border-radius:8px;font-size:11px;font-weight:600;background:${a.bg};color:${a.c}">${a.l}</span> <span style="font-size:13px">${op.preview||''}</span>${diff}</div>
+      </div>`;
+    }).join('');
+    document.getElementById('llmPreview').style.display = 'block';
+    if (data.tokens) document.getElementById('llmCost').textContent = `${data.tokens.input+data.tokens.output} tok — €${data.tokens.cost_eur}`;
+  } catch(e) { alert('Errore: '+e.message); }
+  finally { btn.disabled=false; btn.innerHTML='<span class="material-icons-round">auto_awesome</span> Elabora'; }
+}
+async function applyLLM() {
+  if (!_llmResult) return;
+  const sel = []; document.querySelectorAll('.llm-op-check').forEach(cb => { if(cb.checked) sel.push(_llmResult.operations[cb.dataset.index]); });
+  if (!sel.length) return alert('Nessuna operazione selezionata');
+  const btn = document.getElementById('llmApplyBtn'); btn.disabled=true; btn.textContent='Applico...';
+  try {
+    const r = await fetch('/api/llm/apply', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({operations:sel, email_log_id:_llmResult.email_log_id})});
+    const data = await r.json();
+    if (data.ok) { const ok=data.results.filter(r=>r.ok).length; alert(`${ok} operazione/i completata/e`); location.reload(); }
+    else alert(data.error||'Errore');
+  } finally { btn.disabled=false; btn.innerHTML='<span class="material-icons-round">check_circle</span> Conferma'; }
 }
 </script>
 </body>

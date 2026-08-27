@@ -549,70 +549,68 @@ def create_app():
     @app.post('/api/llm/process')
     def llm_process():
         import anthropic
-        text = (request.get_json() or {}).get('text', '').strip()
+        payload = request.get_json() or {}
+        text = payload.get('text', '').strip()
+        section = payload.get('section', '')
         if not text:
             return jsonify(ok=False, error='Nessun testo inserito'), 400
+        if section not in ('rooming', 'partivia', 'tour'):
+            return jsonify(ok=False, error='Sezione non valida'), 400
 
         api_key = os.environ.get('ANTHROPIC_API_KEY')
         if not api_key:
             return jsonify(ok=False, error='ANTHROPIC_API_KEY non configurata'), 500
 
-        # Build context lists for matching
-        guests = Guest.query.filter_by(deleted=False).order_by(Guest.cognome).all()
-        guest_list = '\n'.join(
-            f'  ID={g.id} {g.cognome} {g.nome} (email={g.email or ""}, sede={g.sede_lavoro or ""})'
-            for g in guests) or '  (nessun ospite)'
+        # Build context only for the active section
+        if section == 'rooming':
+            guests = Guest.query.filter_by(deleted=False).order_by(Guest.cognome).all()
+            entity_list = '\n'.join(
+                f'  ID={g.id} {g.cognome} {g.nome} (email={g.email or ""}, sede={g.sede_lavoro or ""})'
+                for g in guests) or '  (nessun ospite)'
+            section_desc = """SEZIONE: ROOMING (Equans, 8-9 Ottobre 2026) — Gestione ospiti evento aziendale
+Entità: Guest
+Campi stringa: cognome (MAIUSCOLO), nome, email, telefono, sede_lavoro, volo_arrivo, volo_partenza, aeroporto_partenza, aeroporto_arrivo, pickup_bus_andata, pickup_bus_ritorno, divide_stanza_con, restrizioni_alimentari, tipo_camera, camera_assegnata, note_form, note, data_nascita
+Campi booleani: presenza_8, presenza_9, presenza_10, presenza_11, parcheggio_linate, parcheggio_hotel"""
 
-        quotes = PartiviaQuote.query.filter_by(deleted=False).order_by(PartiviaQuote.hotel_name).all()
-        quote_list = '\n'.join(
-            f'  ID={q.id} {q.hotel_name} ({q.city}, {q.stars or "?"}★, status={q.quote_status})'
-            for q in quotes) or '  (nessun preventivo)'
+        elif section == 'partivia':
+            quotes = PartiviaQuote.query.filter_by(deleted=False).order_by(PartiviaQuote.hotel_name).all()
+            entity_list = '\n'.join(
+                f'  ID={q.id} {q.hotel_name} ({q.city}, {q.stars or "?"}★, status={q.quote_status})'
+                for q in quotes) or '  (nessun preventivo)'
+            section_desc = """SEZIONE: PARTIVIA (N!Partivia Spain) — Preventivi hotel per viaggio incentive in Spagna
+Entità: PartiviaQuote
+Campi: hotel_name, city (Barcellona/Madrid/Siviglia/Valencia), stars (1-5), contact_name, contact_email, website_url, address, dates_proposed, rooms_available, min_rooms_required, cancellation_policy, payment_terms, validity_date, commission, total_estimate, included_services, notes, raw_summary, quote_status (pending_review/negotiating/confirmed/declined/expired), vat_included (yes/no/unknown)
+Sub-tabelle: room_rates (room_type, rate_per_night con €, breakfast_included, notes), meeting_rooms (name, capacity, rate, notes), fb_options (meal_type, price_per_person, menu_description)
+IMPORTANTE: Tutti i testi DEVONO essere in inglese."""
 
-        tour_guests = TourGuest.query.filter_by(deleted=False).order_by(TourGuest.cognome).all()
-        tour_list = '\n'.join(
-            f'  ID={g.id} {g.cognome} {g.nome} (payment={g.payment or ""}, car={g.car_number or ""})'
-            for g in tour_guests) or '  (nessun partecipante tour)'
+        else:  # tour
+            tour_guests = TourGuest.query.filter_by(deleted=False).order_by(TourGuest.cognome).all()
+            entity_list = '\n'.join(
+                f'  ID={g.id} {g.cognome} {g.nome} (payment={g.payment or ""}, car={g.car_number or ""})'
+                for g in tour_guests) or '  (nessun partecipante)'
+            section_desc = """SEZIONE: TOUR (Liqui Moly Nexus Auto Tour, 1-5 Settembre 2026) — Tour itinerante multi-città
+Entità: TourGuest
+Campi stringa: cognome (MAIUSCOLO), nome, email, telefono, nazionalita, titolo (Mr/Mrs), arrivo_mezzo (Airplane/Car/Train/Other), arrivo_data, room_with, car_number, car_with, vip (VIP/ULTRA VIP), client_room_note, payment (PAID/TO COLLECT/NO NEED/PAY ON SITE), cloth_size (S-XXXL), diet, notes, email_requests
+Campi booleani: dinner, sept2"""
 
         system_prompt = f"""Sei un assistente per la gestione eventi Saba. Analizzi richieste in linguaggio naturale e determini le operazioni CRUD da eseguire.
+Lavori ESCLUSIVAMENTE sulla sezione indicata. Non mischiare dati di altre sezioni.
 
-SEZIONI DISPONIBILI:
+{section_desc}
 
-1. ROOMING (Equans, 8-9 Ottobre 2026) — Gestione ospiti evento aziendale
-   Entità: Guest
-   Campi stringa: cognome (MAIUSCOLO), nome, email, telefono, sede_lavoro, volo_arrivo, volo_partenza, aeroporto_partenza, aeroporto_arrivo, pickup_bus_andata, pickup_bus_ritorno, divide_stanza_con, restrizioni_alimentari, tipo_camera, camera_assegnata, note_form, note, data_nascita
-   Campi booleani: presenza_8, presenza_9, presenza_10, presenza_11, parcheggio_linate, parcheggio_hotel
-
-   Ospiti attuali:
-{guest_list}
-
-2. PARTIVIA (N!Partivia Spain) — Preventivi hotel per viaggio incentive in Spagna
-   Entità: PartiviaQuote
-   Campi: hotel_name, city (Barcellona/Madrid/Siviglia/Valencia), stars (1-5), contact_name, contact_email, website_url, address, dates_proposed, rooms_available, min_rooms_required, cancellation_policy, payment_terms, validity_date, commission, total_estimate, included_services, notes, raw_summary, quote_status (pending_review/negotiating/confirmed/declined/expired), vat_included (yes/no/unknown)
-   Sub-tabelle: room_rates (room_type, rate_per_night con €, breakfast_included, notes), meeting_rooms (name, capacity, rate, notes), fb_options (meal_type, price_per_person, menu_description)
-
-   Preventivi attuali:
-{quote_list}
-
-3. TOUR (Liqui Moly Nexus Auto Tour, 1-5 Settembre 2026) — Tour itinerante multi-città
-   Entità: TourGuest
-   Campi stringa: cognome (MAIUSCOLO), nome, email, telefono, nazionalita, titolo (Mr/Mrs), arrivo_mezzo (Airplane/Car/Train/Other), arrivo_data, room_with, car_number, car_with, vip (VIP/ULTRA VIP), client_room_note, payment (PAID/TO COLLECT/NO NEED/PAY ON SITE), cloth_size (S-XXXL), diet, notes, email_requests
-   Campi booleani: dinner, sept2
-
-   Partecipanti tour attuali:
-{tour_list}
+Record attuali:
+{entity_list}
 
 REGOLE:
-- Determina la sezione dal contesto del testo (menzione di hotel/quote → partivia, menzione di tour/auto/car → tour, default → rooming)
 - Per update/delete: usa match_id con l'ID esatto dell'entità dalla lista sopra. Fai matching fuzzy su cognome+nome.
 - Per create: match_id = null
 - cognome sempre MAIUSCOLO
 - Campi non menzionati nel testo → null (non includerli in data)
-- Per partivia create: includi room_rates, meeting_rooms, fb_options come array (vuoti se non menzionati)
-- Tutti i testi delle quote partivia DEVONO essere in inglese
+- Se la richiesta è solo una query/domanda (non un'operazione CRUD), rispondi con operations vuoto e metti la risposta nel summary.
 
 Rispondi SOLO con JSON valido (no markdown, no commenti):
 {{
-  "section": "rooming|partivia|tour",
+  "section": "{section}",
   "operations": [
     {{
       "action": "create|update|delete",
