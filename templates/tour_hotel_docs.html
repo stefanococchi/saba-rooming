@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>{{ hotel.hotel_name }} — Guest Documents</title>
+<title>{{ hotel.hotel_name if hotel else 'All Participants' }} — Guest Documents</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
 <style>
@@ -100,11 +100,16 @@ body { font-family:'Inter',system-ui,sans-serif; background:var(--surface); colo
 <body>
 
 <div class="topbar">
+  {% if all_docs %}
+  <h1>All Participants</h1>
+  <span class="sub">All documents</span>
+  {% else %}
   <h1>{{ hotel.hotel_name }}</h1>
   <span class="sub">{{ hotel.city }} — Night of {{ hotel.night_label }}</span>
+  {% endif %}
   <div class="spacer"></div>
   <div class="badge">{{ guest_list|length }} guests</div>
-  <a href="/tour/docs/{{ token }}/download-all" class="btn-zip">
+  <a href="/tour/docs/{{ 'all/' if all_docs else '' }}{{ token }}/download-all" class="btn-zip">
     <span class="material-icons-round" style="font-size:18px">folder_zip</span> Download All
   </a>
 </div>
@@ -116,20 +121,29 @@ body { font-family:'Inter',system-ui,sans-serif; background:var(--surface); colo
   </div>
 
   {% for item in guest_list %}
-  {% set g = item.guest %}
+  {% if all_docs %}
+    {% set g = item %}
+    {% set has_passport = item.docs.get('passport', false) %}
+    {% set has_driving = item.docs.get('driving', false) %}
+  {% else %}
+    {% set g = item.guest %}
+    {% set has_passport = g.passport_file %}
+    {% set has_driving = g.driving_file %}
+  {% endif %}
+  {% set base_url = '/tour/docs/' ~ ('all/' if all_docs else '') ~ token %}
   <div class="guest-card" data-name="{{ g.cognome|lower }} {{ g.nome|lower }}">
     <div class="guest-header" onclick="this.nextElementSibling.classList.toggle('open')">
       <span class="material-icons-round" style="color:var(--primary); font-size:20px">person</span>
       <span class="guest-name">{{ g.cognome }} {{ g.nome }}</span>
-      <span class="guest-room">{{ item.room_type }}</span>
-      <span class="guest-meta">{{ g.nazionalita or '' }}</span>
+      {% if not all_docs %}<span class="guest-room">{{ item.room_type }}</span>{% endif %}
+      <span class="guest-meta">{{ g.get('nazionalita', '') if g is mapping else (g.nazionalita or '') }}</span>
       <div style="flex:1"></div>
-      {% if g.passport_file %}<span class="doc-badge pass">
+      {% if has_passport %}<span class="doc-badge pass">
         <span class="material-icons-round" style="font-size:14px">badge</span> Pass
       </span>{% else %}<span class="doc-badge missing">
         <span class="material-icons-round" style="font-size:14px">badge</span> Missing
       </span>{% endif %}
-      {% if g.driving_file %}<span class="doc-badge driv">
+      {% if has_driving %}<span class="doc-badge driv">
         <span class="material-icons-round" style="font-size:14px">directions_car</span> Driving
       </span>{% else %}<span class="doc-badge missing">
         <span class="material-icons-round" style="font-size:14px">directions_car</span> Missing
@@ -142,11 +156,11 @@ body { font-family:'Inter',system-ui,sans-serif; background:var(--surface); colo
           <div class="doc-panel-header pass">
             <span class="material-icons-round" style="font-size:18px">badge</span> Passport
           </div>
-          {% set pass_dl = '/tour/docs/' ~ token ~ '/download/' ~ g.id ~ '/passport' %}
-          {% set pass_view = '/tour/docs/' ~ token ~ '/view/' ~ g.id ~ '/passport' %}
+          {% set pass_dl = base_url ~ '/download/' ~ g.id ~ '/passport' %}
+          {% set pass_view = base_url ~ '/view/' ~ g.id ~ '/passport' %}
           <div class="doc-panel-body">
-            {% if g.passport_file %}
-              {% set pext = g.passport_file.split('.')[-1].lower() %}
+            {% if has_passport %}
+              {% set pext = (g.passport_file or 'img.jpg').split('.')[-1].lower() if not all_docs else 'jpg' %}
               {% if pext in ('jpg','jpeg','png','gif','webp') %}
                 <a href="{{ pass_dl }}">
                   <img src="{{ pass_view }}" alt="Passport">
@@ -168,11 +182,11 @@ body { font-family:'Inter',system-ui,sans-serif; background:var(--surface); colo
           <div class="doc-panel-header driv">
             <span class="material-icons-round" style="font-size:18px">directions_car</span> Driving Licence
           </div>
-          {% set driv_dl = '/tour/docs/' ~ token ~ '/download/' ~ g.id ~ '/driving' %}
-          {% set driv_view = '/tour/docs/' ~ token ~ '/view/' ~ g.id ~ '/driving' %}
+          {% set driv_dl = base_url ~ '/download/' ~ g.id ~ '/driving' %}
+          {% set driv_view = base_url ~ '/view/' ~ g.id ~ '/driving' %}
           <div class="doc-panel-body">
-            {% if g.driving_file %}
-              {% set dext = g.driving_file.split('.')[-1].lower() %}
+            {% if has_driving %}
+              {% set dext = (g.driving_file or 'img.jpg').split('.')[-1].lower() if not all_docs else 'jpg' %}
               {% if dext in ('jpg','jpeg','png','gif','webp') %}
                 <a href="{{ driv_dl }}">
                   <img src="{{ driv_view }}" alt="Driving Licence">

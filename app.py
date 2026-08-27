@@ -5529,6 +5529,89 @@ Notes: {q.notes or 'N/A'}"""
         ))
         db.session.commit()
 
+    # ── ALL DOCS link (all guests, all hotels) ─────────────────────────
+
+    @app.post('/api/tour/all-docs-link')
+    def tour_generate_all_docs_link():
+        import secrets
+        # Reuse TourClientToken with a special label
+        existing = TourClientToken.query.filter_by(label='__all_docs__').first()
+        if existing:
+            return jsonify(ok=True, token=existing.token,
+                           url=f'/tour/docs/all/{existing.token}')
+        token = secrets.token_urlsafe(24)
+        ct = TourClientToken(label='__all_docs__', token=token)
+        db.session.add(ct)
+        db.session.commit()
+        return jsonify(ok=True, token=ct.token,
+                       url=f'/tour/docs/all/{ct.token}')
+
+    @app.route('/tour/docs/all/<token>')
+    def tour_all_docs(token):
+        TourClientToken.query.filter_by(
+            token=token, label='__all_docs__').first_or_404()
+        guests = TourGuest.query.filter_by(deleted=False).order_by(
+            TourGuest.cognome, TourGuest.nome).all()
+        guest_list = []
+        for g in guests:
+            docs = TourGuestDocument.query.filter_by(guest_id=g.id).all()
+            if docs:
+                guest_list.append({
+                    'id': g.id,
+                    'cognome': g.cognome,
+                    'nome': g.nome,
+                    'docs': {d.doc_type: True for d in docs if d.data},
+                })
+        return render_template('tour_hotel_docs.html',
+                               hotel=None, guest_list=guest_list, token=token,
+                               all_docs=True)
+
+    @app.route('/tour/docs/all/<token>/view/<int:guest_id>/<doc_type>')
+    def tour_all_docs_view(token, guest_id, doc_type):
+        TourClientToken.query.filter_by(
+            token=token, label='__all_docs__').first_or_404()
+        doc = TourGuestDocument.query.filter_by(
+            guest_id=guest_id, doc_type=doc_type).first()
+        if not doc or not doc.data:
+            return 'File not found', 404
+        return send_file(BytesIO(doc.data), mimetype=doc.mime_type)
+
+    @app.route('/tour/docs/all/<token>/download/<int:guest_id>/<doc_type>')
+    def tour_all_docs_download(token, guest_id, doc_type):
+        TourClientToken.query.filter_by(
+            token=token, label='__all_docs__').first_or_404()
+        doc = TourGuestDocument.query.filter_by(
+            guest_id=guest_id, doc_type=doc_type).first()
+        if not doc or not doc.data:
+            return 'File not found', 404
+        g = doc.guest
+        ext = os.path.splitext(doc.filename or '')[1]
+        fname = f'{g.cognome}_{g.nome}_{doc_type}{ext}'
+        return send_file(BytesIO(doc.data), mimetype=doc.mime_type,
+                         as_attachment=True, download_name=fname)
+
+    @app.route('/tour/docs/all/<token>/download-all')
+    def tour_all_docs_download_all(token):
+        import zipfile
+        TourClientToken.query.filter_by(
+            token=token, label='__all_docs__').first_or_404()
+        buf = BytesIO()
+        with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zout:
+            guests = TourGuest.query.filter_by(deleted=False).order_by(
+                TourGuest.cognome, TourGuest.nome).all()
+            for g in guests:
+                docs = TourGuestDocument.query.filter_by(guest_id=g.id).all()
+                for doc in docs:
+                    if not doc.data:
+                        continue
+                    ext = os.path.splitext(doc.filename or '')[1]
+                    label = 'passport' if doc.doc_type == 'passport' else 'driving_licence'
+                    folder = f'{g.cognome}_{g.nome}'
+                    zout.writestr(f'{folder}/{label}{ext}', doc.data)
+        buf.seek(0)
+        return send_file(buf, mimetype='application/zip', as_attachment=True,
+                         download_name='all_documents.zip')
+
     @app.route('/tour/docs/<token>')
     def tour_public_docs(token):
         tok = TourHotelToken.query.filter_by(token=token).first_or_404()

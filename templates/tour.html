@@ -840,9 +840,15 @@ tr.cancelled td { opacity: .45; }
         <span class="material-icons-round">security</span> Hotel Access Links & Logs
       </div>
       <div style="padding:16px 20px">
-        <p style="font-size:13px; color:var(--on-surface-variant); margin-bottom:16px">
+        <p style="font-size:13px; color:var(--on-surface-variant); margin-bottom:12px">
           Generate a unique link for each hotel. When they open it, they see only their guests with passport and driving licence. Every access is logged.
         </p>
+        <div style="margin-bottom:16px">
+          <button onclick="generateAllDocsLink()" style="padding:8px 16px;background:#1565c0;color:#fff;border:none;border-radius:8px;font-size:13px;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:6px">
+            <span class="material-icons-round" style="font-size:16px">folder_shared</span> All Documents Link
+          </button>
+          <span id="allDocsLinkResult" style="margin-left:12px;font-size:13px"></span>
+        </div>
         <div id="accessLinksContainer">
           <p style="color:#999; font-size:13px">Loading...</p>
         </div>
@@ -1256,6 +1262,17 @@ function loadAuditLog(page) {
     html += `<span style="padding:6px 12px;font-size:13px">Pagina ${auditPage} di ${totalPages}</span>`;
     if (auditPage < totalPages) html += `<button onclick="loadAuditLog(${auditPage+1})" style="padding:6px 12px;border:1px solid #ccc;border-radius:6px;background:#fff;cursor:pointer;font-family:inherit">&raquo;</button>`;
     pag.innerHTML = html;
+  });
+}
+
+function generateAllDocsLink() {
+  fetch('/api/tour/all-docs-link', {method:'POST'}).then(r=>r.json()).then(data => {
+    if (data.ok) {
+      const url = location.origin + data.url;
+      document.getElementById('allDocsLinkResult').innerHTML =
+        `<input value="${url}" readonly onclick="this.select()" style="padding:4px 8px;border:1px solid #ccc;border-radius:6px;font-size:12px;font-family:monospace;width:350px">
+         <button onclick="navigator.clipboard.writeText('${url}');this.textContent='Copied!';setTimeout(()=>this.textContent='Copy',1500)" style="padding:4px 10px;border:1px solid #ccc;border-radius:6px;font-size:12px;cursor:pointer;background:#fff;font-family:inherit;margin-left:4px">Copy</button>`;
+    }
   });
 }
 
