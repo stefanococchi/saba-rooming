@@ -1747,7 +1747,14 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
         """Lista PNR groups con ospiti assegnati e statistiche."""
         import re as _re
         groups = PnrGroup.query.order_by(PnrGroup.volo_andata, PnrGroup.pnr_code).all()
-        senza_pnr = Guest.query.filter(Guest.deleted==False, Guest.pnr_group_id.is_(None)).count()
+        senza_pnr = Guest.query.filter(
+            Guest.deleted==False,
+            Guest.pnr_group_id.is_(None),
+            db.or_(
+                db.and_(Guest.volo_arrivo.isnot(None), Guest.volo_arrivo != ''),
+                db.and_(Guest.volo_partenza.isnot(None), Guest.volo_partenza != ''),
+            )
+        ).count()
 
         result = []
         totale_assegnati = 0
