@@ -246,6 +246,7 @@ def create_app():
             '/api/parse-email': 'rooming', '/api/apply-parsed': 'rooming',
             '/api/pnr': 'rooming', '/api/stanze': 'rooming', '/api/camere': 'rooming',
             '/api/voli': 'rooming', '/api/export': 'rooming',
+            '/api/rooming': 'rooming',
             '/partivia': 'partivia', '/api/partivia': 'partivia',
             '/api/deadline': 'partivia',
             '/tour': 'tour', '/api/tour': 'tour',
@@ -2483,6 +2484,320 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
         return send_file(buf, as_attachment=True,
                          download_name=f'rooming_flight_{today}.xlsx',
                          mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
+    # ── LETTERE DI CONVOCAZIONE (HTML pronto per invio via MS Graph) ────────
+
+    EVENTO = {
+        'titolo':  os.environ.get('EVENTO_TITOLO', 'Convention Equans 2026'),
+        'luogo':   os.environ.get('EVENTO_LUOGO', 'Palermo'),
+        'periodo': os.environ.get('EVENTO_PERIODO', '8 - 11 ottobre 2026'),
+        'anno':    os.environ.get('EVENTO_ANNO', '2026'),
+        'contatto_nome':  os.environ.get('EVENTO_CONTATTO', 'Segreteria organizzativa'),
+        'contatto_email': os.environ.get('EVENTO_EMAIL', 'info@sabae20.it'),
+        'contatto_tel':   os.environ.get('EVENTO_TEL', ''),
+    }
+
+    LETTERA_INTRO = (
+        'siamo lieti di confermarLe la partecipazione a <b>{titolo}</b>, che si '
+        'terrà a {luogo} dal {periodo}.<br>'
+        'Di seguito il riepilogo personale con i dettagli di viaggio e soggiorno: '
+        'La preghiamo di verificarlo e di segnalarci tempestivamente eventuali '
+        'variazioni.'
+    )
+
+    LETTERA_CHIUSURA = (
+        'Per qualsiasi necessità può contattare la {contatto_nome}. '
+        'Le auguriamo buon viaggio e buona permanenza.'
+    )
+
+    MESI_IT = {
+        'JAN': 'gennaio', 'FEB': 'febbraio', 'MAR': 'marzo', 'APR': 'aprile',
+        'MAY': 'maggio', 'JUN': 'giugno', 'JUL': 'luglio', 'AUG': 'agosto',
+        'SEP': 'settembre', 'OCT': 'ottobre', 'NOV': 'novembre', 'DEC': 'dicembre',
+    }
+
+    AEROPORTI = {
+        'LIN': 'Milano Linate', 'MXP': 'Milano Malpensa', 'BGY': 'Milano Bergamo',
+        'PMO': 'Palermo', 'CTA': 'Catania', 'FCO': 'Roma Fiumicino',
+        'CIA': 'Roma Ciampino', 'VCE': 'Venezia', 'BLQ': 'Bologna',
+        'TRN': 'Torino', 'NAP': 'Napoli', 'BRI': 'Bari', 'GOA': 'Genova',
+        'FLR': 'Firenze', 'VRN': 'Verona', 'TRS': 'Trieste', 'CAG': 'Cagliari',
+    }
+
+    def _lt_esc(v):
+        """Escape HTML del valore; stringa vuota se assente."""
+        from html import escape
+        if v is None or not str(v).strip():
+            return ''
+        return escape(str(v).strip())
+
+    def _lt_data(val):
+        """'08OCT' / '08OCT26' → '8 ottobre 2026'. Se non riconosciuto torna il valore."""
+        import re
+        s = (val or '').strip().upper()
+        m = re.match(r'^(\d{1,2})([A-Z]{3})(\d{2,4})?$', s)
+        if not m or m.group(2) not in MESI_IT:
+            return val or ''
+        giorno, mese, anno = m.group(1), MESI_IT[m.group(2)], m.group(3)
+        if anno:
+            anno = anno if len(anno) == 4 else '20' + anno
+        else:
+            anno = EVENTO['anno']
+        return f'{int(giorno)} {mese} {anno}'
+
+    def _lt_orario(val):
+        """'0955-1135' → '09:55 → 11:35'."""
+        import re
+        s = (val or '').strip()
+        if not s:
+            return ''
+        out = []
+        for p in re.split(r'[-/–]', s):
+            p = p.strip()
+            if not p:
+                continue
+            out.append(f'{p[:2]}:{p[2:]}' if re.match(r'^\d{4}$', p) else p)
+        return ' → '.join(out)
+
+    def _lt_rotta(val):
+        """'LINPMO' → 'Milano Linate (LIN) → Palermo (PMO)'."""
+        s = (val or '').strip().upper()
+        if len(s) != 6:
+            return val or ''
+        orig, dest = s[:3], s[3:]
+        return (f'{AEROPORTI.get(orig, orig)} ({orig}) → '
+                f'{AEROPORTI.get(dest, dest)} ({dest})')
+
+    def _lt_volo(g, tipo):
+        """Descrizione volo: usa il PNR di gruppo se assegnato, altrimenti i campi
+        liberi dell'ospite. tipo = 'andata' | 'ritorno'."""
+        pg = g.pnr_group
+        if pg:
+            volo   = pg.volo_andata   if tipo == 'andata' else pg.volo_ritorno
+            data   = pg.data_andata   if tipo == 'andata' else pg.data_ritorno
+            rotta  = pg.rotta_andata  if tipo == 'andata' else pg.rotta_ritorno
+            orario = pg.orario_andata if tipo == 'andata' else pg.orario_ritorno
+            if volo or rotta:
+                righe = []
+                testa = ' · '.join(x for x in (_lt_esc(volo),
+                                               _lt_esc(_lt_data(data))) if x)
+                if testa:
+                    righe.append(f'<b>{testa}</b>')
+                if rotta:
+                    righe.append(_lt_esc(_lt_rotta(rotta)))
+                if orario:
+                    righe.append(_lt_esc(_lt_orario(orario)))
+                return '<br>'.join(righe)
+        libero = g.volo_arrivo if tipo == 'andata' else g.volo_partenza
+        aerop  = g.aeroporto_partenza if tipo == 'andata' else g.aeroporto_arrivo
+        righe = [r for r in (_lt_esc(libero), _lt_esc(aerop)) if r]
+        return '<br>'.join(righe)
+
+    def _lt_presenze(g):
+        """'8, 9 e 10 ottobre 2026 (3 notti)' dai flag presenza_8..11."""
+        giorni = [d for d in (8, 9, 10, 11) if getattr(g, f'presenza_{d}')]
+        if not giorni:
+            return ''
+        if len(giorni) == 1:
+            elenco = str(giorni[0])
+        else:
+            elenco = ', '.join(str(d) for d in giorni[:-1]) + f' e {giorni[-1]}'
+        notti = 'notte' if len(giorni) == 1 else 'notti'
+        return f'{elenco} ottobre {EVENTO["anno"]} ({len(giorni)} {notti})'
+
+    def _lt_blocchi(g):
+        """Sezioni della lettera: [(titolo, [(etichetta, valore_html), …]), …].
+        Righe ed eventuali sezioni vuote vengono omesse."""
+        soggiorno = [
+            ('Date di presenza',    _lt_esc(_lt_presenze(g))),
+            ('Tipologia camera',    _lt_esc(g.tipo_camera)),
+            ('Camera assegnata',    _lt_esc(g.camera_assegnata)),
+            ('In camera con',       _lt_esc(g.divide_stanza_con)),
+            ('Esigenze alimentari', _lt_esc(g.restrizioni_alimentari)),
+        ]
+        viaggio = [
+            ('Volo di andata',            _lt_volo(g, 'andata')),
+            ('Volo di ritorno',           _lt_volo(g, 'ritorno')),
+            ('Codice prenotazione (PNR)', _lt_esc(g.pnr_group.pnr_code) if g.pnr_group else ''),
+            ('Pick-up bus andata',        _lt_esc(g.pickup_bus_andata)),
+            ('Pick-up bus ritorno',       _lt_esc(g.pickup_bus_ritorno)),
+            ('Parcheggio Linate',         'Riservato' if g.parcheggio_linate else ''),
+            ('Parcheggio hotel',          'Riservato' if g.parcheggio_hotel else ''),
+        ]
+        note = [
+            ('Richieste segnalate',  _lt_esc(g.note_form)),
+            ('Note organizzative',   _lt_esc(g.note)),
+        ]
+        blocchi = [('Il tuo soggiorno', soggiorno),
+                   ('Viaggio e trasferimenti', viaggio),
+                   ('Note', note)]
+        return [(t, [r for r in righe if r[1]]) for t, righe in blocchi
+                if any(r[1] for r in righe)]
+
+    def _lt_warnings(g):
+        """Dati mancanti da sistemare prima di inviare la lettera."""
+        w = []
+        if not (g.email or '').strip():
+            w.append('email mancante')
+        if not any(getattr(g, f'presenza_{d}') for d in (8, 9, 10, 11)):
+            w.append('nessuna presenza indicata')
+        if not g.pnr_group:
+            if not (g.volo_arrivo or '').strip():
+                w.append('volo andata mancante')
+            if not (g.volo_partenza or '').strip():
+                w.append('volo ritorno mancante')
+        if not (g.camera_assegnata or '').strip():
+            w.append('camera non assegnata')
+        return w
+
+    def _lt_html(g, intro=None):
+        """Lettera di convocazione in HTML email-safe (tabelle + stili inline,
+        nessun CSS esterno): usabile direttamente come body HTML di MS Graph."""
+        try:
+            logo = url_for('static', filename='img/logo_saba.png', _external=True)
+        except RuntimeError:
+            logo = ''
+
+        titolo   = _lt_esc(EVENTO['titolo'])
+        luogo    = _lt_esc(EVENTO['luogo'])
+        periodo  = _lt_esc(EVENTO['periodo'])
+        firma    = _lt_esc(EVENTO['contatto_nome'])
+        saluto   = _lt_esc(f'Gentile {g.nome or ""} {g.cognome}'.replace('  ', ' '))
+        testo    = (intro.strip() if intro and intro.strip()
+                    else LETTERA_INTRO.format(**EVENTO))
+        chiusura = _lt_esc(LETTERA_CHIUSURA.format(**EVENTO))
+
+        contatti = [EVENTO['contatto_nome'], EVENTO['contatto_email'],
+                    EVENTO['contatto_tel']]
+        footer = _lt_esc(' · '.join(c for c in contatti if c and c.strip()))
+
+        logo_html = ''
+        if logo:
+            logo_html = (f'<img src="{_lt_esc(logo)}" alt="Saba" height="34" '
+                         'style="display:block;border:0;height:34px">')
+
+        sezioni = []
+        for titolo_sez, righe in _lt_blocchi(g):
+            celle = []
+            for etichetta, valore in righe:
+                celle.append(
+                    '<tr>'
+                    '<td style="padding:8px 12px 8px 0;width:38%;vertical-align:top;'
+                    'font:13px Arial,Helvetica,sans-serif;color:#795548">'
+                    + _lt_esc(etichetta) +
+                    '</td>'
+                    '<td style="padding:8px 0;vertical-align:top;'
+                    'font:14px Arial,Helvetica,sans-serif;color:#3e2723">'
+                    + valore +
+                    '</td></tr>'
+                )
+            sezioni.append(
+                '<tr><td style="padding:18px 28px 0 28px">'
+                '<div style="font:12px Arial,Helvetica,sans-serif;letter-spacing:1px;'
+                'text-transform:uppercase;color:#8d6e63;border-bottom:1px solid #d7ccc8;'
+                'padding-bottom:6px">' + _lt_esc(titolo_sez) + '</div>'
+                '<table role="presentation" cellpadding="0" cellspacing="0" border="0" '
+                'width="100%">' + ''.join(celle) + '</table>'
+                '</td></tr>'
+            )
+
+        return (
+            '<!DOCTYPE html>'
+            '<html lang="it"><head><meta charset="utf-8">'
+            '<meta name="viewport" content="width=device-width,initial-scale=1">'
+            f'<title>Convocazione {titolo}</title></head>'
+            '<body style="margin:0;padding:0;background:#efebe9">'
+            '<table role="presentation" cellpadding="0" cellspacing="0" border="0" '
+            'width="100%" style="background:#efebe9;padding:24px 0">'
+            '<tr><td align="center">'
+            '<table role="presentation" cellpadding="0" cellspacing="0" border="0" '
+            'width="600" style="width:600px;max-width:100%;background:#ffffff;'
+            'border-radius:12px;overflow:hidden">'
+
+            '<tr><td style="background:#795548;padding:20px 28px">'
+            + logo_html +
+            '<div style="font:bold 20px Arial,Helvetica,sans-serif;color:#ffffff;'
+            'margin-top:10px">' + titolo + '</div>'
+            '<div style="font:13px Arial,Helvetica,sans-serif;color:#d7ccc8;'
+            'margin-top:2px">' + luogo + ' · ' + periodo + '</div>'
+            '</td></tr>'
+
+            '<tr><td style="padding:24px 28px 0 28px">'
+            '<div style="font:bold 16px Arial,Helvetica,sans-serif;color:#3e2723">'
+            + saluto + ',</div>'
+            '<div style="font:14px/1.6 Arial,Helvetica,sans-serif;color:#4e342e;'
+            'margin-top:10px">' + testo + '</div>'
+            '</td></tr>'
+
+            + ''.join(sezioni) +
+
+            '<tr><td style="padding:22px 28px 26px 28px">'
+            '<div style="font:14px/1.6 Arial,Helvetica,sans-serif;color:#4e342e">'
+            + chiusura + '</div>'
+            '<div style="font:13px Arial,Helvetica,sans-serif;color:#6d4c41;'
+            'margin-top:16px">Cordiali saluti,<br><b>' + firma + '</b></div>'
+            '</td></tr>'
+
+            '<tr><td style="background:#efebe9;padding:14px 28px;'
+            'font:11px Arial,Helvetica,sans-serif;color:#8d6e63">'
+            + footer + '</td></tr>'
+
+            '</table></td></tr></table></body></html>'
+        )
+
+    def _lt_payload(g, intro=None):
+        """Lettera + metadati pronti per la sendMail di MS Graph."""
+        return {
+            'id': g.id,
+            'cognome': g.cognome,
+            'nome': g.nome or '',
+            'nome_completo': g.nome_completo,
+            'email': (g.email or '').strip(),
+            'subject': (f'Convocazione {EVENTO["titolo"]} · '
+                        f'{EVENTO["luogo"]}, {EVENTO["periodo"]}'),
+            'html': _lt_html(g, intro),
+            'warnings': _lt_warnings(g),
+        }
+
+    @app.get('/api/rooming/lettera/<int:gid>')
+    def rooming_lettera(gid):
+        """Lettera di convocazione di un singolo ospite.
+        ?format=html → HTML grezzo (anteprima/copia); altrimenti JSON."""
+        g = Guest.query.filter_by(id=gid, deleted=False).first_or_404()
+        payload = _lt_payload(g, request.args.get('intro'))
+        if request.args.get('format') == 'html':
+            return payload['html'], 200, {'Content-Type': 'text/html; charset=utf-8'}
+        return jsonify(ok=True, **payload)
+
+    @app.get('/api/rooming/lettere')
+    def rooming_lettere():
+        """Lettere di più ospiti, pronte per l'invio massivo via MS Graph.
+        ?ids=1,2,3   limita a un sottoinsieme
+        ?presenti=1  solo chi ha almeno un giorno di presenza
+        ?con_email=1 solo chi ha un indirizzo email
+        ?intro=…     sostituisce il testo introduttivo di default"""
+        q = Guest.query.filter_by(deleted=False)
+
+        ids_raw = (request.args.get('ids') or '').strip()
+        if ids_raw:
+            ids = [int(i) for i in ids_raw.split(',') if i.strip().isdigit()]
+            if not ids:
+                return jsonify(ok=False, error='Parametro ids non valido'), 400
+            q = q.filter(Guest.id.in_(ids))
+
+        if _parse_bool(request.args.get('presenti')):
+            q = q.filter(db.or_(Guest.presenza_8 == True, Guest.presenza_9 == True,
+                                Guest.presenza_10 == True, Guest.presenza_11 == True))
+        if _parse_bool(request.args.get('con_email')):
+            q = q.filter(Guest.email.isnot(None), Guest.email != '')
+
+        guests = q.order_by(Guest.cognome, Guest.nome).all()
+        intro = request.args.get('intro')
+        lettere = [_lt_payload(g, intro) for g in guests]
+        return jsonify(ok=True,
+                       totale=len(lettere),
+                       con_warning=sum(1 for l in lettere if l['warnings']),
+                       lettere=lettere)
 
     # ── EXPORT STANZE / VOLI / CAMERE ────────────────────────────────────────
 

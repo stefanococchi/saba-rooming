@@ -623,6 +623,10 @@ textarea { resize: vertical; min-height: 120px; }
         <span class="material-icons-round">history</span>
         Storico Email
       </button>
+      <button class="btn btn-outline btn-sm" onclick="showLettere()">
+        <span class="material-icons-round">drafts</span>
+        Lettere Convocazione
+      </button>
       <span style="flex:1"></span>
       <button class="btn btn-danger btn-sm" onclick="deleteAll()">
         <span class="material-icons-round">delete_sweep</span>
@@ -797,6 +801,9 @@ textarea { resize: vertical; min-height: 120px; }
                     <span class="material-icons-round" style="font-size:18px">mail</span>
                   </button>
                   {% endif %}
+                  <button class="icon-btn" onclick="showLettere({{ g.id }})" title="Lettera di convocazione" style="color:var(--primary)">
+                    <span class="material-icons-round" style="font-size:18px">drafts</span>
+                  </button>
                   <button class="icon-btn delete" onclick="deleteGuest({{ g.id }})" title="Elimina">
                     <span class="material-icons-round" style="font-size:18px">delete</span>
                   </button>
@@ -969,6 +976,62 @@ textarea { resize: vertical; min-height: 120px; }
         <span class="material-icons-round" style="font-size:16px">download</span> XLSX
       </a>
       <button class="btn btn-outline" onclick="document.getElementById('voliModal').classList.remove('active')">Chiudi</button>
+    </div>
+  </div>
+</div>
+
+<!-- Lettere Convocazione Modal -->
+<div class="modal-overlay" id="lettereModal">
+  <div class="modal modal-lg" style="max-width:95vw;width:95vw">
+    <h3>
+      <span class="material-icons-round" style="vertical-align:middle;margin-right:6px">drafts</span>
+      Lettere di Convocazione
+    </h3>
+
+    <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
+      <label style="font-size:13px;display:flex;align-items:center;gap:4px;cursor:pointer">
+        <input type="checkbox" id="lettPresenti" checked onchange="loadLettere()"> Solo presenti
+      </label>
+      <label style="font-size:13px;display:flex;align-items:center;gap:4px;cursor:pointer">
+        <input type="checkbox" id="lettConEmail" onchange="loadLettere()"> Solo con email
+      </label>
+      <button class="btn btn-outline btn-sm" onclick="toggleLettIntro()" style="font-size:12px">
+        <span class="material-icons-round" style="font-size:16px">edit_note</span> Testo introduttivo
+      </button>
+      <span style="flex:1"></span>
+      <span id="lettStats" style="font-size:12px;color:#888"></span>
+    </div>
+
+    <div id="lettIntroBox" style="display:none;margin-bottom:12px">
+      <textarea id="lettIntro" rows="3" placeholder="Lascia vuoto per usare il testo standard. Accetta tag HTML semplici (&lt;b&gt;, &lt;br&gt;)."
+        style="width:100%;padding:10px;border:1.5px solid #d7ccc8;border-radius:8px;font-family:inherit;font-size:13px;resize:vertical"></textarea>
+      <button class="btn btn-primary btn-sm" onclick="loadLettere()" style="margin-top:6px">
+        <span class="material-icons-round" style="font-size:16px">refresh</span> Rigenera
+      </button>
+    </div>
+
+    <div style="display:flex;gap:12px;align-items:flex-start">
+      <div id="lettList" style="width:270px;flex-shrink:0;max-height:60vh;overflow:auto;border:1px solid #e0d8d3;border-radius:8px"></div>
+      <div style="flex:1;min-width:0">
+        <div id="lettSubject" style="font-size:12px;color:#6d4c41;background:#efebe9;border-radius:8px 8px 0 0;padding:8px 12px;border:1px solid #e0d8d3;border-bottom:none;word-break:break-word"></div>
+        <iframe id="lettPreview" title="Anteprima lettera" style="width:100%;height:58vh;border:1px solid #e0d8d3;border-radius:0 0 8px 8px;background:#fff;display:block"></iframe>
+      </div>
+    </div>
+
+    <div class="btn-group">
+      <button class="btn btn-sm" onclick="copiaLetteraHtml()" style="background:var(--primary);color:white">
+        <span class="material-icons-round" style="font-size:16px">content_copy</span> Copia HTML
+      </button>
+      <button class="btn btn-outline btn-sm" onclick="copiaLetteraOggetto()">
+        <span class="material-icons-round" style="font-size:16px">subject</span> Copia oggetto
+      </button>
+      <a id="lettOpenBtn" class="btn btn-outline btn-sm" target="_blank" style="display:flex;align-items:center;gap:4px;text-decoration:none">
+        <span class="material-icons-round" style="font-size:16px">open_in_new</span> Apri
+      </a>
+      <button class="btn btn-outline btn-sm" onclick="scaricaLettereJson()">
+        <span class="material-icons-round" style="font-size:16px">data_object</span> Scarica JSON (Graph)
+      </button>
+      <button class="btn btn-outline" onclick="document.getElementById('lettereModal').classList.remove('active')">Chiudi</button>
     </div>
   </div>
 </div>
@@ -2778,6 +2841,107 @@ function loadTodos() {
       </div>`;
     }).join('');
   });
+}
+
+// ── LETTERE DI CONVOCAZIONE ───────────────────────────────────────────────
+let _lettere = [], _lettSel = -1;
+
+async function showLettere(gid) {
+  document.getElementById('lettereModal').classList.add('active');
+  if (gid) {
+    // apertura da riga: nessun filtro, cosi' l'ospite e' sempre in elenco
+    document.getElementById('lettPresenti').checked = false;
+    document.getElementById('lettConEmail').checked = false;
+  }
+  await loadLettere(gid);
+}
+
+async function loadLettere(selectId) {
+  const list = document.getElementById('lettList');
+  list.innerHTML = '<div style="text-align:center;padding:16px"><span class="spinner"></span></div>';
+
+  const p = new URLSearchParams();
+  if (document.getElementById('lettPresenti').checked) p.set('presenti', '1');
+  if (document.getElementById('lettConEmail').checked) p.set('con_email', '1');
+  const intro = document.getElementById('lettIntro').value.trim();
+  if (intro) p.set('intro', intro);
+
+  try {
+    const r = await fetch('/api/rooming/lettere?' + p.toString());
+    const j = await r.json();
+    if (!j.ok) { list.innerHTML = `<p style="color:var(--error);padding:12px">${j.error}</p>`; return; }
+    _lettere = j.lettere;
+    document.getElementById('lettStats').textContent =
+      `${j.totale} lettere · ${j.con_warning} con dati mancanti`;
+    renderLettereList();
+    let idx = 0;
+    if (selectId) {
+      const found = _lettere.findIndex(l => l.id === selectId);
+      if (found >= 0) idx = found;
+    }
+    if (_lettere.length) selectLettera(idx);
+    else {
+      document.getElementById('lettPreview').srcdoc = '';
+      document.getElementById('lettSubject').textContent = '';
+    }
+  } catch (err) {
+    list.innerHTML = `<p style="color:var(--error);padding:12px">${err.message}</p>`;
+  }
+}
+
+function renderLettereList() {
+  const list = document.getElementById('lettList');
+  if (!_lettere.length) {
+    list.innerHTML = '<p style="padding:12px;color:#888;font-size:13px">Nessun ospite con questi filtri.</p>';
+    return;
+  }
+  list.innerHTML = _lettere.map((l, i) => `
+    <div onclick="selectLettera(${i})" data-idx="${i}"
+         style="padding:10px 12px;border-bottom:1px solid #f0ebe6;cursor:pointer;${i === _lettSel ? 'background:#efebe9' : ''}">
+      <div style="font-size:13px;font-weight:600;color:#3e2723">${l.cognome} ${l.nome}</div>
+      <div style="font-size:11px;color:#888;margin-top:1px">${l.email || 'email mancante'}</div>
+      ${l.warnings.length ? `<div style="font-size:11px;color:#c62828;margin-top:3px;display:flex;align-items:center;gap:3px">
+        <span class="material-icons-round" style="font-size:13px">warning_amber</span>${l.warnings.join(', ')}</div>` : ''}
+    </div>`).join('');
+}
+
+function selectLettera(i) {
+  _lettSel = i;
+  const l = _lettere[i];
+  if (!l) return;
+  document.getElementById('lettPreview').srcdoc = l.html;
+  document.getElementById('lettSubject').innerHTML =
+    `<b>Oggetto:</b> ${l.subject} &nbsp;·&nbsp; <b>A:</b> ${l.email || '—'}`;
+  document.getElementById('lettOpenBtn').href = `/api/rooming/lettera/${l.id}?format=html`;
+  renderLettereList();
+}
+
+async function copiaLetteraHtml() {
+  const l = _lettere[_lettSel];
+  if (!l) return;
+  await navigator.clipboard.writeText(l.html);
+  alert('HTML della lettera copiato negli appunti.');
+}
+
+async function copiaLetteraOggetto() {
+  const l = _lettere[_lettSel];
+  if (!l) return;
+  await navigator.clipboard.writeText(l.subject);
+  alert('Oggetto copiato negli appunti.');
+}
+
+function scaricaLettereJson() {
+  if (!_lettere.length) return;
+  const payload = _lettere.map(l => ({
+    id: l.id, nome_completo: l.nome_completo, email: l.email,
+    subject: l.subject, html: l.html, warnings: l.warnings
+  }));
+  const blob = new Blob([JSON.stringify(payload, null, 2)], {type: 'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'lettere_convocazione.json';
+  a.click();
+  URL.revokeObjectURL(a.href);
 }
 </script>
 </body>
