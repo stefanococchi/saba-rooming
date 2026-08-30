@@ -36,6 +36,23 @@ def _parse_bool(val):
     return s in ('1', 'true', 'sì', 'si', 'yes', 'x', 'v', '✓')
 
 
+def _tour_assignments(hotel_id=None, hotel_ids=None):
+    """Assegnazioni camera dei soli ospiti attivi.
+
+    Il delete di un TourGuest è soft (deleted=True, per il cestino) e non
+    tocca le tour_room_assignments: senza questo filtro un ospite eliminato
+    resta a occupare camere in Nights & Hotels, negli export e nel portale hotel.
+    """
+    q = TourRoomAssignment.query.join(
+        TourGuest, TourGuest.id == TourRoomAssignment.guest_id
+    ).filter(TourGuest.deleted == False)  # noqa: E712
+    if hotel_id is not None:
+        q = q.filter(TourRoomAssignment.hotel_id == hotel_id)
+    if hotel_ids is not None:
+        q = q.filter(TourRoomAssignment.hotel_id.in_(hotel_ids))
+    return q.all()
+
+
 def create_app():
     app = Flask(__name__)
     app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev')
@@ -745,7 +762,7 @@ IMPORTANTE: Tutti i testi DEVONO essere in inglese."""
             tour_guests = TourGuest.query.filter_by(deleted=False).order_by(TourGuest.cognome).all()
             # Build guest list with hotel assignments
             hotels = TourHotel.query.order_by(TourHotel.night_date).all()
-            assignments = TourRoomAssignment.query.all()
+            assignments = _tour_assignments()
             # Map guest_id → list of hotel assignments
             guest_hotels = {}
             hotel_map = {h.id: h for h in hotels}
@@ -5039,7 +5056,7 @@ Notes: {q.notes or 'N/A'}"""
         hotel_occupancy = {}  # hotel.id → {base_code: {room_count, people, guests}}
         suffix_re = _re_tour.compile(r'-[A-Z]*\d+$')
         for h in hotels:
-            assignments = TourRoomAssignment.query.filter_by(hotel_id=h.id).all()
+            assignments = _tour_assignments(hotel_id=h.id)
             occ = {}
             for a in assignments:
                 base_code = suffix_re.sub('', a.room_code)
@@ -5137,7 +5154,7 @@ Notes: {q.notes or 'N/A'}"""
         hotels = TourHotel.query.order_by(TourHotel.night_date, TourHotel.hotel_name).all()
         result = []
         for h in hotels:
-            assignments = TourRoomAssignment.query.filter_by(hotel_id=h.id).all()
+            assignments = _tour_assignments(hotel_id=h.id)
             # Count unique rooms: strip suffix (-T4, -D2, -1 etc.) then
             # count distinct raw codes per base code as rooms
             room_set = set()
@@ -5248,7 +5265,7 @@ Notes: {q.notes or 'N/A'}"""
 
         hotel = TourHotel.query.get_or_404(hotel_id)
         baselines = TourRoomBaseline.query.filter_by(hotel_id=hotel_id).all()
-        assignments = TourRoomAssignment.query.filter_by(hotel_id=hotel_id).all()
+        assignments = _tour_assignments(hotel_id=hotel_id)
 
         # Build sets: (COGNOME, NOME) → room info
         baseline_map = {}
@@ -5347,7 +5364,7 @@ Notes: {q.notes or 'N/A'}"""
 
         for hotel in hotels:
             baselines = TourRoomBaseline.query.filter_by(hotel_id=hotel.id).all()
-            assignments = TourRoomAssignment.query.filter_by(hotel_id=hotel.id).all()
+            assignments = _tour_assignments(hotel_id=hotel.id)
 
             # Build maps
             baseline_map = {}
@@ -5483,8 +5500,7 @@ Notes: {q.notes or 'N/A'}"""
         """Set dinner_5sep=True for all guests with a 5Sep room, False for others."""
         hotels_5sep = TourHotel.query.filter_by(night_label='5Sep').all()
         hotel_ids_5sep = {h.id for h in hotels_5sep}
-        assignments_5sep = TourRoomAssignment.query.filter(
-            TourRoomAssignment.hotel_id.in_(hotel_ids_5sep)).all()
+        assignments_5sep = _tour_assignments(hotel_ids=hotel_ids_5sep)
         guest_ids_with_5sep = {a.guest_id for a in assignments_5sep}
 
         guests = TourGuest.query.filter_by(deleted=False).all()
@@ -5673,7 +5689,7 @@ Notes: {q.notes or 'N/A'}"""
         row += 1
 
         for h in hotels:
-            assignments = TourRoomAssignment.query.filter_by(hotel_id=h.id).all()
+            assignments = _tour_assignments(hotel_id=h.id)
             room_set = set()
             for a in assignments:
                 room_set.add(a.room_code)
@@ -5720,7 +5736,7 @@ Notes: {q.notes or 'N/A'}"""
 
         guest_rooms = {}  # guest_id → {night_label → "Hotel, City - Category"}
         for h in hotels:
-            assignments = TourRoomAssignment.query.filter_by(hotel_id=h.id).all()
+            assignments = _tour_assignments(hotel_id=h.id)
             for a in assignments:
                 base_code = base_re.sub('', a.room_code)
                 cat_label = cat_names_all.get((h.id, base_code), base_code)
@@ -5860,7 +5876,7 @@ Notes: {q.notes or 'N/A'}"""
         import re as _re_hex
 
         hotel = TourHotel.query.get_or_404(hotel_id)
-        assignments = TourRoomAssignment.query.filter_by(hotel_id=hotel_id).all()
+        assignments = _tour_assignments(hotel_id=hotel_id)
 
         # Group by room_code, resolve guests
         # Shared rooms: same base code with suffix → group together
@@ -6139,7 +6155,7 @@ Notes: {q.notes or 'N/A'}"""
                 clean = clean.replace(sfx, '')
             cat_names[c.code] = clean
 
-        assignments = TourRoomAssignment.query.filter_by(hotel_id=hotel.id).all()
+        assignments = _tour_assignments(hotel_id=hotel.id)
         guest_list = []
         for a in assignments:
             g = a.guest
