@@ -782,6 +782,14 @@ Entità gestibili:
    - action="unassign": data deve contenere guest_id, hotel_id
    match_id non serve per le assegnazioni.
 
+CAMERE CONDIVISE (coppie, familiari, colleghi che dormono nella stessa camera):
+- Due persone stanno nella STESSA camera SOLO se hanno lo STESSO identico room_code CON suffisso numerico finale (trattino + eventuali lettere + numero): es. room_code="PAN-1" per entrambe, oppure "DBL-2", "TWIN-D3".
+- Un room_code SENZA suffisso (es. "PAN", "DBL") vale come camera individuale: due persone con room_code="DBL" risultano in DUE camere separate, non in una condivisa. Non usarlo mai per una coppia.
+- Scegli un suffisso non ancora usato per quello stesso hotel_id: guarda i room_code gia' assegnati in quell'hotel nell'elenco dei record attuali.
+- Non usare unassign per mettere qualcuno in camera con un altro: un assign con il nuovo room_code sovrascrive quello esistente. Usa unassign solo se la persona non dorme proprio in quell'hotel.
+- Quando due persone vanno in camera insieme, aggiorna SEMPRE anche room_with di ENTRAMBE (due operazioni update su TourGuest) con il nome dell'altra. Per le coppie aggiungi la relazione in inglese tra parentesi: "wife", "husband" o "partner" (es. room_with="ROSSI Maria (wife)"), perche' e' quella parola a far stampare "double bed" invece di "twin beds" nella rooming list dell'hotel.
+- Esempio coppia: assign guest_id=12 hotel_id=5 room_code="PAN-1"; assign guest_id=13 hotel_id=5 room_code="PAN-1"; update TourGuest 12 room_with="BIANCHI Anna (wife)"; update TourGuest 13 room_with="ROSSI Marco (husband)".
+
 Hotel del tour (usa hotel_id per le assegnazioni):
 {hotel_list}
 
