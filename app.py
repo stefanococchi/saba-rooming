@@ -1,5 +1,6 @@
 import os
 import json
+import unicodedata
 import urllib.parse
 from datetime import datetime
 from io import BytesIO
@@ -34,6 +35,149 @@ def _parse_bool(val):
         return val
     s = str(val).strip().lower()
     return s in ('1', 'true', 'sì', 'si', 'yes', 'x', 'v', '✓')
+
+
+# ── Azienda di appartenenza ──────────────────────────────────────────────
+# Gli ospiti del tour non hanno un campo "azienda": si ricava dal dominio
+# dell'email.  La mappa copre i domini che non si leggono bene da soli
+# (sigle, sottodomini di paese, ragioni sociali diverse dal dominio); per
+# tutti gli altri basta il fallback che ripulisce il dominio.
+
+FREEMAIL_DOMAINS = {
+    'gmail.com', 'googlemail.com', 'hotmail.com', 'hotmail.it', 'hotmail.fr',
+    'outlook.com', 'outlook.it', 'live.com', 'msn.com', 'yahoo.com', 'yahoo.it',
+    'yahoo.fr', 'icloud.com', 'me.com', 'mac.com', 'aol.com', 'gmx.de',
+    'gmx.net', 'web.de', 't-online.de', 'orange.fr', 'wanadoo.fr', 'free.fr',
+    'libero.it', 'virgilio.it', 'alice.it', 'tiscali.it', 'tin.it', 'pec.it',
+    'mail.ru', 'yandex.ru', 'protonmail.com', 'proton.me', 'qq.com', '163.com',
+}
+
+DOMAIN_COMPANY = {
+    'actiontruckparts.com': 'Action Truck Parts',
+    'activegroup.az': 'Active Group',
+    'alfuttaim.com': 'Al-Futtaim',
+    'am-company.com': 'AM Company',
+    'ams-osram.com': 'ams OSRAM',
+    'apa.parts': 'APA',
+    'apexgulf.ae': 'Apex Gulf',
+    'asg.ua': 'ASG',
+    'astemo.com': 'Astemo',
+    'auto1.bg': 'Auto1',
+    'autos.com.pl': 'Autos',
+    'bilsteingroup.com': 'Bilstein Group',
+    'brembo.com': 'Brembo',
+    'us.brembo.com': 'Brembo',
+    'carzillaracing.com': 'Carzilla Racing',
+    'casertanoricambi.it': 'Casertano Ricambi',
+    'conti.de': 'Continental',
+    'cummins.com': 'Cummins',
+    'depannage3j.com': 'Dépannage 3J',
+    'diana-ltd.com': 'Diana Ltd',
+    'dinamikotomotiv.com.tr': 'Dinamik Otomotiv',
+    'distrigo.tn': 'Distrigo',
+    'driv.com': 'DRiV',
+    'europart.net': 'EUROPART',
+    'exidegroup.com': 'Exide Group',
+    'fad.com.tn': 'FAD',
+    'gracepacerace.com': 'Grace Pace Race',
+    'hdap.ca': 'HDAP',
+    'hengst.de': 'Hengst',
+    'idir.it': 'IDIR',
+    'intercar.org': 'Intercar',
+    'korritrading.com': 'Korri Trading',
+    'liqui-moly.com': 'LIQUI MOLY',
+    'liqui-moly.de': 'LIQUI MOLY',
+    'mahle.com': 'MAHLE',
+    'materom.ro': 'Materom',
+    'metellispa.it': 'Metelli',
+    'motogama.com.pl': 'Motogama',
+    'neweast.com': 'New East',
+    'nexusautomotive.eu': 'NEXUS Automotive',
+    'nissens.com': 'Nissens',
+    'nrf.eu': 'NRF',
+    'phinia.com': 'PHINIA',
+    'pissettaz.com': 'Pissetta',
+    'porza.nl': 'Porza',
+    'prostockautoparts.com': 'ProStock Auto Parts',
+    'sabae20.it': 'SABAE20',
+    'schaeferbarthold.de': 'Schäfer & Barthold',
+    'secori.it': 'Secori',
+    'skf.com': 'SKF',
+    'smg-auto.com': 'SMG Auto',
+    'tabitalia.com': 'TAB Italia',
+    'tabspain.com': 'TAB Spain',
+    'thegroupapsg.com': 'The Group APSG',
+    'thyssenkrupp-automotive.com': 'thyssenkrupp Automotive',
+    'totalenergies.com': 'TotalEnergies',
+    'it.ufifilters.com': 'UFI Filters',
+    'ufifilters.com': 'UFI Filters',
+    'universalcar-sa.com': 'Universal Car',
+    'urvi.es': 'URVI',
+    'zbeda.com': 'Zbeda',
+}
+
+# Etichette da scartare quando si ripulisce un dominio sconosciuto
+_DOMAIN_STRIP = {'www', 'mail', 'email', 'com', 'co', 'net', 'org', 'gov', 'edu'}
+
+
+# Ospiti la cui azienda non si ricava dall'email: o non hanno email in
+# anagrafica, o usano una casella personale.  Valore stabilito a mano dalle
+# note dell'ospite (chiave: cognome + nome, senza accenti né maiuscole).
+GUEST_COMPANY_OVERRIDES = {
+    # Nessuna email in anagrafica
+    'bianchetti umberto': 'SABAE20',        # note: "SABAE20 event organisation"
+    'tirinelli fabio': 'SABAE20',           # note: "SABAE20 event organisation"
+    'perez schwarz miguel': 'TAB Spain',    # sostituisce Joan Alcaraz (@tabspain.com)
+    'bruletti matteo': 'TAB Italia',        # sostituisce Riccardo Ferrari (@tabitalia.com)
+    'schoeffmann alex': 'Hengst',           # riga gemella eliminata: a.schoeffmann@hengst.de
+    # Casella personale: azienda indicata da Stefano
+    'ravindrakumar aashish': 'United Motors',
+    'jeetendra sneha': 'United Motors',     # moglie di Aashish Ravindrakumar
+    'zanetti francesco': 'CAR SERVICE',
+    # Casella personale: azienda del coniuge con cui partecipano
+    'pertceva olha': 'ASG',                 # moglie di Oleksiy Hordiyenko (@asg.ua)
+    'thomaz aude': 'PHINIA',                # moglie di Juan Thomaz (@phinia.com)
+    'thomaz de souza vilson': 'PHINIA',     # quota pagata da Juan Thomaz (@phinia.com)
+}
+
+
+def _norm_guest_key(guest):
+    """Chiave 'cognome nome' senza accenti, per GUEST_COMPANY_OVERRIDES."""
+    raw = f"{guest.cognome or ''} {guest.nome or ''}"
+    flat = unicodedata.normalize('NFKD', raw)
+    flat = ''.join(c for c in flat if not unicodedata.combining(c))
+    return ' '.join(flat.lower().split())
+
+
+def _guest_company(guest):
+    """Azienda di appartenenza, ricavata dal dominio dell'email.
+
+    GUEST_COMPANY_OVERRIDES ha la precedenza: copre gli ospiti senza email
+    o con casella personale, per i quali il dominio non dice nulla.
+    Restituisce '' quando l'azienda non è né mappata né ricavabile.
+    """
+    manual = GUEST_COMPANY_OVERRIDES.get(_norm_guest_key(guest))
+    if manual:
+        return manual
+
+    email = (getattr(guest, 'email', None) or '').strip().lower()
+    if '@' not in email:
+        return ''
+    domain = email.rsplit('@', 1)[1].strip().strip('.')
+    if not domain or domain in FREEMAIL_DOMAINS:
+        return ''
+    if domain in DOMAIN_COMPANY:
+        return DOMAIN_COMPANY[domain]
+
+    parts = domain.split('.')
+    # via il sottodominio di paese/servizio in testa (it.ufifilters.com, www.…)
+    while len(parts) > 2 and (len(parts[0]) == 2 or parts[0] in _DOMAIN_STRIP):
+        parts.pop(0)
+    # via TLD e second-level generico (autos.com.pl → autos)
+    while len(parts) > 1 and (len(parts[-1]) <= 3 or parts[-1] in _DOMAIN_STRIP):
+        parts.pop()
+    name = (parts[0] if parts else domain).replace('-', ' ').replace('_', ' ')
+    return name.title()
 
 
 def _tour_assignments(hotel_id=None, hotel_ids=None):
@@ -5825,7 +5969,7 @@ Notes: {q.notes or 'N/A'}"""
                     value=f'{len(dinner_guests)} guests - {diet_count} with dietary requirements').font = font_info
 
             # Column headers
-            headers = ['#', 'Surname', 'Name', 'Nationality',
+            headers = ['#', 'Surname', 'Name', 'Company', 'Nationality',
                        'Diet / allergies', 'Sleeping that night']
             for c, h in enumerate(headers, 1):
                 cell = ws.cell(row=6, column=c, value=h)
@@ -5846,6 +5990,7 @@ Notes: {q.notes or 'N/A'}"""
                     i,
                     g.cognome,
                     g.nome,
+                    _guest_company(g),
                     g.nazionalita,
                     diet_val,
                     sleeping,
@@ -5856,7 +6001,7 @@ Notes: {q.notes or 'N/A'}"""
                     cell.border = thin_border
 
             # Column widths
-            widths = [5, 22, 18, 16, 30, 45]
+            widths = [5, 22, 18, 26, 16, 30, 45]
             for c, w in enumerate(widths, 1):
                 from openpyxl.utils import get_column_letter
                 ws.column_dimensions[get_column_letter(c)].width = w
