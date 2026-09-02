@@ -51,6 +51,69 @@ def volo_disallineato(g, pg):
                                  normalize_flight(pg.volo_ritorno))
 
 
+# ── Deduzione Mr/Mrs dal nome di battesimo ────────────────────────────────
+# Serve per le liste passeggeri: il titolo va indicato per ogni nominativo.
+# I nomi elencati qui sono quelli che le regole sulla desinenza sbaglierebbero
+# (maschili in -a, femminili non in -a) più i nomi in -e, che in italiano sono
+# ambigui. Tutto ciò che non è deducibile con certezza resta vuoto.
+NOMI_M = {
+    # maschili in -a
+    'andrea', 'luca', 'nicola', 'mattia', 'elia', 'enea', 'battista', 'nikola',
+    'oussama', 'mustafa', 'hamza', 'moussa',
+    # composti dei precedenti: la desinenza -a li farebbe passare per femminili
+    'gianluca', 'pierluca', 'gianandrea', 'pierandrea', 'gianmaria', 'giammaria',
+    'gianmattia', 'giannicola',
+    # maschili in -e
+    'davide', 'gabriele', 'emanuele', 'giuseppe', 'simone', 'michele', 'daniele',
+    'salvatore', 'clemente', 'ettore', 'cesare', 'felice', 'samuele', 'raffaele',
+    'pasquale', 'giosue', 'vincenzo', 'alfonse', 'aime', 'rene',
+    # maschili non italiani senza desinenza utile
+    'martin', 'michael', 'robert', 'john', 'david', 'peter', 'thomas', 'daniel',
+    'jorge', 'carlos', 'juan', 'mohamed', 'mohammed', 'muhammad', 'ahmed', 'ali',
+    'omar', 'hassan', 'youssef', 'karim', 'said', 'ziyad', 'farzam', 'kadrian',
+    'mohsen', 'rachith', 'deyan', 'enric', 'kevin', 'patrick', 'stephan', 'jean',
+    'felicien', 'oscar', 'ivan', 'igor', 'victor', 'walter', 'nestor', 'gaspar',
+}
+NOMI_F = {
+    # femminili in -e
+    'irene', 'alice', 'beatrice', 'adele', 'agnese', 'geltrude', 'noemie',
+    # femminili senza desinenza utile
+    'carmen', 'miriam', 'ester', 'esther', 'ines', 'nives', 'ruth', 'helen',
+    'jennifer', 'sharon', 'doris', 'karin', 'astrid', 'ingrid', 'rachel',
+    # femminili in -i, che la regola sulla desinenza darebbe per maschili
+    'noemi', 'naomi', 'mimi',
+}
+
+
+def deduci_titolo(nome):
+    """'Mr' / 'Mrs' dal nome di battesimo, None se non deducibile con certezza.
+
+    Usa il primo token (i secondi nomi non spostano il genere) e le liste sopra;
+    in mancanza ricade sulla desinenza: -a femminile, -o maschile. Le desinenze
+    in -e e i nomi stranieri sconosciuti restano indecisi apposta: meglio una
+    cella vuota da compilare che un titolo sbagliato su una lista passeggeri.
+    """
+    if not nome:
+        return None
+    primo = nome.strip().split()[0] if nome.strip().split() else ''
+    primo = unicodedata.normalize('NFKD', primo)
+    primo = ''.join(c for c in primo if not unicodedata.combining(c))
+    primo = re.sub(r"[^a-zA-Z']", '', primo).lower()
+    if not primo:
+        return None
+    if primo in NOMI_M:
+        return 'Mr'
+    if primo in NOMI_F:
+        return 'Mrs'
+    if primo.endswith('a'):
+        return 'Mrs'
+    if primo.endswith('o'):
+        return 'Mr'
+    if primo.endswith('i'):   # Luigi, Giovanni, Gianni…
+        return 'Mr'
+    return None
+
+
 def _parse_bool(val):
     """Converte vari formati in booleano."""
     if val is None:
@@ -295,6 +358,9 @@ def create_app():
             guest_cols = [c['name'] for c in inspect(db.engine).get_columns('guests')]
             if 'pnr_group_id' not in guest_cols:
                 conn.execute(text("ALTER TABLE guests ADD COLUMN pnr_group_id INTEGER REFERENCES pnr_groups(id)"))
+                conn.commit()
+            if 'titolo' not in guest_cols:
+                conn.execute(text("ALTER TABLE guests ADD COLUMN titolo VARCHAR(10)"))
                 conn.commit()
             if 'data_nascita' not in guest_cols:
                 conn.execute(text("ALTER TABLE guests ADD COLUMN data_nascita VARCHAR(20)"))
@@ -1377,7 +1443,7 @@ Rispondi SOLO con JSON valido (no markdown, no commenti):
         'pickup_bus_andata', 'pickup_bus_ritorno',
         'divide_stanza_con', 'restrizioni_alimentari',
         'tipo_camera', 'camera_assegnata', 'note_form', 'note',
-        'data_nascita',
+        'data_nascita', 'titolo',
     )
     GUEST_BOOL_FIELDS = (
         'presenza_8', 'presenza_9', 'presenza_10', 'presenza_11',
@@ -1932,6 +1998,57 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
             totale_con_volo=len(guests),
             totale_senza_volo=senza_volo,
             totale_voli=len(result),
+        )
+
+    @app.post('/api/guest/titoli-auto')
+    def guest_titoli_auto():
+        """Deduce Mr/Mrs dal nome per gli ospiti che non ce l'hanno.
+        Se confirm=true applica, altrimenti restituisce solo l'anteprima.
+        Non tocca mai un titolo già compilato."""
+        data = request.get_json() or {}
+        confirm = data.get('confirm', False)
+
+        guests = Guest.query.filter(Guest.deleted == False).order_by(
+            Guest.cognome, Guest.nome).all()
+
+        dedotti, ambigui, gia_valorizzati = [], [], []
+        for g in guests:
+            if (g.titolo or '').strip():
+                gia_valorizzati.append(g)
+                continue
+            t = deduci_titolo(g.nome)
+            voce = {'id': g.id, 'cognome': g.cognome, 'nome': g.nome,
+                    'sede_lavoro': g.sede_lavoro or ''}
+            if t:
+                dedotti.append({**voce, 'titolo': t})
+            else:
+                ambigui.append(voce)
+
+        applied = 0
+        if confirm and dedotti:
+            for d in dedotti:
+                guest = Guest.query.get(d['id'])
+                if guest and not (guest.titolo or '').strip():
+                    guest.titolo = d['titolo']
+                    applied += 1
+            db.session.commit()
+            log_audit('rooming', 'Guest', None, 'update',
+                      changes={'count': applied},
+                      summary=f'Titoli Mr/Mrs dedotti dal nome: {applied} ospiti')
+
+        return jsonify(
+            ok=True,
+            confirmed=confirm,
+            applied=applied,
+            dedotti=dedotti,
+            ambigui=ambigui,
+            totals={
+                'dedotti': len(dedotti),
+                'mr': sum(1 for d in dedotti if d['titolo'] == 'Mr'),
+                'mrs': sum(1 for d in dedotti if d['titolo'] == 'Mrs'),
+                'ambigui': len(ambigui),
+                'gia_valorizzati': len(gia_valorizzati),
+            },
         )
 
     # ── PNR GROUPS ──────────────────────────────────────────────────────────
@@ -3153,7 +3270,8 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
 
         headers = ['PNR', 'Posti', 'Volo Andata', 'Rotta', 'Data', 'Orario',
                     'Volo Ritorno', 'Rotta', 'Data', 'Orario',
-                    'Cognome', 'Nome', 'Sede Lavoro', 'Volo ospite (se diverso)']
+                    'Titolo', 'Cognome', 'Nome', 'Data Nascita', 'Sede Lavoro',
+                    'Volo ospite (se diverso)']
         for c, h in enumerate(headers, 1):
             cell = ws.cell(row=1, column=c, value=h)
             cell.font = hfont
@@ -3169,7 +3287,7 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
                 vals = [pg.pnr_code, pg.seats, pg.volo_andata, pg.rotta_andata,
                         pg.data_andata, pg.orario_andata, pg.volo_ritorno,
                         pg.rotta_ritorno, pg.data_ritorno, pg.orario_ritorno,
-                        '', '', '', '']
+                        '', '', '', '', '', '']
                 for c, v in enumerate(vals, 1):
                     cell = ws.cell(row=row, column=c, value=v)
                     cell.border = border
@@ -3177,6 +3295,7 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
                 row += 1
             else:
                 for i, g in enumerate(guests):
+                    disallineato = volo_disallineato(g, pg)
                     vals = [
                         pg.pnr_code if i == 0 else '',
                         pg.seats if i == 0 else '',
@@ -3188,11 +3307,11 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
                         pg.rotta_ritorno if i == 0 else '',
                         pg.data_ritorno if i == 0 else '',
                         pg.orario_ritorno if i == 0 else '',
-                        g.cognome, g.nome, g.sede_lavoro or '',
+                        g.titolo or '', g.cognome, g.nome,
+                        g.data_nascita or '', g.sede_lavoro or '',
                         (f'{g.volo_arrivo or "—"} / {g.volo_partenza or "—"}'
-                         if volo_disallineato(g, pg) else ''),
+                         if disallineato else ''),
                     ]
-                    disallineato = bool(vals[13])
                     for c, v in enumerate(vals, 1):
                         cell = ws.cell(row=row, column=c, value=v)
                         cell.border = border
@@ -3212,9 +3331,11 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
             cell.font = Font(bold=True, color='CC0000')
             row += 1
             for g in unassigned:
-                ws.cell(row=row, column=11, value=g.cognome).border = border
-                ws.cell(row=row, column=12, value=g.nome).border = border
-                ws.cell(row=row, column=13, value=g.sede_lavoro or '').border = border
+                ws.cell(row=row, column=11, value=g.titolo or '').border = border
+                ws.cell(row=row, column=12, value=g.cognome).border = border
+                ws.cell(row=row, column=13, value=g.nome).border = border
+                ws.cell(row=row, column=14, value=g.data_nascita or '').border = border
+                ws.cell(row=row, column=15, value=g.sede_lavoro or '').border = border
                 row += 1
 
         for col in ws.columns:

@@ -582,6 +582,12 @@ textarea { resize: vertical; min-height: 120px; }
         <span class="material-icons-round">person_add</span>
         Aggiungi
       </button>
+      {% if not client_view %}
+      <button class="btn btn-outline btn-sm" onclick="titoliAuto(false)">
+        <span class="material-icons-round">badge</span>
+        Deduci Mr/Mrs
+      </button>
+      {% endif %}
       <span style="width:1px;height:24px;background:var(--outline-variant);margin:0 4px"></span>
       <button class="btn btn-outline btn-sm" onclick="showStanze(8)">
         <span class="material-icons-round">bed</span>
@@ -738,6 +744,7 @@ textarea { resize: vertical; min-height: 120px; }
         <table id="guestTable">
           <thead>
             <tr>
+              <th style="width:52px">Titolo</th>
               <th>Cognome</th>
               <th>Nome</th>
               <th>Data Nascita</th>
@@ -768,6 +775,7 @@ textarea { resize: vertical; min-height: 120px; }
           <tbody>
             {% for g in guests %}
             <tr data-id="{{ g.id }}">
+              <td class="{{ 'editable' if not client_view else '' }}" {% if not client_view %}data-field="titolo"{% endif %}>{{ g.titolo or '' }}</td>
               <td class="{{ 'editable' if not client_view else '' }}" {% if not client_view %}data-field="cognome"{% endif %}>{{ g.cognome }}</td>
               <td class="{{ 'editable' if not client_view else '' }}" {% if not client_view %}data-field="nome"{% endif %}>{{ g.nome }}</td>
               <td class="{{ 'editable' if not client_view else '' }}" {% if not client_view %}data-field="data_nascita"{% endif %}>{{ g.data_nascita or '' }}</td>
@@ -977,6 +985,17 @@ textarea { resize: vertical; min-height: 120px; }
       </a>
       <button class="btn btn-outline" onclick="document.getElementById('voliModal').classList.remove('active')">Chiudi</button>
     </div>
+  </div>
+</div>
+
+<!-- Titoli Mr/Mrs Modal -->
+<div class="modal-overlay" id="titoliModal" onclick="if(event.target===this)this.classList.remove('active')">
+  <div class="modal modal-lg">
+    <h3>
+      <span class="material-icons-round" style="vertical-align:middle;margin-right:6px">badge</span>
+      Mr / Mrs dedotti dal nome
+    </h3>
+    <div id="titoliContent"></div>
   </div>
 </div>
 
@@ -1299,6 +1318,7 @@ const FIELD_OPTIONS = [
   { value: 'cognome', label: 'Cognome' },
   { value: 'nome', label: 'Nome' },
   { value: 'nome_completo', label: 'Nome completo' },
+  { value: 'titolo', label: 'Titolo (Mr/Mrs)' },
   { value: 'data_nascita', label: 'Data Nascita' },
   { value: 'email', label: 'Email' },
   { value: 'telefono', label: 'Telefono' },
@@ -1888,6 +1908,84 @@ async function manualPnrAssign(guestId, pnrCode) {
     if (!j.ok) alert('Errore: ' + (j.error || 'sconosciuto'));
   } catch (err) {
     alert('Errore: ' + err.message);
+  }
+}
+
+// ── Titoli Mr/Mrs ────────────────────────────────────────────────────────
+async function titoliAuto(confirm) {
+  const modal = document.getElementById('titoliModal');
+  const content = document.getElementById('titoliContent');
+  modal.classList.add('active');
+  content.innerHTML = '<div style="text-align:center;padding:16px"><span class="spinner"></span> Analisi in corso...</div>';
+
+  try {
+    const r = await fetch('/api/guest/titoli-auto', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({confirm})
+    });
+    const j = await r.json();
+    if (!j.ok) { content.innerHTML = `<p style="color:var(--error)">${j.error}</p>`; return; }
+
+    const t = j.totals;
+    let html = '';
+
+    if (confirm && j.applied) {
+      html += `<div style="background:#e8f5e9;border:1px solid #4caf50;border-radius:8px;padding:12px;margin-bottom:12px">
+        <strong style="color:#2e7d32">✓ ${j.applied} titoli compilati</strong>
+      </div>`;
+    }
+
+    html += `<div class="stanze-summary">
+      <div style="color:#2e7d32"><strong>${t.dedotti}</strong> dedotti (${t.mr} Mr · ${t.mrs} Mrs)</div>
+      <div style="color:#ef6c00"><strong>${t.ambigui}</strong> da compilare a mano</div>
+      <div><strong>${t.gia_valorizzati}</strong> già compilati</div>
+    </div>`;
+
+    html += `<div style="max-height:50vh;overflow-y:auto">`;
+
+    if (j.ambigui.length) {
+      html += `<h4 style="margin:12px 0 6px;font-size:14px;color:#ef6c00">⚠ Nome non riconducibile a un genere (${j.ambigui.length})</h4>
+        <p style="font-size:12px;color:var(--on-surface-variant);margin:0 0 6px">
+          Restano vuoti: compilali a mano nella colonna Titolo della tabella.</p>`;
+      j.ambigui.forEach(a => {
+        html += `<div style="padding:4px 8px;font-size:13px;border-bottom:1px solid var(--outline-variant);background:#fff3e0">
+          <strong>${a.cognome} ${a.nome}</strong>
+          ${a.sede_lavoro ? `<span style="font-size:12px;color:var(--on-surface-variant);margin-left:8px">${a.sede_lavoro}</span>` : ''}
+        </div>`;
+      });
+    }
+
+    if (j.dedotti.length) {
+      html += `<h4 style="margin:12px 0 6px;font-size:14px;color:#2e7d32">✓ Dedotti (${j.dedotti.length})</h4>`;
+      j.dedotti.forEach(d => {
+        html += `<div style="padding:4px 8px;font-size:13px;border-bottom:1px solid var(--outline-variant);display:flex;align-items:center;gap:8px">
+          <span style="font-family:monospace;font-weight:600;min-width:36px;color:${d.titolo === 'Mrs' ? '#ad1457' : '#1565c0'}">${d.titolo}</span>
+          <strong style="min-width:220px">${d.cognome} ${d.nome}</strong>
+          ${d.sede_lavoro ? `<span style="font-size:12px;color:var(--on-surface-variant)">${d.sede_lavoro}</span>` : ''}
+        </div>`;
+      });
+    }
+
+    html += `</div>`;
+
+    if (!confirm && j.dedotti.length) {
+      html += `<div style="margin-top:12px;text-align:center">
+        <button class="btn btn-sm" onclick="titoliAuto(true)" style="background:#2e7d32;color:white;padding:8px 24px">
+          <span class="material-icons-round" style="font-size:16px;vertical-align:middle">check</span>
+          Conferma (${j.dedotti.length} titoli)
+        </button>
+        <button class="btn btn-outline btn-sm" onclick="document.getElementById('titoliModal').classList.remove('active')" style="margin-left:8px">Annulla</button>
+      </div>`;
+    } else {
+      html += `<div style="margin-top:12px;text-align:center">
+        <button class="btn btn-outline btn-sm" onclick="location.reload()">Chiudi</button>
+      </div>`;
+    }
+
+    content.innerHTML = html;
+
+  } catch (err) {
+    content.innerHTML = `<p style="color:var(--error)">${err.message}</p>`;
   }
 }
 

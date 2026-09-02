@@ -102,6 +102,7 @@ class Guest(db.Model):
     id                    = db.Column(db.Integer, primary_key=True)
     cognome               = db.Column(db.String(100), nullable=False)
     nome                  = db.Column(db.String(100), nullable=False)
+    titolo                = db.Column(db.String(10))        # Mr, Mrs
     email                 = db.Column(db.String(200))
     telefono              = db.Column(db.String(50))
     sede_lavoro           = db.Column(db.String(200))
