@@ -1066,8 +1066,9 @@ Record attuali:
 REGOLE:
 - Per update/delete: usa match_id con l'ID esatto dell'entità dalla lista sopra. Fai matching fuzzy su cognome+nome.
 - Per create: match_id = null
-- cognome sempre MAIUSCOLO
-- Campi non menzionati nel testo → null (non includerli in data)
+- cognome sempre MAIUSCOLO, ed è obbligatorio per ogni create
+- Se il nome di battesimo non è indicato usa nome: "" (stringa vuota), mai null
+- Campi non menzionati nel testo: NON includerli in data. Dentro data non mettere mai valori null
 - Se la richiesta è solo una query/domanda (non un'operazione CRUD), rispondi con operations vuoto e metti la risposta nel summary.
 
 Rispondi SOLO con JSON valido (no markdown, no commenti):
@@ -1138,7 +1139,7 @@ Rispondi SOLO con JSON valido (no markdown, no commenti):
     @app.post('/api/llm/apply')
     def llm_apply():
         data = request.get_json() or {}
-        operations = data.get('operations', [])
+        operations = data.get('operations') or []
         email_log_id = data.get('email_log_id')
         results = []
         # Track created IDs for cross-reference (e.g. "new_guest_1" → real ID)
@@ -1147,15 +1148,20 @@ Rispondi SOLO con JSON valido (no markdown, no commenti):
         for op in operations:
             action = op.get('action')
             etype = op.get('entity_type')
-            opdata = op.get('data', {})
+            opdata = op.get('data') or {}
             match_id = op.get('match_id')
 
             try:
                 if etype == 'Guest':
                     if action == 'create':
+                        cognome = (opdata.get('cognome') or '').strip().upper()
+                        nome = (opdata.get('nome') or '').strip()
+                        if not cognome and not nome:
+                            results.append({'ok': False,
+                                            'error': 'Nome e cognome mancanti'})
+                            continue
                         g = Guest(
-                            cognome=opdata.get('cognome', ''),
-                            nome=opdata.get('nome', ''),
+                            cognome=cognome, nome=nome,
                             source='llm', email_log_id=email_log_id)
                         for f in ('email', 'telefono', 'sede_lavoro', 'volo_arrivo',
                                   'volo_partenza', 'aeroporto_partenza', 'aeroporto_arrivo',
@@ -1214,9 +1220,14 @@ Rispondi SOLO con JSON valido (no markdown, no commenti):
 
                 elif etype == 'PartiviaQuote':
                     if action == 'create':
+                        hotel_name = (opdata.get('hotel_name') or '').strip()
+                        if not hotel_name:
+                            results.append({'ok': False,
+                                            'error': 'Nome hotel mancante'})
+                            continue
                         q = PartiviaQuote(
-                            hotel_name=opdata.get('hotel_name', ''),
-                            city=opdata.get('city', ''),
+                            hotel_name=hotel_name,
+                            city=(opdata.get('city') or '').strip(),
                             source='llm', email_log_id=email_log_id)
                         for f in ('stars', 'contact_name', 'contact_email', 'website_url',
                                   'address', 'dates_proposed', 'rooms_available',
@@ -1277,11 +1288,18 @@ Rispondi SOLO con JSON valido (no markdown, no commenti):
 
                 elif etype == 'TourGuest':
                     if action == 'create':
+                        cognome = (opdata.get('cognome') or '').strip().upper()
+                        nome = (opdata.get('nome') or '').strip()
+                        if not cognome and not nome:
+                            results.append({'ok': False,
+                                            'error': 'Nome e cognome mancanti'})
+                            continue
                         g = TourGuest(
-                            cognome=opdata.get('cognome', ''),
-                            nome=opdata.get('nome', ''),
+                            cognome=cognome, nome=nome,
                             source='llm')
                         for f in TOUR_GUEST_STR_FIELDS:
+                            if f in ('cognome', 'nome'):
+                                continue
                             if opdata.get(f) is not None:
                                 setattr(g, f, opdata[f])
                         for f in TOUR_GUEST_BOOL_FIELDS:
@@ -1385,9 +1403,14 @@ Rispondi SOLO con JSON valido (no markdown, no commenti):
                                         'name': f'{g_name} rimosso da {h_name}'})
 
             except Exception as e:
+                db.session.rollback()
                 results.append({'ok': False, 'error': str(e)})
 
-        db.session.commit()
+        try:
+            db.session.commit()
+        except Exception as e:
+            db.session.rollback()
+            return jsonify(ok=False, error=f'Salvataggio non riuscito: {e}'), 500
         return jsonify(ok=True, results=results)
 
     # ── PAGINA ROOMING ──────────────────────────────────────────────────────

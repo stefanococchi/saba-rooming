@@ -2840,10 +2840,16 @@ async function applyLLM() {
   const btn = document.getElementById('llmApplyBtn'); btn.disabled=true; btn.textContent='Applico...';
   try {
     const r = await fetch('/api/llm/apply', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({operations:sel, email_log_id:_llmResult.email_log_id})});
-    const data = await r.json();
-    if (data.ok) { const ok=data.results.filter(r=>r.ok).length; alert(`${ok} operazione/i completata/e`); location.reload(); }
-    else alert(data.error||'Errore');
-  } finally { btn.disabled=false; btn.innerHTML='<span class="material-icons-round">check_circle</span> Conferma'; }
+    const data = await r.json().catch(() => ({ok:false, error:`Errore del server (HTTP ${r.status})`}));
+    if (!data.ok) { alert(data.error||'Errore'); return; }
+    const ok=data.results.filter(x=>x.ok).length;
+    const errs=data.results.filter(x=>!x.ok);
+    let msg = `${ok} operazione/i completata/e`;
+    if (errs.length) msg += `\n${errs.length} non riuscita/e:\n` + errs.map(e=>'• '+e.error).join('\n');
+    alert(msg);
+    if (ok) location.reload();
+  } catch(e) { alert('Errore: '+e.message); }
+  finally { btn.disabled=false; btn.innerHTML='<span class="material-icons-round">check_circle</span> Conferma'; }
 }
 
 // ── To-Do List ──
