@@ -1,4 +1,5 @@
 import os
+import re
 import json
 import unicodedata
 import urllib.parse
@@ -25,6 +26,29 @@ from models import (db, User, AuditLog, Todo, Guest, RoomingClientToken, RoomCon
                      TourGuest, TourRoomAssignment,
                      TourHotelToken, TourHotelAccessLog,
                      TourClientToken, TourGuestDocument)
+
+
+def normalize_flight(s):
+    """Estrae il codice volo puro: 'AZ 1773 - 08:25' → 'AZ1773'."""
+    if not s:
+        return ''
+    # Rimuovi tutto dopo il trattino/spazio con orario
+    s = re.split(r'\s*[-–]\s*\d{2}[.:]\d{2}', s)[0]
+    # Rimuovi spazi interni e normalizza
+    s = re.sub(r'\s+', '', s).upper()
+    return s
+
+
+def volo_disallineato(g, pg):
+    """True se i voli dell'ospite non coincidono con quelli del suo PNR.
+    Un ospite senza voli compilati non è disallineato."""
+    if not pg:
+        return False
+    andata, ritorno = normalize_flight(g.volo_arrivo), normalize_flight(g.volo_partenza)
+    if not andata and not ritorno:
+        return False
+    return (andata, ritorno) != (normalize_flight(pg.volo_andata),
+                                 normalize_flight(pg.volo_ritorno))
 
 
 def _parse_bool(val):
@@ -2149,18 +2173,6 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
     def pnr_auto_assign():
         """Auto-assegna ospiti ai PNR in base ai voli indicati.
         Se confirm=true applica, altrimenti restituisce solo preview."""
-        import re
-
-        def normalize_flight(s):
-            """Estrae codice volo puro: 'AZ 1773 - 08:25' → 'AZ1773'."""
-            if not s:
-                return ''
-            # Rimuovi tutto dopo il trattino/spazio con orario
-            s = re.split(r'\s*[-–]\s*\d{2}[.:]\d{2}', s)[0]
-            # Rimuovi spazi interni e normalizza
-            s = re.sub(r'\s+', '', s).upper()
-            return s
-
         data = request.get_json() or {}
         confirm = data.get('confirm', False)
 
@@ -3134,12 +3146,14 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
         hfont = Font(bold=True, color='FFFFFF', size=11)
         hfill = PatternFill('solid', fgColor='6D4C41')
         cluster_fill = PatternFill('solid', fgColor='EFEBE9')
+        warn_fill = PatternFill('solid', fgColor='FFEBEE')
+        warn_font = Font(bold=True, color='C62828')
         border = Border(left=Side(style='thin'), right=Side(style='thin'),
                         top=Side(style='thin'), bottom=Side(style='thin'))
 
         headers = ['PNR', 'Posti', 'Volo Andata', 'Rotta', 'Data', 'Orario',
                     'Volo Ritorno', 'Rotta', 'Data', 'Orario',
-                    'Cognome', 'Nome', 'Sede Lavoro']
+                    'Cognome', 'Nome', 'Sede Lavoro', 'Volo ospite (se diverso)']
         for c, h in enumerate(headers, 1):
             cell = ws.cell(row=1, column=c, value=h)
             cell.font = hfont
@@ -3155,7 +3169,7 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
                 vals = [pg.pnr_code, pg.seats, pg.volo_andata, pg.rotta_andata,
                         pg.data_andata, pg.orario_andata, pg.volo_ritorno,
                         pg.rotta_ritorno, pg.data_ritorno, pg.orario_ritorno,
-                        '', '', '']
+                        '', '', '', '']
                 for c, v in enumerate(vals, 1):
                     cell = ws.cell(row=row, column=c, value=v)
                     cell.border = border
@@ -3175,12 +3189,18 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
                         pg.data_ritorno if i == 0 else '',
                         pg.orario_ritorno if i == 0 else '',
                         g.cognome, g.nome, g.sede_lavoro or '',
+                        (f'{g.volo_arrivo or "—"} / {g.volo_partenza or "—"}'
+                         if volo_disallineato(g, pg) else ''),
                     ]
+                    disallineato = bool(vals[13])
                     for c, v in enumerate(vals, 1):
                         cell = ws.cell(row=row, column=c, value=v)
                         cell.border = border
                         if i == 0:
                             cell.fill = cluster_fill
+                        if disallineato and c >= 11:
+                            cell.fill = warn_fill
+                            cell.font = warn_font
                     row += 1
 
         # Unassigned guests
