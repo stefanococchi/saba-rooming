@@ -1905,6 +1905,9 @@ async function pnrAutoAssign(confirm) {
     if (!j.ok) { content.innerHTML = `<p style="color:var(--error)">${j.error}</p>`; return; }
 
     const t = j.totals;
+    const oldPnr = g => g.pnr_attuale
+      ? `<span style="font-size:11px;font-family:monospace;background:#fff3e0;border:1px solid #ffb74d;color:#e65100;padding:1px 5px;border-radius:4px" title="Volo cambiato: era assegnato a questo PNR">era ${g.pnr_attuale}</span>`
+      : '';
     let html = '';
 
     if (confirm && j.applied) {
@@ -1916,6 +1919,7 @@ async function pnrAutoAssign(confirm) {
     // Summary
     html += `<div class="stanze-summary">
       <div style="color:#2e7d32"><strong>${t.matched}</strong> match esatti</div>
+      ${t.reassign ? `<div style="color:#ef6c00"><strong>${t.reassign}</strong> da riassegnare (volo cambiato)</div>` : ''}
       <div style="color:#ef6c00"><strong>${t.partial}</strong> match parziali</div>
       <div style="color:#d32f2f"><strong>${t.overflow}</strong> overflow</div>
       <div style="color:#d32f2f"><strong>${t.no_match}</strong> senza PNR</div>
@@ -1976,6 +1980,7 @@ async function pnrAutoAssign(confirm) {
         html += `<div style="padding:4px 8px;font-size:13px;border-bottom:1px solid var(--outline-variant);display:flex;align-items:center;gap:8px">
           <strong style="min-width:180px">${m.cognome} ${m.nome}</strong>
           ${m.sede_lavoro ? `<span style="font-size:12px;color:var(--on-surface-variant)">${m.sede_lavoro}</span>` : ''}
+          ${oldPnr(m)}
           <span style="font-family:monospace;background:#e8f5e9;padding:1px 6px;border-radius:4px">${m.pnr_code}</span>
           <span>${m.volo_andata} ${m.rotta_andata} ${oraA}</span>
           <span style="color:var(--on-surface-variant)">→</span>
@@ -2001,6 +2006,7 @@ async function pnrAutoAssign(confirm) {
     const guestRow = (g, bg, extra) => `<div class="pnr-manual-row" style="padding:4px 8px;font-size:13px;border-bottom:1px solid var(--outline-variant);${bg ? 'background:'+bg+';' : ''}display:flex;align-items:center;gap:6px">
       <strong style="min-width:200px;white-space:nowrap">${g.cognome} ${g.nome}</strong>
       ${g.sede_lavoro ? `<span style="font-size:12px;color:var(--on-surface-variant);min-width:70px">${g.sede_lavoro}</span>` : ''}
+      ${oldPnr(g)}
       <span style="font-size:12px;color:var(--on-surface-variant)">${g.volo_arrivo || g.volo_andata || '—'} → ${g.volo_partenza || '—'}</span>
       ${g.note ? `<span style="font-size:11px;color:var(--on-surface-variant);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${g.note.replace(/"/g,'&quot;')}">${g.note}</span>` : ''}
       ${g.email_log_id ? `<span class="material-icons-round" onclick="event.stopPropagation();showEmailLog(${g.email_log_id})" style="font-size:16px;color:var(--info,#1976d2);cursor:pointer" title="Email originale">mail</span>` : ''}
@@ -2049,7 +2055,7 @@ async function pnrAutoAssign(confirm) {
       html += `<div style="margin-top:12px;text-align:center">
         <button class="btn btn-sm" onclick="pnrAutoAssign(true)" style="background:#2e7d32;color:white;padding:8px 24px">
           <span class="material-icons-round" style="font-size:16px;vertical-align:middle">check</span>
-          Conferma assegnazione (${j.matched.length} passeggeri)
+          Conferma assegnazione (${j.matched.length} passeggeri${t.reassign ? `, ${t.reassign} spostati di PNR` : ''})
         </button>
         <button class="btn btn-outline btn-sm" onclick="showPNR()" style="margin-left:8px">Annulla</button>
       </div>`;

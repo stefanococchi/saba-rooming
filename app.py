@@ -2172,15 +2172,28 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
                    normalize_flight(pg.volo_ritorno))
             pnr_index.setdefault(key, []).append(pg)
 
-        # Conta posti già occupati per PNR
-        seats_used = {}
-        for pg in groups:
-            seats_used[pg.id] = Guest.query.filter_by(deleted=False, pnr_group_id=pg.id).count()
+        pnr_by_id = {pg.id: pg for pg in groups}
 
-        # Ospiti non ancora assegnati
-        unassigned = Guest.query.filter(
-            Guest.deleted==False, Guest.pnr_group_id.is_(None)
-        ).order_by(Guest.cognome, Guest.nome).all()
+        # Pool da (ri)assegnare: gli ospiti senza PNR più quelli il cui volo
+        # non corrisponde più al PNR a cui sono agganciati.
+        seats_used = {pg.id: 0 for pg in groups}
+        to_assign = []
+        for g in Guest.query.filter(Guest.deleted == False).order_by(
+                Guest.cognome, Guest.nome).all():
+            pg = pnr_by_id.get(g.pnr_group_id) if g.pnr_group_id else None
+            if pg is None:
+                to_assign.append(g)
+                continue
+            key_g = (normalize_flight(g.volo_arrivo), normalize_flight(g.volo_partenza))
+            if not key_g[0] and not key_g[1]:
+                # nessun volo compilato: lascialo dov'è
+                seats_used[pg.id] += 1
+                continue
+            if key_g == (normalize_flight(pg.volo_andata), normalize_flight(pg.volo_ritorno)):
+                seats_used[pg.id] += 1
+                continue
+            # volo cambiato dopo l'assegnazione: libera il posto e rimettilo in gioco
+            to_assign.append(g)
 
         matched = []       # match esatto andata+ritorno
         partial = []       # solo andata o solo ritorno matcha
@@ -2188,16 +2201,20 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
         no_flights = []    # nessun volo compilato
         overflow = []      # matchato ma PNR pieno
 
+        still_in_old = []  # candidati non riassegnati: restano sul PNR attuale
+
         def _guest_base(g):
             notes = ' | '.join(filter(None, [g.note_form, g.note]))
+            old_pg = pnr_by_id.get(g.pnr_group_id) if g.pnr_group_id else None
             return {
                 'id': g.id, 'cognome': g.cognome, 'nome': g.nome,
                 'sede_lavoro': g.sede_lavoro or '',
                 'note': notes,
                 'email_log_id': g.email_log_id,
+                'pnr_attuale': old_pg.pnr_code if old_pg else '',
             }
 
-        for g in unassigned:
+        for g in to_assign:
             andata = normalize_flight(g.volo_arrivo)
             ritorno = normalize_flight(g.volo_partenza)
 
@@ -2206,6 +2223,8 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
                     **_guest_base(g),
                     'reason': 'Nessun volo compilato',
                 })
+                if g.pnr_group_id:
+                    still_in_old.append(g)
                 continue
 
             # Prova match esatto
@@ -2235,6 +2254,11 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
                 })
                 seats_used[assigned_pg.id] = seats_used.get(assigned_pg.id, 0) + 1
                 continue
+
+            # Da qui in poi non c'è assegnazione: se l'ospite era già su un PNR
+            # ci resta, quindi il suo posto va ricontato nel riepilogo.
+            if g.pnr_group_id:
+                still_in_old.append(g)
 
             # Match esatto ma tutti pieni → overflow
             if candidates:
@@ -2277,6 +2301,9 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
                     'reason': 'Nessun PNR con questi voli',
                 })
 
+        # Quanti dei match sono spostamenti da un PNR a un altro
+        n_reassign = sum(1 for m in matched if m.get('pnr_attuale'))
+
         # Se confirm, applica i match esatti
         applied = 0
         if confirm and matched:
@@ -2297,8 +2324,14 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
                     applied += 1
             db.session.commit()
             log_audit('rooming', 'PnrGroup', None, 'assign',
-                      changes={'count': applied},
-                      summary=f'Auto-assegnazione PNR: {applied} ospiti')
+                      changes={'count': applied, 'riassegnati': n_reassign},
+                      summary=f'Auto-assegnazione PNR: {applied} ospiti'
+                              + (f' (di cui {n_reassign} riassegnati)' if n_reassign else ''))
+
+        # I candidati rimasti senza assegnazione restano sul PNR di partenza
+        for g in still_in_old:
+            if g.pnr_group_id in seats_used:
+                seats_used[g.pnr_group_id] += 1
 
         # Riepilogo posti per PNR
         pnr_summary = []
@@ -2332,6 +2365,7 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
             pnr_summary=pnr_summary,
             totals={
                 'matched': len(matched),
+                'reassign': n_reassign,
                 'partial': len(partial),
                 'overflow': len(overflow),
                 'no_match': len(no_match),
