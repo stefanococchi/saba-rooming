@@ -1193,23 +1193,35 @@ RP/FCOAZ05RM/...   X2YKLK
 <script>
 const CLIENT_VIEW = {{ 'true' if client_view else 'false' }};
 
-// ── Column Resize (con persistenza in localStorage) ─────────────────────
+// ── Column Resize (con persistenza in localStorage) ───────────────────
 (function() {
   const STORAGE_KEY = 'guestTableColWidths';
   const table = document.getElementById('guestTable');
   if (!table) return;
-  table.style.tableLayout = 'fixed';
 
   const ths = Array.from(table.querySelectorAll('thead th'));
-
-  // Ripristina larghezze salvate
   const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
-  ths.forEach((th, i) => {
-    if (saved[i]) {
-      th.style.width = saved[i];
-      th.style.minWidth = saved[i];
-    }
-  });
+
+  // Larghezze naturali (layout auto), da leggere prima di passare a fixed
+  const natural = ths.map(th => th.style.width || (th.offsetWidth || 100) + 'px');
+
+  table.style.tableLayout = 'fixed';
+
+  // Con table-layout:fixed le colonne senza larghezza esplicita collassano a 0
+  // appena le altre riempiono il contenitore: assegnale tutte e lascia che sia
+  // .table-wrap a scorrere in orizzontale.
+  function setWidth(th, w) {
+    th.style.width = w;
+    th.style.minWidth = w;
+  }
+  ths.forEach((th, i) => setWidth(th, saved[i] || natural[i]));
+
+  function syncTableWidth() {
+    const total = ths.reduce((s, th) => s + (parseFloat(th.style.width) || 0), 0);
+    table.style.width = total + 'px';
+    table.style.minWidth = '100%';
+  }
+  syncTableWidth();
 
   function saveWidths() {
     const widths = {};
@@ -1228,9 +1240,8 @@ const CLIENT_VIEW = {{ 'true' if client_view else 'false' }};
       startW = th.offsetWidth;
       resizer.classList.add('resizing');
       const onMove = ev => {
-        const w = Math.max(30, startW + ev.pageX - startX) + 'px';
-        th.style.width = w;
-        th.style.minWidth = w;
+        setWidth(th, Math.max(30, startW + ev.pageX - startX) + 'px');
+        syncTableWidth();
       };
       const onUp = () => {
         resizer.classList.remove('resizing');
@@ -1240,6 +1251,17 @@ const CLIENT_VIEW = {{ 'true' if client_view else 'false' }};
       };
       document.addEventListener('mousemove', onMove);
       document.addEventListener('mouseup', onUp);
+    });
+  });
+
+  // Doppio click su un separatore: ripristina le larghezze di default
+  table.querySelectorAll('.col-resizer').forEach(r => {
+    r.addEventListener('dblclick', e => {
+      e.preventDefault();
+      localStorage.removeItem(STORAGE_KEY);
+      ths.forEach((th, i) => setWidth(th, natural[i]));
+      syncTableWidth();
+      showSnack('Larghezze colonne ripristinate');
     });
   });
 })();
