@@ -222,6 +222,13 @@ td.editable::after {
 td.editable:hover::after { opacity: 1; }
 td.bool-cell { text-align: center; cursor: pointer; font-size: 12px; font-weight: 600; padding: 5px 2px; }
 td.bool-cell::after { display: none !important; }
+/* Marcatore booleano: spunta verde = Sì, X rossa = No */
+.bool-mark {
+  display: inline-block; width: 16px; line-height: 16px; text-align: center;
+  font-size: 15px; font-weight: 700;
+}
+.bool-mark-yes { color: var(--success); }
+.bool-mark-no { color: var(--error); }
 /* Presenza dots */
 td.presenza-dot { text-align: center; padding: 5px 2px; }
 td.presenza-dot .dot {
@@ -782,18 +789,18 @@ textarea { resize: vertical; min-height: 120px; }
               <td class="{{ 'editable' if not client_view else '' }}" {% if not client_view %}data-field="email"{% endif %}>{{ g.email or '' }}</td>
               <td class="{{ 'editable' if not client_view else '' }}" {% if not client_view %}data-field="telefono"{% endif %}>{{ g.telefono or '' }}</td>
               <td class="{{ 'editable' if not client_view else '' }}" {% if not client_view %}data-field="sede_lavoro"{% endif %}>{{ g.sede_lavoro or '' }}</td>
-              <td class="{{ 'editable bool-cell' if not client_view else 'presenza-dot' }}" {% if not client_view %}data-field="presenza_8"{% endif %}>{% if client_view %}<span class="dot {{ 'dot-yes' if g.presenza_8 else 'dot-no' }}" title="{{ 'Presente' if g.presenza_8 else 'Assente' }}"></span>{% else %}{{ 'Sì' if g.presenza_8 else 'No' }}{% endif %}</td>
-              <td class="{{ 'editable bool-cell' if not client_view else 'presenza-dot' }}" {% if not client_view %}data-field="presenza_9"{% endif %}>{% if client_view %}<span class="dot {{ 'dot-yes' if g.presenza_9 else 'dot-no' }}" title="{{ 'Presente' if g.presenza_9 else 'Assente' }}"></span>{% else %}{{ 'Sì' if g.presenza_9 else 'No' }}{% endif %}</td>
-              <td class="{{ 'editable bool-cell' if not client_view else 'presenza-dot' }}" {% if not client_view %}data-field="presenza_10"{% endif %}>{% if client_view %}<span class="dot {{ 'dot-yes' if g.presenza_10 else 'dot-no' }}" title="{{ 'Presente' if g.presenza_10 else 'Assente' }}"></span>{% else %}{{ 'Sì' if g.presenza_10 else 'No' }}{% endif %}</td>
-              <!-- <td class="{{ 'editable bool-cell' if not client_view else '' }}" {% if not client_view %}data-field="presenza_11"{% endif %}>{{ 'Sì' if g.presenza_11 else 'No' }}</td> -->
+              <td class="{{ 'editable bool-cell' if not client_view else 'presenza-dot' }}" {% if not client_view %}data-field="presenza_8"{% endif %}>{% if client_view %}<span class="dot {{ 'dot-yes' if g.presenza_8 else 'dot-no' }}" title="{{ 'Presente' if g.presenza_8 else 'Assente' }}"></span>{% else %}<span class="bool-mark {{ 'bool-mark-yes' if g.presenza_8 else 'bool-mark-no' }}" title="{{ 'Sì' if g.presenza_8 else 'No' }}">{{ '✓' if g.presenza_8 else '✕' }}</span>{% endif %}</td>
+              <td class="{{ 'editable bool-cell' if not client_view else 'presenza-dot' }}" {% if not client_view %}data-field="presenza_9"{% endif %}>{% if client_view %}<span class="dot {{ 'dot-yes' if g.presenza_9 else 'dot-no' }}" title="{{ 'Presente' if g.presenza_9 else 'Assente' }}"></span>{% else %}<span class="bool-mark {{ 'bool-mark-yes' if g.presenza_9 else 'bool-mark-no' }}" title="{{ 'Sì' if g.presenza_9 else 'No' }}">{{ '✓' if g.presenza_9 else '✕' }}</span>{% endif %}</td>
+              <td class="{{ 'editable bool-cell' if not client_view else 'presenza-dot' }}" {% if not client_view %}data-field="presenza_10"{% endif %}>{% if client_view %}<span class="dot {{ 'dot-yes' if g.presenza_10 else 'dot-no' }}" title="{{ 'Presente' if g.presenza_10 else 'Assente' }}"></span>{% else %}<span class="bool-mark {{ 'bool-mark-yes' if g.presenza_10 else 'bool-mark-no' }}" title="{{ 'Sì' if g.presenza_10 else 'No' }}">{{ '✓' if g.presenza_10 else '✕' }}</span>{% endif %}</td>
+              <!-- <td class="{{ 'editable bool-cell' if not client_view else '' }}" {% if not client_view %}data-field="presenza_11"{% endif %}><span class="bool-mark {{ 'bool-mark-yes' if g.presenza_11 else 'bool-mark-no' }}" title="{{ 'Sì' if g.presenza_11 else 'No' }}">{{ '✓' if g.presenza_11 else '✕' }}</span></td> -->
               <td class="{{ 'editable' if not client_view else '' }}" {% if not client_view %}data-field="volo_arrivo"{% endif %}>{{ g.volo_arrivo or '' }}</td>
               <td class="{{ 'editable' if not client_view else '' }}" {% if not client_view %}data-field="volo_partenza"{% endif %}>{{ g.volo_partenza or '' }}</td>
               <!-- <td class="{{ 'editable' if not client_view else '' }}" {% if not client_view %}data-field="aeroporto_partenza"{% endif %}>{{ g.aeroporto_partenza or '' }}</td> -->
               <!-- <td class="{{ 'editable' if not client_view else '' }}" {% if not client_view %}data-field="aeroporto_arrivo"{% endif %}>{{ g.aeroporto_arrivo or '' }}</td> -->
               <!-- <td class="{{ 'editable' if not client_view else '' }}" {% if not client_view %}data-field="pickup_bus_andata"{% endif %}>{{ g.pickup_bus_andata or '' }}</td> -->
               <!-- <td class="{{ 'editable' if not client_view else '' }}" {% if not client_view %}data-field="pickup_bus_ritorno"{% endif %}>{{ g.pickup_bus_ritorno or '' }}</td> -->
-              <td class="{{ 'editable bool-cell' if not client_view else '' }}" {% if not client_view %}data-field="parcheggio_linate"{% endif %}>{{ 'Sì' if g.parcheggio_linate else 'No' }}</td>
-              <td class="{{ 'editable bool-cell' if not client_view else '' }}" {% if not client_view %}data-field="parcheggio_hotel"{% endif %}>{{ 'Sì' if g.parcheggio_hotel else 'No' }}</td>
+              <td class="{{ 'editable bool-cell' if not client_view else '' }}" {% if not client_view %}data-field="parcheggio_linate"{% endif %}><span class="bool-mark {{ 'bool-mark-yes' if g.parcheggio_linate else 'bool-mark-no' }}" title="{{ 'Sì' if g.parcheggio_linate else 'No' }}">{{ '✓' if g.parcheggio_linate else '✕' }}</span></td>
+              <td class="{{ 'editable bool-cell' if not client_view else '' }}" {% if not client_view %}data-field="parcheggio_hotel"{% endif %}><span class="bool-mark {{ 'bool-mark-yes' if g.parcheggio_hotel else 'bool-mark-no' }}" title="{{ 'Sì' if g.parcheggio_hotel else 'No' }}">{{ '✓' if g.parcheggio_hotel else '✕' }}</span></td>
               <!-- <td class="{{ 'editable' if not client_view else '' }}" {% if not client_view %}data-field="tipo_camera"{% endif %}>{{ g.tipo_camera or '' }}</td> -->
               <td class="{{ 'editable' if not client_view else '' }}" {% if not client_view %}data-field="camera_assegnata"{% endif %}>{{ g.camera_assegnata or '' }}</td>
               <td class="{{ 'editable' if not client_view else '' }}" {% if not client_view %}data-field="divide_stanza_con"{% endif %}>{{ g.divide_stanza_con or '' }}</td>
@@ -2390,9 +2397,10 @@ document.querySelectorAll('td.editable').forEach(td => {
     // Click singolo per toggle booleano
     td.addEventListener('click', async () => {
       const gid = td.closest('tr').dataset.id;
-      const current = td.textContent.trim() === 'Sì';
+      const mark = td.querySelector('.bool-mark');
+      const current = mark ? mark.classList.contains('bool-mark-yes') : td.textContent.trim() === 'Sì';
       const newVal = !current;
-      td.textContent = newVal ? 'Sì' : 'No';
+      td.innerHTML = `<span class="bool-mark ${newVal ? 'bool-mark-yes' : 'bool-mark-no'}" title="${newVal ? 'Sì' : 'No'}">${newVal ? '✓' : '✕'}</span>`;
       await fetch(`/api/guest/${gid}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
