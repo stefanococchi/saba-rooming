@@ -6117,6 +6117,8 @@ Notes: {q.notes or 'N/A'}"""
             },
         ]
 
+        DINNER_EXCLUDED_PAYMENTS = ('PAID-CANCELLED', 'NO SHOW')
+
         # Styles
         font_title = Font(bold=True, size=14, name='Calibri')
         font_sub = Font(size=10, name='Calibri')
@@ -6136,13 +6138,14 @@ Notes: {q.notes or 'N/A'}"""
             night = dinner['night']
 
             # Select guests for this dinner
+            # I NO SHOW non si presentano: fuori dalle liste cena come i cancellati
             if dinner['use_dinner_flag']:
                 dinner_guests = [g for g in guests
-                                 if g.dinner and g.payment != 'PAID-CANCELLED']
+                                 if g.dinner and g.payment not in DINNER_EXCLUDED_PAYMENTS]
             else:
                 dinner_guests = [g for g in guests
                                  if night in guest_rooms.get(g.id, {})
-                                 and g.payment != 'PAID-CANCELLED']
+                                 and g.payment not in DINNER_EXCLUDED_PAYMENTS]
 
             # Also include guests with dinner flag who have no room but are dining
             # (for 2Sep this is already handled; for other nights, room = attending)
