@@ -3081,6 +3081,13 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
             ('Esigenze alimentari', _lt_esc(_lt_dieta(g))),
         ]))
 
+    def _lt_bagaglio():
+        t = ('Puoi portare a bordo un bagaglio a mano da cappelliera '
+             '(trolley o borsa)')
+        t += (f' — misure massime {_lt_esc(BAGAGLIO_MISURE)}.'
+              if BAGAGLIO_MISURE else '.')
+        return _lt_p(t)
+
     def _lt_sez_pullman(g):
         """Trasferimento in pullman: sostituisce le sezioni di volo per chi
         parte da Catania."""
@@ -3107,7 +3114,9 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
                        + _lt_esc(RESORT[0]) + '.')
         if c['durata']:
             corpo += _lt_p('La durata indicativa del tragitto dal punto di ritrovo '
-                           'al resort è di ' + _lt_esc(c['durata']) + '.')
+                           'al resort è di ' + _lt_esc(c['durata']) +
+                           '. Durante il trasferimento è prevista <b>1 sosta</b>.')
+        corpo += _lt_bagaglio()
         return _lt_sezione('Partenza in pullman da Catania', corpo)
 
     def _lt_sez_andata(g):
@@ -3135,11 +3144,7 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
             aerop = f" dell'aeroporto di {_lt_esc(t['da'])}" if t['da'] else ''
             corpo += _lt_p(f'Il ritrovo è previsto alle ore <b>{ritrovo}</b>, '
                            f"presso l'<b>{dove}</b>{aerop}.")
-        bagaglio = ('Puoi portare a bordo un bagaglio a mano da cappelliera '
-                    '(trolley o borsa)')
-        bagaglio += (f' — misure massime {_lt_esc(BAGAGLIO_MISURE)}.'
-                     if BAGAGLIO_MISURE else '.')
-        corpo += _lt_p(bagaglio)
+        corpo += _lt_bagaglio()
         corpo += _lt_p('Ti raccomandiamo la massima puntualità, per consentire lo '
                        'svolgimento delle operazioni di check-in e imbarco con la '
                        'necessaria tranquillità.')
