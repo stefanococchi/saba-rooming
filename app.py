@@ -3532,14 +3532,15 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
     @app.get('/api/rooming/lettere/config')
     def rooming_lettere_config():
         """Mittente, indirizzo delle prove e stato dell'invio."""
-        from graph_mailer import credenziali_pronte
-        pronte, mancanti = credenziali_pronte()
+        from graph_mailer import stato_credenziali
+        pronte, mancanti, modo = stato_credenziali()
         return jsonify(ok=True,
                        mittente=_imp('lettere_mittente'),
                        prova_a=_imp('lettere_prova_a'),
                        invio_attivo=_lt_invio_attivo(),
                        graph_pronto=pronte,
                        graph_mancanti=mancanti,
+                       graph_modo=modo,
                        inviate=LetteraInvio.query.filter_by(
                            esito='inviata', prova=False).count())
 
