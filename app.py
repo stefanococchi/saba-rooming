@@ -2850,7 +2850,7 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
         'periodo': os.environ.get('EVENTO_PERIODO', '8 - 10 ottobre 2026'),
         'anno':    os.environ.get('EVENTO_ANNO', '2026'),
         'contatto_nome':  os.environ.get('EVENTO_CONTATTO', 'Segreteria organizzativa'),
-        'contatto_email': os.environ.get('EVENTO_EMAIL', 'info@sabae20.it'),
+        'contatto_email': os.environ.get('EVENTO_EMAIL', 'evento.eps@sabae20.it'),
         'contatto_tel':   os.environ.get('EVENTO_TEL', ''),
     }
 
