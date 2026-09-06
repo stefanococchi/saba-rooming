@@ -2883,6 +2883,11 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
         "dall'8 al 10 ottobre 2026 nella splendida cornice della Sicilia."
     )
 
+    # Quello che il form scrive quando l'ospite sceglie "altro" senza
+    # specificare: non e' un'esigenza alimentare, non va stampata.
+    DIETE_VUOTE = ('altro - scrivilo nelle note', 'altro', 'no', 'none',
+                   'nessuna', 'nessuno', '-')
+
     COMPAGNIE = {
         'AZ': 'ITA Airways', 'FR': 'Ryanair', 'U2': 'easyJet', 'W6': 'Wizz Air',
         'LH': 'Lufthansa', 'AF': 'Air France', 'IB': 'Iberia', 'VY': 'Vueling',
@@ -3049,11 +3054,16 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
 
     # ── Sezioni della lettera ──────────────────────────────────────────────
 
+    def _lt_dieta(g):
+        """Restrizione alimentare vera; '' se e' un segnaposto del form."""
+        v = (g.restrizioni_alimentari or '').strip()
+        return '' if v.lower() in DIETE_VUOTE else v
+
     def _lt_sez_soggiorno(g):
         return _lt_sezione('Il tuo soggiorno', _lt_righe([
             ('Date di presenza',    _lt_esc(_lt_presenze(g))),
             ('In camera con',       _lt_esc(g.divide_stanza_con)),
-            ('Esigenze alimentari', _lt_esc(g.restrizioni_alimentari)),
+            ('Esigenze alimentari', _lt_esc(_lt_dieta(g))),
         ]))
 
     def _lt_sez_andata(g):
