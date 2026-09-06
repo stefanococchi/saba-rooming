@@ -2847,7 +2847,7 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
     EVENTO = {
         'titolo':  os.environ.get('EVENTO_TITOLO', 'Convention Equans 2026'),
         'luogo':   os.environ.get('EVENTO_LUOGO', 'Palermo'),
-        'periodo': os.environ.get('EVENTO_PERIODO', '8 - 11 ottobre 2026'),
+        'periodo': os.environ.get('EVENTO_PERIODO', '8 - 10 ottobre 2026'),
         'anno':    os.environ.get('EVENTO_ANNO', '2026'),
         'contatto_nome':  os.environ.get('EVENTO_CONTATTO', 'Segreteria organizzativa'),
         'contatto_email': os.environ.get('EVENTO_EMAIL', 'info@sabae20.it'),
@@ -2860,7 +2860,7 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
 
     LETTERA_INTRO = (
         'siamo lieti di confermarLe la partecipazione a <b>{titolo}</b>, che si '
-        'terrà a {luogo} dal {periodo}.<br>'
+        'terrà a {luogo}, {periodo}.<br>'
         'Di seguito il riepilogo personale con i dettagli di viaggio e soggiorno: '
         'La preghiamo di verificarlo e di segnalarci tempestivamente eventuali '
         'variazioni.'
