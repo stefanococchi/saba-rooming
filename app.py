@@ -2845,9 +2845,9 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
     # ── LETTERE DI CONVOCAZIONE (HTML pronto per invio via MS Graph) ────────
 
     EVENTO = {
-        'titolo':  os.environ.get('EVENTO_TITOLO', 'Convention Equans 2026'),
-        'luogo':   os.environ.get('EVENTO_LUOGO', 'Palermo'),
-        'periodo': os.environ.get('EVENTO_PERIODO', '8 - 10 ottobre 2026'),
+        'titolo':  os.environ.get('EVENTO_TITOLO', 'EPS Sicilia Experience'),
+        'luogo':   os.environ.get('EVENTO_LUOGO', 'Sicilia'),
+        'periodo': os.environ.get('EVENTO_PERIODO', '8–10 ottobre 2026'),
         'anno':    os.environ.get('EVENTO_ANNO', '2026'),
         'contatto_nome':  os.environ.get('EVENTO_CONTATTO', 'Segreteria organizzativa'),
         'contatto_email': os.environ.get('EVENTO_EMAIL', 'evento.eps@sabae20.it'),
@@ -2862,18 +2862,32 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
     # per loro il volo non manca, non esiste proprio.
     SEDI_SENZA_VOLO = ('CATANIA',)
 
+    # Il testo della lettera sta qui, non in configurazione: e' il contenuto
+    # dell'evento, non un parametro da cambiare a runtime.
+
+    RESORT = ("Mangia's Pollina Resort", 'Contrada Rais Gerbi',
+              '90010 Pollina (PA)', 'nei pressi di Cefalù')
+
+    # Misure del bagaglio a mano da cappelliera: finche' e' vuoto la frase
+    # non le nomina.
+    BAGAGLIO_MISURE = ''
+
+    # Minuti di anticipo, calcolati sull'orario di partenza del volo.
+    RITROVO_AEROPORTO_MIN = 90     # ritrovo in aeroporto all'andata
+    RITROVO_LOBBY_MIN     = 180    # ritrovo nella lobby al rientro
+    PARTENZA_PULLMAN_MIN  = 180    # partenza del pullman per l'aeroporto
+
     LETTERA_INTRO = (
-        'siamo lieti di confermarLe la partecipazione a <b>{titolo}</b>, che si '
-        'terrà a {luogo}, {periodo}.<br>'
-        'Di seguito il riepilogo personale con i dettagli di viaggio e soggiorno: '
-        'La preghiamo di verificarlo e di segnalarci tempestivamente eventuali '
-        'variazioni.'
+        'siamo felici di condividere con te tutti i dettagli della tua '
+        "partecipazione all'<b>EPS Sicilia Experience</b>, in programma "
+        "dall'8 al 10 ottobre 2026 nella splendida cornice della Sicilia."
     )
 
-    LETTERA_CHIUSURA = (
-        'Per qualsiasi necessità può contattare la {contatto_nome}. '
-        'Le auguriamo buon viaggio e buona permanenza.'
-    )
+    COMPAGNIE = {
+        'AZ': 'ITA Airways', 'FR': 'Ryanair', 'U2': 'easyJet', 'W6': 'Wizz Air',
+        'LH': 'Lufthansa', 'AF': 'Air France', 'IB': 'Iberia', 'VY': 'Vueling',
+        'BA': 'British Airways', 'KL': 'KLM', 'EW': 'Eurowings', 'A3': 'Aegean',
+    }
 
     MESI_IT = {
         'JAN': 'gennaio', 'FEB': 'febbraio', 'MAR': 'marzo', 'APR': 'aprile',
@@ -2910,53 +2924,56 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
             anno = EVENTO['anno']
         return f'{int(giorno)} {mese} {anno}'
 
-    def _lt_orario(val):
-        """'0955-1135' → '09:55 → 11:35'."""
+    def _lt_orari(val):
+        """'0955-1135' → ('09:55', '11:35'). Pezzi mancanti tornano ''."""
         import re
-        s = (val or '').strip()
-        if not s:
+        pezzi = [p.strip() for p in re.split(r'[-/–]', (val or '')) if p.strip()]
+        out = [f'{p[:2]}:{p[2:]}' if re.match(r'^\d{4}$', p) else p
+               for p in pezzi[:2]]
+        while len(out) < 2:
+            out.append('')
+        return out[0], out[1]
+
+    def _lt_ora_meno(ora, minuti):
+        """'09:55' meno 90 minuti → '08:25'. Vuoto se l'ora non è leggibile."""
+        import re
+        m = re.match(r'^(\d{1,2}):(\d{2})$', (ora or '').strip())
+        if not m:
             return ''
-        out = []
-        for p in re.split(r'[-/–]', s):
-            p = p.strip()
-            if not p:
-                continue
-            out.append(f'{p[:2]}:{p[2:]}' if re.match(r'^\d{4}$', p) else p)
-        return ' → '.join(out)
+        tot = (int(m.group(1)) * 60 + int(m.group(2)) - minuti) % (24 * 60)
+        return '%02d:%02d' % divmod(tot, 60)
 
-    def _lt_rotta(val):
-        """'LINPMO' → 'Milano Linate (LIN) → Palermo (PMO)'."""
-        s = (val or '').strip().upper()
-        if len(s) != 6:
-            return val or ''
-        orig, dest = s[:3], s[3:]
-        return (f'{AEROPORTI.get(orig, orig)} ({orig}) → '
-                f'{AEROPORTI.get(dest, dest)} ({dest})')
+    def _lt_compagnia(volo):
+        """'AZ1765' → 'ITA Airways'. Prefisso sconosciuto → ''."""
+        return COMPAGNIE.get((volo or '').strip().upper()[:2], '')
 
-    def _lt_volo(g, tipo):
-        """Descrizione volo: usa il PNR di gruppo se assegnato, altrimenti i campi
-        liberi dell'ospite. tipo = 'andata' | 'ritorno'."""
+    def _lt_tratta(g, tipo):
+        """Dati del volo di andata o ritorno, dal PNR di gruppo se assegnato.
+        Se l'ospite ha solo il volo scritto a mano torna {'libero': '…'}."""
         pg = g.pnr_group
-        if pg:
-            volo   = pg.volo_andata   if tipo == 'andata' else pg.volo_ritorno
-            data   = pg.data_andata   if tipo == 'andata' else pg.data_ritorno
-            rotta  = pg.rotta_andata  if tipo == 'andata' else pg.rotta_ritorno
-            orario = pg.orario_andata if tipo == 'andata' else pg.orario_ritorno
-            if volo or rotta:
-                righe = []
-                testa = ' · '.join(x for x in (_lt_esc(volo),
-                                               _lt_esc(_lt_data(data))) if x)
-                if testa:
-                    righe.append(f'<b>{testa}</b>')
-                if rotta:
-                    righe.append(_lt_esc(_lt_rotta(rotta)))
-                if orario:
-                    righe.append(_lt_esc(_lt_orario(orario)))
-                return '<br>'.join(righe)
-        libero = g.volo_arrivo if tipo == 'andata' else g.volo_partenza
-        aerop  = g.aeroporto_partenza if tipo == 'andata' else g.aeroporto_arrivo
-        righe = [r for r in (_lt_esc(libero), _lt_esc(aerop)) if r]
-        return '<br>'.join(righe)
+        if not pg:
+            libero = g.volo_arrivo if tipo == 'andata' else g.volo_partenza
+            libero = (libero or '').strip()
+            return {'libero': libero} if libero else {}
+        volo   = pg.volo_andata   if tipo == 'andata' else pg.volo_ritorno
+        data   = pg.data_andata   if tipo == 'andata' else pg.data_ritorno
+        rotta  = (pg.rotta_andata if tipo == 'andata' else pg.rotta_ritorno) or ''
+        orario = pg.orario_andata if tipo == 'andata' else pg.orario_ritorno
+        if not (volo or rotta.strip()):
+            return {}
+        partenza, arrivo = _lt_orari(orario)
+        rotta = rotta.strip().upper()
+        orig, dest = (rotta[:3], rotta[3:]) if len(rotta) == 6 else ('', '')
+        return {
+            'volo': (volo or '').strip(),
+            'compagnia': _lt_compagnia(volo),
+            'data': _lt_data(data),
+            'da': AEROPORTI.get(orig, orig),
+            'a': AEROPORTI.get(dest, dest),
+            'partenza': partenza,
+            'arrivo': arrivo,
+            'pnr': pg.pnr_code,
+        }
 
     def _lt_presenze(g):
         """'8, 9 e 10 ottobre 2026 (3 notti)' dai flag presenza_8..10."""
@@ -2969,34 +2986,6 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
             elenco = ', '.join(str(d) for d in giorni[:-1]) + f' e {giorni[-1]}'
         notti = 'notte' if len(giorni) == 1 else 'notti'
         return f'{elenco} ottobre {EVENTO["anno"]} ({len(giorni)} {notti})'
-
-    def _lt_blocchi(g):
-        """Sezioni della lettera: [(titolo, [(etichetta, valore_html), …]), …].
-        Righe ed eventuali sezioni vuote vengono omesse."""
-        # camera_assegnata viene decisa molto dopo la convocazione: l'ospite
-        # trova il numero di camera al check-in, non in questa lettera.
-        soggiorno = [
-            ('Date di presenza',    _lt_esc(_lt_presenze(g))),
-            ('Tipologia camera',    _lt_esc(g.tipo_camera)),
-            ('In camera con',       _lt_esc(g.divide_stanza_con)),
-            ('Esigenze alimentari', _lt_esc(g.restrizioni_alimentari)),
-        ]
-        viaggio = [
-            ('Volo di andata',            _lt_volo(g, 'andata')),
-            ('Volo di ritorno',           _lt_volo(g, 'ritorno')),
-            ('Codice prenotazione (PNR)', _lt_esc(g.pnr_group.pnr_code) if g.pnr_group else ''),
-            ('Pick-up bus andata',        _lt_esc(g.pickup_bus_andata)),
-            ('Pick-up bus ritorno',       _lt_esc(g.pickup_bus_ritorno)),
-            ('Parcheggio Linate',         'Riservato' if g.parcheggio_linate else ''),
-            ('Parcheggio hotel',          'Riservato' if g.parcheggio_hotel else ''),
-        ]
-        # note e note_form servono alla segreteria (promemoria, nomi da verificare,
-        # richieste di cancellazione, testo grezzo del form): niente di tutto cio'
-        # esce nella lettera all'ospite.
-        blocchi = [('Il tuo soggiorno', soggiorno),
-                   ('Viaggio e trasferimenti', viaggio)]
-        return [(t, [r for r in righe if r[1]]) for t, righe in blocchi
-                if any(r[1] for r in righe)]
 
     def _lt_via_terra(g):
         """True se l'ospite non vola: sede da cui si arriva in auto o pullman."""
@@ -3016,26 +3005,130 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
                 w.append('volo ritorno mancante')
         return w
 
+    # ── Mattoni HTML: tabelle e stili inline, niente CSS esterno ────────────
+
+    def _lt_p(testo):
+        return ('<div style="font:14px/1.6 Arial,Helvetica,sans-serif;'
+                'color:#4e342e;margin-bottom:10px">' + testo + '</div>')
+
+    def _lt_sezione(titolo, corpo):
+        """Blocco con titolino maiuscolo. Niente corpo, niente sezione."""
+        if not corpo:
+            return ''
+        return ('<tr><td style="padding:20px 28px 0 28px">'
+                '<div style="font:bold 13px Arial,Helvetica,sans-serif;'
+                'letter-spacing:1px;text-transform:uppercase;color:#8d6e63;'
+                'border-bottom:1px solid #d7ccc8;padding-bottom:6px;'
+                'margin-bottom:12px">' + _lt_esc(titolo) + '</div>'
+                + corpo + '</td></tr>')
+
+    def _lt_righe(righe):
+        """Tabella etichetta/valore: le righe senza valore spariscono."""
+        celle = []
+        for etichetta, valore in righe:
+            if not valore:
+                continue
+            celle.append(
+                '<tr>'
+                '<td style="padding:5px 12px 5px 0;width:46%;vertical-align:top;'
+                'font:13px Arial,Helvetica,sans-serif;color:#795548">'
+                + _lt_esc(etichetta) + '</td>'
+                '<td style="padding:5px 0;vertical-align:top;'
+                'font:bold 14px Arial,Helvetica,sans-serif;color:#3e2723">'
+                + valore + '</td></tr>')
+        if not celle:
+            return ''
+        return ('<table role="presentation" cellpadding="0" cellspacing="0" '
+                'border="0" width="100%" style="margin-bottom:10px">'
+                + ''.join(celle) + '</table>')
+
+    def _lt_elenco(voci):
+        return ('<div style="font:14px/1.9 Arial,Helvetica,sans-serif;'
+                'color:#4e342e;margin-bottom:10px">'
+                + ''.join('• ' + v + '<br>' for v in voci) + '</div>')
+
+    # ── Sezioni della lettera ──────────────────────────────────────────────
+
+    def _lt_sez_soggiorno(g):
+        return _lt_sezione('Il tuo soggiorno', _lt_righe([
+            ('Date di presenza',    _lt_esc(_lt_presenze(g))),
+            ('In camera con',       _lt_esc(g.divide_stanza_con)),
+            ('Esigenze alimentari', _lt_esc(g.restrizioni_alimentari)),
+        ]))
+
+    def _lt_sez_andata(g):
+        t = _lt_tratta(g, 'andata')
+        if not t:
+            return ''
+        if 'libero' in t:
+            return _lt_sezione('Il tuo viaggio di andata',
+                               _lt_righe([('Volo', _lt_esc(t['libero']))]))
+        corpo = _lt_righe([
+            ('Compagnia aerea', _lt_esc(t['compagnia'])),
+            ('Numero del volo', _lt_esc(t['volo'])),
+            ('Data',            _lt_esc(t['data'])),
+            (f'Orario di partenza da {t["da"]}' if t['da'] else 'Orario di partenza',
+             _lt_esc(t['partenza'])),
+            (f'Orario di arrivo a {t["a"]}' if t['a'] else 'Orario di arrivo',
+             _lt_esc(t['arrivo'])),
+            ('Codice prenotazione (PNR)', _lt_esc(t['pnr'])),
+        ])
+        ritrovo = _lt_ora_meno(t['partenza'], RITROVO_AEROPORTO_MIN)
+        if ritrovo:
+            dove = 'area check-in'
+            if t['compagnia']:
+                dove += ' voli ' + _lt_esc(t['compagnia'])
+            aerop = f" dell'aeroporto di {_lt_esc(t['da'])}" if t['da'] else ''
+            corpo += _lt_p(f'Il ritrovo è previsto alle ore <b>{ritrovo}</b>, '
+                           f"presso l'<b>{dove}</b>{aerop}.")
+        bagaglio = ('Puoi portare a bordo un bagaglio a mano da cappelliera '
+                    '(trolley o borsa)')
+        bagaglio += (f' — misure massime {_lt_esc(BAGAGLIO_MISURE)}.'
+                     if BAGAGLIO_MISURE else '.')
+        corpo += _lt_p(bagaglio)
+        corpo += _lt_p('Ti raccomandiamo la massima puntualità, per consentire lo '
+                       'svolgimento delle operazioni di check-in e imbarco con la '
+                       'necessaria tranquillità.')
+        return _lt_sezione('Il tuo viaggio di andata', corpo)
+
+    def _lt_sez_ritorno(g):
+        t = _lt_tratta(g, 'ritorno')
+        if not t:
+            return ''
+        if 'libero' in t:
+            return _lt_sezione('Il tuo viaggio di rientro',
+                               _lt_righe([('Volo', _lt_esc(t['libero']))]))
+        lobby = _lt_ora_meno(t['partenza'], RITROVO_LOBBY_MIN)
+        pullman = _lt_ora_meno(t['partenza'], PARTENZA_PULLMAN_MIN)
+        etichetta_bus = (f"Partenza del pullman per l'aeroporto di {t['da']}"
+                         if t['da'] else "Partenza del pullman per l'aeroporto")
+        corpo = _lt_righe([
+            ('Ritrovo nella lobby del resort', _lt_esc(lobby)),
+            (etichetta_bus,     _lt_esc(pullman)),
+            ('Compagnia aerea', _lt_esc(t['compagnia'])),
+            ('Numero del volo', _lt_esc(t['volo'])),
+            ('Data',            _lt_esc(t['data'])),
+            (f'Orario di partenza da {t["da"]}' if t['da'] else 'Orario di partenza',
+             _lt_esc(t['partenza'])),
+            (f'Orario di arrivo a {t["a"]}' if t['a'] else 'Orario di arrivo',
+             _lt_esc(t['arrivo'])),
+        ])
+        corpo += _lt_p('Ti chiediamo di presentarti nella lobby del resort con il '
+                       'bagaglio pronto almeno <b>5 minuti prima</b> della partenza '
+                       'del pullman.')
+        return _lt_sezione('Il tuo viaggio di rientro', corpo)
+
     def _lt_html(g, intro=None):
-        """Lettera di convocazione in HTML email-safe (tabelle + stili inline,
-        nessun CSS esterno): usabile direttamente come body HTML di MS Graph."""
+        """Lettera di convocazione in HTML email-safe: tabelle e stili inline,
+        nessun CSS esterno, usabile come body di una sendMail di MS Graph."""
         try:
             logo = url_for('static', filename='img/logo_equans.png', _external=True)
         except RuntimeError:
             logo = ''
 
-        titolo   = _lt_esc(EVENTO['titolo'])
-        luogo    = _lt_esc(EVENTO['luogo'])
-        periodo  = _lt_esc(EVENTO['periodo'])
-        firma    = _lt_esc(EVENTO['contatto_nome'])
-        saluto   = _lt_esc(f'Gentile {g.nome or ""} {g.cognome}'.replace('  ', ' '))
-        testo    = (intro.strip() if intro and intro.strip()
-                    else LETTERA_INTRO.format(**EVENTO))
-        chiusura = _lt_esc(LETTERA_CHIUSURA.format(**EVENTO))
-
-        contatti = [EVENTO['contatto_nome'], EVENTO['contatto_email'],
-                    EVENTO['contatto_tel']]
-        footer = _lt_esc(' · '.join(c for c in contatti if c and c.strip()))
+        titolo  = _lt_esc(EVENTO['titolo']).upper()
+        periodo = _lt_esc(f'{EVENTO["luogo"]}, {EVENTO["periodo"]}')
+        saluto  = _lt_esc((g.nome or g.cognome or '').strip())
 
         logo_html = ''
         if logo:
@@ -3046,36 +3139,68 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
                 'style="display:block;border:0;width:109px;height:34px"></td></tr>'
             )
 
-        sezioni = []
-        for titolo_sez, righe in _lt_blocchi(g):
-            celle = []
-            for etichetta, valore in righe:
-                celle.append(
-                    '<tr>'
-                    '<td style="padding:8px 12px 8px 0;width:38%;vertical-align:top;'
-                    'font:13px Arial,Helvetica,sans-serif;color:#795548">'
-                    + _lt_esc(etichetta) +
-                    '</td>'
-                    '<td style="padding:8px 0;vertical-align:top;'
-                    'font:14px Arial,Helvetica,sans-serif;color:#3e2723">'
-                    + valore +
-                    '</td></tr>'
-                )
-            sezioni.append(
-                '<tr><td style="padding:18px 28px 0 28px">'
-                '<div style="font:12px Arial,Helvetica,sans-serif;letter-spacing:1px;'
-                'text-transform:uppercase;color:#8d6e63;border-bottom:1px solid #d7ccc8;'
-                'padding-bottom:6px">' + _lt_esc(titolo_sez) + '</div>'
-                '<table role="presentation" cellpadding="0" cellspacing="0" border="0" '
-                'width="100%">' + ''.join(celle) + '</table>'
-                '</td></tr>'
-            )
+        apertura = intro.strip() if intro and intro.strip() else LETTERA_INTRO
+
+        resort = ('<div style="font:14px/1.7 Arial,Helvetica,sans-serif;'
+                  'color:#3e2723;background:#efebe9;border-left:3px solid #795548;'
+                  'padding:12px 16px;margin-bottom:12px">'
+                  '<b>' + _lt_esc(RESORT[0]) + '</b><br>'
+                  + '<br>'.join(_lt_esc(r) for r in RESORT[1:])
+                  + '</div>')
+
+        # Chi arriva in auto non ha carta d'imbarco da mettere in valigia.
+        cosa_portare = ["un <b>documento d'identità</b> valido"]
+        if not _lt_via_terra(g):
+            cosa_portare.append("la <b>carta d'imbarco</b>, se già disponibile")
+        cosa_portare += [
+            'un abbigliamento comodo per le attività',
+            "il tuo <b>outfit ispirato ai colori della Sicilia</b> per la Serata "
+            "dell'Arrivederci",
+            'soprattutto, la voglia di divertirti!',
+        ]
+
+        contatti = '<b>' + _lt_esc(EVENTO['contatto_nome']) + '</b>'
+        if EVENTO['contatto_tel']:
+            contatti += '<br>Telefono: ' + _lt_esc(EVENTO['contatto_tel'])
+        if EVENTO['contatto_email']:
+            contatti += '<br>' + _lt_esc(EVENTO['contatto_email'])
+
+        sezioni = (
+            _lt_sez_soggiorno(g)
+            + _lt_sez_andata(g)
+            + _lt_sez_ritorno(g)
+            + _lt_sezione("Un'esperienza da vivere insieme",
+                _lt_p("Dal mare alle atmosfere di Cefalù, dalla bellezza dei "
+                      "paesaggi siciliani all'energia del gruppo: l'EPS Sicilia "
+                      "Experience sarà un'occasione speciale per vivere tre "
+                      "giornate ricche di emozioni.")
+                + _lt_p("Il programma alternerà momenti di lavoro e condivisione, "
+                        "interventi di ospiti d'eccezione, attività aggreganti, "
+                        "musica, balli e tante sorprese. Sarai immerso in un luogo "
+                        "magico, tra il mare e i colori della Sicilia, in una "
+                        "cornice capace di rendere ancora più speciale il piacere "
+                        "di stare insieme."))
+            + _lt_sezione("Serata dell'arrivederci · I colori della Sicilia",
+                _lt_p("Come da tradizione, anche quest'anno la Serata "
+                      "dell'Arrivederci ti coinvolgerà in una speciale attività "
+                      "musicale, da vivere insieme con energia, allegria e un "
+                      "autentico spirito siciliano.")
+                + _lt_p("Per questa occasione, prepara un <b>outfit ispirato ai "
+                        "colori della Sicilia</b>: il giallo del sole, il rosso "
+                        "della passione, l'azzurro del mare, il verde della "
+                        "natura, il bianco della luce e il nero della pietra "
+                        "vulcanica. Lasciati ispirare dai colori e dall'energia "
+                        "di questa terra meravigliosa!"))
+            + _lt_sezione('Cosa portare con te',
+                _lt_p('Ricordati di mettere in valigia:')
+                + _lt_elenco(cosa_portare))
+        )
 
         return (
             '<!DOCTYPE html>'
             '<html lang="it"><head><meta charset="utf-8">'
             '<meta name="viewport" content="width=device-width,initial-scale=1">'
-            f'<title>Convocazione {titolo}</title></head>'
+            f'<title>{titolo}</title></head>'
             '<body style="margin:0;padding:0;background:#efebe9">'
             '<table role="presentation" cellpadding="0" cellspacing="0" border="0" '
             'width="100%" style="background:#efebe9;padding:24px 0">'
@@ -3087,31 +3212,38 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
             + logo_html +
 
             '<tr><td style="background:#795548;padding:20px 28px">'
-            '<div style="font:bold 20px Arial,Helvetica,sans-serif;color:#ffffff">'
-            + titolo + '</div>'
+            '<div style="font:bold 20px Arial,Helvetica,sans-serif;color:#ffffff;'
+            'letter-spacing:1px">' + titolo + '</div>'
             '<div style="font:13px Arial,Helvetica,sans-serif;color:#d7ccc8;'
-            'margin-top:2px">' + luogo + ' · ' + periodo + '</div>'
+            'margin-top:2px">' + periodo + '</div>'
             '</td></tr>'
 
             '<tr><td style="padding:24px 28px 0 28px">'
-            '<div style="font:bold 16px Arial,Helvetica,sans-serif;color:#3e2723">'
-            + saluto + ',</div>'
-            '<div style="font:14px/1.6 Arial,Helvetica,sans-serif;color:#4e342e;'
-            'margin-top:10px">' + testo + '</div>'
-            '</td></tr>'
+            '<div style="font:bold 16px Arial,Helvetica,sans-serif;color:#3e2723;'
+            'margin-bottom:10px">Ciao ' + saluto + ',</div>'
+            + _lt_p(apertura)
+            + _lt_p('Ad accoglierti sarà:')
+            + resort
+            + _lt_p('Ti aspettano tre giornate dedicate alla condivisione e allo '
+                    'spirito di squadra, con momenti di lavoro, attività '
+                    'coinvolgenti, musica, divertimento e tante occasioni per '
+                    'stare insieme.')
+            + '</td></tr>'
 
-            + ''.join(sezioni) +
+            + sezioni +
 
             '<tr><td style="padding:22px 28px 26px 28px">'
-            '<div style="font:14px/1.6 Arial,Helvetica,sans-serif;color:#4e342e">'
-            + chiusura + '</div>'
-            '<div style="font:13px Arial,Helvetica,sans-serif;color:#6d4c41;'
-            'margin-top:16px">Cordiali saluti,<br><b>' + firma + '</b></div>'
-            '</td></tr>'
+            + _lt_p('Per qualsiasi necessità o imprevisto durante il viaggio, '
+                    'potrai contattare:')
+            + '<div style="font:14px/1.7 Arial,Helvetica,sans-serif;color:#3e2723;'
+              'margin-bottom:14px">' + contatti + '</div>'
+            + _lt_p("Preparati a vivere un'esperienza indimenticabile.<br>"
+                    '<b>La Sicilia ti aspetta!</b>')
+            + '</td></tr>'
 
             '<tr><td style="background:#efebe9;padding:14px 28px;'
             'font:11px Arial,Helvetica,sans-serif;color:#8d6e63">'
-            + footer +
+            + _lt_esc(EVENTO['contatto_nome']) +
             '<div style="margin-top:6px;color:#a1887f">powered by sabae20</div>'
             '</td></tr>'
 
