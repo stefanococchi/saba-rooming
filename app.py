@@ -3028,17 +3028,17 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
     # ── Mattoni HTML: tabelle e stili inline, niente CSS esterno ────────────
 
     def _lt_p(testo):
-        return ('<div style="font:14px/1.6 Arial,Helvetica,sans-serif;'
-                'color:#4e342e;margin-bottom:10px">' + testo + '</div>')
+        return ('<div style="font:14px/1.6 Roboto,Arial,Helvetica,sans-serif;'
+                'color:#323232;margin-bottom:10px">' + testo + '</div>')
 
     def _lt_sezione(titolo, corpo):
         """Blocco con titolino maiuscolo. Niente corpo, niente sezione."""
         if not corpo:
             return ''
         return ('<tr><td style="padding:20px 28px 0 28px">'
-                '<div style="font:bold 13px Arial,Helvetica,sans-serif;'
-                'letter-spacing:1px;text-transform:uppercase;color:#8d6e63;'
-                'border-bottom:1px solid #d7ccc8;padding-bottom:6px;'
+                '<div style="font:bold 13px Roboto,Arial,Helvetica,sans-serif;'
+                'letter-spacing:1px;text-transform:uppercase;color:#002439;'
+                'border-bottom:2px solid #70BD95;padding-bottom:6px;'
                 'margin-bottom:12px">' + _lt_esc(titolo) + '</div>'
                 + corpo + '</td></tr>')
 
@@ -3051,10 +3051,10 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
             celle.append(
                 '<tr>'
                 '<td style="padding:5px 12px 5px 0;width:46%;vertical-align:top;'
-                'font:13px Arial,Helvetica,sans-serif;color:#795548">'
+                'font:13px Roboto,Arial,Helvetica,sans-serif;color:#484848">'
                 + _lt_esc(etichetta) + '</td>'
                 '<td style="padding:5px 0;vertical-align:top;'
-                'font:bold 14px Arial,Helvetica,sans-serif;color:#3e2723">'
+                'font:bold 14px Roboto,Arial,Helvetica,sans-serif;color:#002439">'
                 + valore + '</td></tr>')
         if not celle:
             return ''
@@ -3063,8 +3063,8 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
                 + ''.join(celle) + '</table>')
 
     def _lt_elenco(voci):
-        return ('<div style="font:14px/1.9 Arial,Helvetica,sans-serif;'
-                'color:#4e342e;margin-bottom:10px">'
+        return ('<div style="font:14px/1.9 Roboto,Arial,Helvetica,sans-serif;'
+                'color:#323232;margin-bottom:10px">'
                 + ''.join('• ' + v + '<br>' for v in voci) + '</div>')
 
     # ── Sezioni della lettera ──────────────────────────────────────────────
@@ -3200,8 +3200,8 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
 
         apertura = intro.strip() if intro and intro.strip() else LETTERA_INTRO
 
-        resort = ('<div style="font:14px/1.7 Arial,Helvetica,sans-serif;'
-                  'color:#3e2723;background:#efebe9;border-left:3px solid #795548;'
+        resort = ('<div style="font:14px/1.7 Roboto,Arial,Helvetica,sans-serif;'
+                  'color:#002439;background:#F2F2F2;border-left:3px solid #70BD95;'
                   'padding:12px 16px;margin-bottom:12px">'
                   '<b>' + _lt_esc(RESORT[0]) + '</b><br>'
                   + '<br>'.join(_lt_esc(r) for r in RESORT[1:])
@@ -3263,25 +3263,25 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
             '<html lang="it"><head><meta charset="utf-8">'
             '<meta name="viewport" content="width=device-width,initial-scale=1">'
             f'<title>{titolo}</title></head>'
-            '<body style="margin:0;padding:0;background:#efebe9">'
+            '<body style="margin:0;padding:0;background:#F2F2F2">'
             '<table role="presentation" cellpadding="0" cellspacing="0" border="0" '
-            'width="100%" style="background:#efebe9;padding:24px 0">'
+            'width="100%" style="background:#F2F2F2;padding:24px 0">'
             '<tr><td align="center">'
             '<table role="presentation" cellpadding="0" cellspacing="0" border="0" '
             'width="600" style="width:600px;max-width:100%;background:#ffffff;'
-            'border-radius:12px;overflow:hidden">'
+            'overflow:hidden">'
 
             + logo_html +
 
-            '<tr><td style="background:#795548;padding:20px 28px">'
-            '<div style="font:bold 20px Arial,Helvetica,sans-serif;color:#ffffff;'
+            '<tr><td style="background:#002439;padding:20px 28px">'
+            '<div style="font:bold 20px Roboto,Arial,Helvetica,sans-serif;color:#ffffff;'
             'letter-spacing:1px">' + titolo + '</div>'
-            '<div style="font:13px Arial,Helvetica,sans-serif;color:#d7ccc8;'
+            '<div style="font:13px Roboto,Arial,Helvetica,sans-serif;color:#70BD95;'
             'margin-top:2px">' + periodo + '</div>'
             '</td></tr>'
 
             '<tr><td style="padding:24px 28px 0 28px">'
-            '<div style="font:bold 16px Arial,Helvetica,sans-serif;color:#3e2723;'
+            '<div style="font:bold 16px Roboto,Arial,Helvetica,sans-serif;color:#002439;'
             'margin-bottom:10px">Ciao ' + saluto + ',</div>'
             + _lt_p(apertura)
             + _lt_p('Ad accoglierti sarà:')
@@ -3297,14 +3297,14 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
             '<tr><td style="padding:22px 28px 26px 28px">'
             + _lt_p('Per qualsiasi necessità o imprevisto durante il viaggio, '
                     'potrai contattare:')
-            + '<div style="font:14px/1.7 Arial,Helvetica,sans-serif;color:#3e2723;'
+            + '<div style="font:14px/1.7 Roboto,Arial,Helvetica,sans-serif;color:#002439;'
               'margin-bottom:14px">' + contatti + '</div>'
             + _lt_p("Preparati a vivere un'esperienza indimenticabile.<br>"
                     '<b>La Sicilia ti aspetta!</b>')
             + '</td></tr>'
 
-            '<tr><td style="background:#efebe9;padding:14px 28px;'
-            'font:11px Arial,Helvetica,sans-serif;color:#a1887f">'
+            '<tr><td style="background:#002439;padding:14px 28px;'
+            'font:11px Roboto,Arial,Helvetica,sans-serif;color:#BFBFBF">'
             'powered by sabae20</td></tr>'
 
             '</table></td></tr></table></body></html>'
