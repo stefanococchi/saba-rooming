@@ -18,6 +18,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from models import (db, User, AuditLog, Todo, Guest, RoomingClientToken, RoomContract, EmailLog,
+                     LetteraInvio,
                      TourRoomBaseline,
                      PartiviaQuote, PartiviaRoomRate,
                      PartiviaMeetingRoom, PartiviaFBOption,
@@ -3363,6 +3364,176 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
                        totale=len(lettere),
                        con_warning=sum(1 for l in lettere if l['warnings']),
                        lettere=lettere)
+
+
+    # ── Invio delle lettere via MS Graph ───────────────────────────────────
+
+    # Casella da cui partono e casella su cui arrivano le prove. L'invio vero
+    # resta spento finche' LETTERE_INVIO_ATTIVO non vale 1: cosi' nessuno lo
+    # fa partire per sbaglio prima che i dati siano completi.
+    LETTERE_MITTENTE = os.environ.get('LETTERE_MITTENTE', 'evento.eps@sabae20.it')
+    LETTERE_PROVA_A  = os.environ.get('LETTERE_PROVA_A', 'evento.eps@sabae20.it')
+
+    def _lt_invio_attivo():
+        return os.environ.get('LETTERE_INVIO_ATTIVO', '') == '1'
+
+    def _lt_gia_inviata(gid):
+        return LetteraInvio.query.filter_by(
+            guest_id=gid, esito='inviata', prova=False).first()
+
+    def _lt_spedisci(g, intro=None, prova=False):
+        """Manda una lettera e registra l'esito. Torna la riga di registro.
+
+        In prova il destinatario e' sempre LETTERE_PROVA_A e l'oggetto porta
+        un prefisso, cosi' non si confonde con una convocazione vera.
+        """
+        from graph_mailer import send_mail, InvioError
+
+        payload = _lt_payload(g, intro)
+        oggetto = payload['subject']
+        destinatario = payload['email']
+        if prova:
+            destinatario = LETTERE_PROVA_A
+            oggetto = f'[PROVA · {g.cognome} {g.nome or ""}] {oggetto}'.strip()
+
+        riga = LetteraInvio(
+            guest_id=g.id,
+            destinatario=destinatario,
+            oggetto=oggetto[:300],
+            prova=prova,
+            esito='inviata',
+            inviata_da=(current_user.email if current_user.is_authenticated
+                        else 'system'),
+        )
+        try:
+            send_mail(LETTERE_MITTENTE, destinatario, oggetto, payload['html'])
+        except InvioError as e:
+            riga.esito = 'errore'
+            riga.errore = str(e)[:1000]
+        except Exception as e:                       # imprevisto: non perdere la traccia
+            riga.esito = 'errore'
+            riga.errore = f'{type(e).__name__}: {e}'[:1000]
+        db.session.add(riga)
+        db.session.commit()
+        return riga
+
+    @app.post('/api/rooming/lettere/prova')
+    def rooming_lettere_prova():
+        """Due lettere di prova all'indirizzo di servizio: una di chi vola e
+        una di chi arriva in pullman, che sono i due formati diversi.
+
+        Serve a vedere come rendono davvero in casella prima di spedire a
+        qualcuno. Non tocca il conteggio degli invii veri.
+        """
+        from graph_mailer import credenziali_pronte
+        ok, mancanti = credenziali_pronte()
+        if not ok:
+            return jsonify(ok=False,
+                           error='Credenziali Graph incomplete: ' +
+                                 ', '.join(mancanti)), 400
+
+        intro = (request.json or {}).get('intro')
+        guests = Guest.query.filter_by(deleted=False).order_by(
+            Guest.cognome, Guest.nome).all()
+        vola = next((g for g in guests if g.pnr_group and not _lt_warnings(g)), None)
+        terra = next((g for g in guests if _lt_via_terra(g)), None)
+
+        campioni = [g for g in (vola, terra) if g]
+        if not campioni:
+            return jsonify(ok=False, error='Nessun ospite adatto alla prova'), 400
+
+        esiti = []
+        for g in campioni:
+            r = _lt_spedisci(g, intro, prova=True)
+            esiti.append({'ospite': f'{g.cognome} {g.nome or ""}'.strip(),
+                          'tipo': 'pullman' if _lt_via_terra(g) else 'volo',
+                          'esito': r.esito, 'errore': r.errore})
+        log_audit('rooming', 'Lettera', 0, 'prova',
+                  summary=f'{len(esiti)} lettere di prova a {LETTERE_PROVA_A}')
+        return jsonify(ok=True, destinatario=LETTERE_PROVA_A,
+                       mittente=LETTERE_MITTENTE, esiti=esiti)
+
+    @app.post('/api/rooming/lettere/invia')
+    def rooming_lettere_invia():
+        """Invio vero agli ospiti.
+
+        body: ids (lista, obbligatoria), intro (testo), rinvia (bool)
+        Salta chi ha dati mancanti e chi l'ha gia' ricevuta, e li elenca nella
+        risposta invece di spedire lettere con dentro un buco.
+        """
+        if not _lt_invio_attivo():
+            return jsonify(ok=False, error=(
+                "Invio disattivato. Serve LETTERE_INVIO_ATTIVO=1 fra le "
+                "variabili d'ambiente: finche' non c'e', da qui parte solo "
+                "l'invio di prova.")), 403
+
+        from graph_mailer import credenziali_pronte
+        ok, mancanti = credenziali_pronte()
+        if not ok:
+            return jsonify(ok=False,
+                           error='Credenziali Graph incomplete: ' +
+                                 ', '.join(mancanti)), 400
+
+        data = request.json or {}
+        ids = [int(i) for i in (data.get('ids') or []) if str(i).isdigit()]
+        if not ids:
+            return jsonify(ok=False, error='Nessun ospite selezionato'), 400
+        intro = data.get('intro')
+        rinvia = bool(data.get('rinvia'))
+
+        guests = Guest.query.filter(Guest.id.in_(ids), Guest.deleted == False)\
+                            .order_by(Guest.cognome, Guest.nome).all()
+
+        inviate, saltate = [], []
+        for g in guests:
+            nome = f'{g.cognome} {g.nome or ""}'.strip()
+            w = _lt_warnings(g)
+            if w:
+                saltate.append({'ospite': nome, 'motivo': ', '.join(w)})
+                continue
+            if not rinvia and _lt_gia_inviata(g.id):
+                saltate.append({'ospite': nome, 'motivo': 'gia inviata'})
+                continue
+            riga = _lt_spedisci(g, intro)
+            voce = {'ospite': nome, 'destinatario': riga.destinatario,
+                    'esito': riga.esito}
+            if riga.errore:
+                voce['errore'] = riga.errore
+            inviate.append(voce)
+
+        ok_n = sum(1 for v in inviate if v['esito'] == 'inviata')
+        log_audit('rooming', 'Lettera', 0, 'invio',
+                  summary=f'{ok_n} lettere inviate, {len(saltate)} saltate')
+        return jsonify(ok=True, inviate=inviate, saltate=saltate,
+                       totale_inviate=ok_n,
+                       totale_errori=len(inviate) - ok_n,
+                       totale_saltate=len(saltate))
+
+    @app.get('/api/rooming/lettere/invii')
+    def rooming_lettere_invii():
+        """Registro degli invii, il piu' recente per primo."""
+        q = LetteraInvio.query
+        if not _parse_bool(request.args.get('prove')):
+            q = q.filter_by(prova=False)
+        righe = q.order_by(LetteraInvio.inviata_at.desc()).limit(500).all()
+        return jsonify(ok=True,
+                       invio_attivo=_lt_invio_attivo(),
+                       mittente=LETTERE_MITTENTE,
+                       prova_a=LETTERE_PROVA_A,
+                       invii=[{
+                           'id': r.id,
+                           'guest_id': r.guest_id,
+                           'ospite': (f'{r.guest.cognome} {r.guest.nome or ""}'.strip()
+                                      if r.guest else ''),
+                           'destinatario': r.destinatario,
+                           'oggetto': r.oggetto,
+                           'esito': r.esito,
+                           'prova': bool(r.prova),
+                           'errore': r.errore,
+                           'inviata_da': r.inviata_da,
+                           'inviata_at': (r.inviata_at.isoformat()
+                                          if r.inviata_at else None),
+                       } for r in righe])
 
     # ── EXPORT STANZE / VOLI / CAMERE ────────────────────────────────────────
 

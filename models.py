@@ -426,3 +426,24 @@ class TourHotelAccessLog(db.Model):
     accessed_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     token      = db.relationship('TourHotelToken', backref='access_logs')
+
+
+class LetteraInvio(db.Model):
+    """Una riga per ogni tentativo di invio di una lettera di convocazione.
+
+    Serve a sapere chi ha gia' ricevuto la sua (per non spedirla due volte) e
+    a lasciare una traccia di cosa e' partito, a chi e quando.
+    """
+    __tablename__ = 'lettere_invii'
+
+    id           = db.Column(db.Integer, primary_key=True)
+    guest_id     = db.Column(db.Integer, db.ForeignKey('guests.id'), nullable=False)
+    destinatario = db.Column(db.String(200), nullable=False)   # dove e' andata davvero
+    oggetto      = db.Column(db.String(300))
+    esito        = db.Column(db.String(20), nullable=False)    # inviata | errore
+    prova        = db.Column(db.Boolean, default=False)        # invio di prova
+    errore       = db.Column(db.Text)
+    inviata_da   = db.Column(db.String(120))                   # utente che ha premuto
+    inviata_at   = db.Column(db.DateTime, default=datetime.utcnow)
+
+    guest = db.relationship('Guest', backref='invii_lettera')
