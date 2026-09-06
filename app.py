@@ -3252,10 +3252,8 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
             + '</td></tr>'
 
             '<tr><td style="background:#efebe9;padding:14px 28px;'
-            'font:11px Arial,Helvetica,sans-serif;color:#8d6e63">'
-            + _lt_esc(EVENTO['contatto_nome']) +
-            '<div style="margin-top:6px;color:#a1887f">powered by sabae20</div>'
-            '</td></tr>'
+            'font:11px Arial,Helvetica,sans-serif;color:#a1887f">'
+            'powered by sabae20</td></tr>'
 
             '</table></td></tr></table></body></html>'
         )
