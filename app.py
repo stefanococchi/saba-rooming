@@ -2883,6 +2883,17 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
         "dall'8 al 10 ottobre 2026 nella splendida cornice della Sicilia."
     )
 
+    # Trasferimento in pullman per chi parte da Catania. I campi vuoti fanno
+    # sparire la riga corrispondente: meglio un buco che un orario inventato.
+    PULLMAN_CATANIA = {
+        'indirizzo': '',      # via e civico della sede di Catania
+        'ritrovo': '',        # es. '06:30'
+        'partenza': '',       # es. '06:45'
+        'arrivo': '',         # arrivo previsto al resort, es. '10:00'
+        'riconoscimento': '',  # es. 'un cartello con il logo EPS'
+        'durata': 'circa 3 ore',
+    }
+
     # Quello che il form scrive quando l'ospite sceglie "altro" senza
     # specificare: non e' un'esigenza alimentare, non va stampata.
     DIETE_VUOTE = ('altro - scrivilo nelle note', 'altro', 'no', 'none',
@@ -3003,7 +3014,11 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
             w.append('email mancante')
         if not any(getattr(g, f'presenza_{d}') for d in GIORNI_EVENTO):
             w.append('nessuna presenza indicata')
-        if not g.pnr_group and not _lt_via_terra(g):
+        if _lt_via_terra(g):
+            if not all(PULLMAN_CATANIA[k] for k in
+                       ('indirizzo', 'ritrovo', 'partenza', 'arrivo')):
+                w.append('orari del pullman da Catania da definire')
+        elif not g.pnr_group:
             if not (g.volo_arrivo or '').strip():
                 w.append('volo andata mancante')
             if not (g.volo_partenza or '').strip():
@@ -3065,6 +3080,35 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
             ('In camera con',       _lt_esc(g.divide_stanza_con)),
             ('Esigenze alimentari', _lt_esc(_lt_dieta(g))),
         ]))
+
+    def _lt_sez_pullman(g):
+        """Trasferimento in pullman: sostituisce le sezioni di volo per chi
+        parte da Catania."""
+        c = PULLMAN_CATANIA
+        punto = 'Sede di Catania'
+        if c['indirizzo']:
+            punto += ' – ' + c['indirizzo']
+        corpo = _lt_righe([
+            ('Punto di ritrovo',                _lt_esc(punto)),
+            ('Orario di ritrovo',               _lt_esc(c['ritrovo'])),
+            ('Orario di partenza del pullman',  _lt_esc(c['partenza'])),
+            (f'Arrivo previsto al {RESORT[0]}', _lt_esc(c['arrivo'])),
+        ])
+        accoglienza = ("All'arrivo al punto di ritrovo di Catania troverai ad "
+                       "attenderti un'assistente dedicata")
+        accoglienza += (', facilmente riconoscibile grazie a '
+                        + _lt_esc(c['riconoscimento']) + '.'
+                        if c['riconoscimento'] else '.')
+        corpo += _lt_p(accoglienza)
+        corpo += _lt_p('Ti chiediamo di presentarti al punto di ritrovo almeno '
+                       '<b>10 minuti prima</b> della partenza.')
+        corpo += _lt_p("L'assistente ti accoglierà e ti mostrerà il pullman privato "
+                       'riservato, che effettuerà il trasferimento fino al '
+                       + _lt_esc(RESORT[0]) + '.')
+        if c['durata']:
+            corpo += _lt_p('La durata indicativa del tragitto dal punto di ritrovo '
+                           'al resort è di ' + _lt_esc(c['durata']) + '.')
+        return _lt_sezione('Partenza in pullman da Catania', corpo)
 
     def _lt_sez_andata(g):
         t = _lt_tratta(g, 'andata')
@@ -3175,10 +3219,13 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
         if EVENTO['contatto_email']:
             contatti += '<br>' + _lt_esc(EVENTO['contatto_email'])
 
+        # Chi parte da Catania sale sul pullman, gli altri volano.
+        viaggio = (_lt_sez_pullman(g) if _lt_via_terra(g)
+                   else _lt_sez_andata(g) + _lt_sez_ritorno(g))
+
         sezioni = (
             _lt_sez_soggiorno(g)
-            + _lt_sez_andata(g)
-            + _lt_sez_ritorno(g)
+            + viaggio
             + _lt_sezione("Un'esperienza da vivere insieme",
                 _lt_p("Dal mare alle atmosfere di Cefalù, dalla bellezza dei "
                       "paesaggi siciliani all'energia del gruppo: l'EPS Sicilia "
