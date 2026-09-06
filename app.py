@@ -979,7 +979,7 @@ def create_app():
             section_desc = """SEZIONE: ROOMING (Equans, 8-9 Ottobre 2026) — Gestione ospiti evento aziendale
 Entità: Guest
 Campi stringa: cognome (MAIUSCOLO), nome, email, telefono, sede_lavoro, volo_arrivo, volo_partenza, aeroporto_partenza, aeroporto_arrivo, pickup_bus_andata, pickup_bus_ritorno, divide_stanza_con, restrizioni_alimentari, tipo_camera, camera_assegnata, note_form, note, data_nascita
-Campi booleani: presenza_8, presenza_9, presenza_10, presenza_11, parcheggio_linate, parcheggio_hotel"""
+Campi booleani: presenza_8, presenza_9, presenza_10, parcheggio_linate, parcheggio_hotel"""
 
         elif section == 'partivia':
             quotes = PartiviaQuote.query.filter_by(deleted=False).order_by(PartiviaQuote.hotel_name).all()
@@ -1567,7 +1567,7 @@ Mappa ogni colonna del file a uno dei seguenti campi del database:
 - cognome, nome (o "nome_completo" se in una sola colonna, con campo "formato": "nome cognome" o "cognome nome")
 - email, telefono
 - sede_lavoro (città/sede di lavoro, es. MILANO, CATANIA)
-- presenza_8, presenza_9, presenza_10, presenza_11 (giorni 8-11 ottobre)
+- presenza_8, presenza_9, presenza_10 (notti 8, 9 e 10 ottobre)
 - volo_arrivo (volo di andata), volo_partenza (volo di ritorno)
 - aeroporto_partenza, aeroporto_arrivo
 - pickup_bus_andata (orario pickup bus andata), pickup_bus_ritorno (orario pickup bus ritorno)
@@ -1584,12 +1584,14 @@ STEP 2 — INTERPRETAZIONE DATI (FONDAMENTALE)
 I dati nel file possono NON corrispondere 1:1 ai campi. Devi capire il significato reale.
 
 REGOLE DI INTERPRETAZIONE DATE/PRESENZE:
-- L'evento è dall'8 all'11 ottobre. I giorni sono: 8, 9, 10, 11.
+- L'evento va dall'8 all'11 ottobre: le notti prenotabili sono 8, 9 e 10,
+  l'11 è solo il giorno delle partenze (non esiste presenza_11).
 - "arrivo gio 8/10" o "arrivo 8 ott" = la persona ARRIVA il giorno 8 ottobre
-- "partenza ven 10/10" o "riparte 10" = la persona RIPARTE il giorno 10 ottobre
+- "partenza dom 11/10" o "riparte l'11" = la persona RIPARTE il giorno 11 ottobre
 - Se una persona arriva il giorno X e riparte il giorno Y, è PRESENTE tutti i giorni da X a Y-1 (l'ultimo giorno riparte, non è presente all'evento)
-  - Esempio: arrivo 8, partenza 10 → presenza_8=sì, presenza_9=sì, presenza_10=no, presenza_11=no
-- Se c'è solo "arrivo 8" senza partenza, assumi che resti fino alla fine (presenza_8=sì, presenza_9=sì, presenza_10=sì, presenza_11=sì)
+  - Esempio: arrivo 8, partenza 10 → presenza_8=sì, presenza_9=sì, presenza_10=no
+- Se c'è solo "arrivo 8" senza partenza, assumi che resti fino alla fine, cioè
+  fino alla partenza dell'11 (presenza_8=sì, presenza_9=sì, presenza_10=sì)
 - "8/10" in una colonna di date può significare "8 ottobre" (giorno/mese) — NON "dall'8 al 10"
 - Se ci sono colonne separate per ogni giorno (es. "8 ott", "9 ott"), mappale direttamente a presenza_8, presenza_9, ecc.
 - Se c'è UNA sola colonna con date di arrivo/partenza, NON mapparla a un singolo campo presenza. Segnalala come "date_soggiorno" e nella sezione "trasformazioni" spiega come derivare le presenze.
@@ -1719,7 +1721,7 @@ Trasformazioni richieste: {json.dumps(trasformazioni, ensure_ascii=False)}
 
 Per ogni riga, produci un oggetto JSON con TUTTI questi campi:
 - cognome (MAIUSCOLO), nome, email, telefono, sede_lavoro
-- presenza_8, presenza_9, presenza_10, presenza_11 (true/false)
+- presenza_8, presenza_9, presenza_10 (true/false)
 - volo_arrivo, volo_partenza
 - aeroporto_partenza, aeroporto_arrivo
 - pickup_bus_andata, pickup_bus_ritorno
@@ -2852,6 +2854,10 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
         'contatto_tel':   os.environ.get('EVENTO_TEL', ''),
     }
 
+    # Notti prenotabili: l'ultima e' quella del 10, l'11 e' solo il giorno delle
+    # partenze. Il campo presenza_11 resta a DB ma fuori dalle lettere.
+    GIORNI_EVENTO = (8, 9, 10)
+
     LETTERA_INTRO = (
         'siamo lieti di confermarLe la partecipazione a <b>{titolo}</b>, che si '
         'terrà a {luogo} dal {periodo}.<br>'
@@ -2949,8 +2955,8 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
         return '<br>'.join(righe)
 
     def _lt_presenze(g):
-        """'8, 9 e 10 ottobre 2026 (3 notti)' dai flag presenza_8..11."""
-        giorni = [d for d in (8, 9, 10, 11) if getattr(g, f'presenza_{d}')]
+        """'8, 9 e 10 ottobre 2026 (3 notti)' dai flag presenza_8..10."""
+        giorni = [d for d in GIORNI_EVENTO if getattr(g, f'presenza_{d}')]
         if not giorni:
             return ''
         if len(giorni) == 1:
@@ -2979,13 +2985,11 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
             ('Parcheggio Linate',         'Riservato' if g.parcheggio_linate else ''),
             ('Parcheggio hotel',          'Riservato' if g.parcheggio_hotel else ''),
         ]
-        note = [
-            ('Richieste segnalate',  _lt_esc(g.note_form)),
-            ('Note organizzative',   _lt_esc(g.note)),
-        ]
+        # note e note_form servono alla segreteria (promemoria, nomi da verificare,
+        # richieste di cancellazione, testo grezzo del form): niente di tutto cio'
+        # esce nella lettera all'ospite.
         blocchi = [('Il tuo soggiorno', soggiorno),
-                   ('Viaggio e trasferimenti', viaggio),
-                   ('Note', note)]
+                   ('Viaggio e trasferimenti', viaggio)]
         return [(t, [r for r in righe if r[1]]) for t, righe in blocchi
                 if any(r[1] for r in righe)]
 
@@ -2994,7 +2998,7 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
         w = []
         if not (g.email or '').strip():
             w.append('email mancante')
-        if not any(getattr(g, f'presenza_{d}') for d in (8, 9, 10, 11)):
+        if not any(getattr(g, f'presenza_{d}') for d in GIORNI_EVENTO):
             w.append('nessuna presenza indicata')
         if not g.pnr_group:
             if not (g.volo_arrivo or '').strip():
@@ -3009,7 +3013,7 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
         """Lettera di convocazione in HTML email-safe (tabelle + stili inline,
         nessun CSS esterno): usabile direttamente come body HTML di MS Graph."""
         try:
-            logo = url_for('static', filename='img/logo_saba.png', _external=True)
+            logo = url_for('static', filename='img/logo_equans.png', _external=True)
         except RuntimeError:
             logo = ''
 
@@ -3028,8 +3032,12 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
 
         logo_html = ''
         if logo:
-            logo_html = (f'<img src="{_lt_esc(logo)}" alt="Saba" height="34" '
-                         'style="display:block;border:0;height:34px">')
+            # 283x88 nell'originale: 109x34 mantiene le proporzioni
+            logo_html = (
+                '<tr><td style="background:#ffffff;padding:18px 28px">'
+                f'<img src="{_lt_esc(logo)}" alt="Equans" width="109" height="34" '
+                'style="display:block;border:0;width:109px;height:34px"></td></tr>'
+            )
 
         sezioni = []
         for titolo_sez, righe in _lt_blocchi(g):
@@ -3069,10 +3077,11 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
             'width="600" style="width:600px;max-width:100%;background:#ffffff;'
             'border-radius:12px;overflow:hidden">'
 
-            '<tr><td style="background:#795548;padding:20px 28px">'
             + logo_html +
-            '<div style="font:bold 20px Arial,Helvetica,sans-serif;color:#ffffff;'
-            'margin-top:10px">' + titolo + '</div>'
+
+            '<tr><td style="background:#795548;padding:20px 28px">'
+            '<div style="font:bold 20px Arial,Helvetica,sans-serif;color:#ffffff">'
+            + titolo + '</div>'
             '<div style="font:13px Arial,Helvetica,sans-serif;color:#d7ccc8;'
             'margin-top:2px">' + luogo + ' · ' + periodo + '</div>'
             '</td></tr>'
@@ -3095,7 +3104,9 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
 
             '<tr><td style="background:#efebe9;padding:14px 28px;'
             'font:11px Arial,Helvetica,sans-serif;color:#8d6e63">'
-            + footer + '</td></tr>'
+            + footer +
+            '<div style="margin-top:6px;color:#a1887f">powered by sabae20</div>'
+            '</td></tr>'
 
             '</table></td></tr></table></body></html>'
         )
@@ -3141,8 +3152,8 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
             q = q.filter(Guest.id.in_(ids))
 
         if _parse_bool(request.args.get('presenti')):
-            q = q.filter(db.or_(Guest.presenza_8 == True, Guest.presenza_9 == True,
-                                Guest.presenza_10 == True, Guest.presenza_11 == True))
+            q = q.filter(db.or_(*[getattr(Guest, f'presenza_{d}') == True
+                                  for d in GIORNI_EVENTO]))
         if _parse_bool(request.args.get('con_email')):
             q = q.filter(Guest.email.isnot(None), Guest.email != '')
 
@@ -3511,7 +3522,7 @@ Estrai TUTTE le informazioni su ospiti menzionati nel testo. Per ogni persona, d
 - aeroporto_partenza, aeroporto_arrivo
 - pickup_bus_andata, pickup_bus_ritorno (orario pickup bus)
 - tipo_camera (singola, doppia, twin, suite, etc.)
-- presenza_8, presenza_9, presenza_10, presenza_11 (true/false, giorni 8-11 ottobre)
+- presenza_8, presenza_9, presenza_10 (true/false, notti 8, 9 e 10 ottobre)
 - parcheggio_linate, parcheggio_hotel (true/false)
 - divide_stanza_con (con chi condivide la stanza)
 - restrizioni_alimentari
@@ -3535,7 +3546,6 @@ Rispondi SOLO con JSON valido, niente markdown:
       "presenza_8": true,
       "presenza_9": true,
       "presenza_10": null,
-      "presenza_11": null,
       "parcheggio_linate": null,
       "parcheggio_hotel": null,
       "divide_stanza_con": null,
