@@ -2858,6 +2858,10 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
     # partenze. Il campo presenza_11 resta a DB ma fuori dalle lettere.
     GIORNI_EVENTO = (8, 9, 10)
 
+    # Chi ha sede a Catania raggiunge l'evento via terra (auto o pullman):
+    # per loro il volo non manca, non esiste proprio.
+    SEDI_SENZA_VOLO = ('CATANIA',)
+
     LETTERA_INTRO = (
         'siamo lieti di confermarLe la partecipazione a <b>{titolo}</b>, che si '
         'terrà a {luogo}, {periodo}.<br>'
@@ -2969,10 +2973,11 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
     def _lt_blocchi(g):
         """Sezioni della lettera: [(titolo, [(etichetta, valore_html), …]), …].
         Righe ed eventuali sezioni vuote vengono omesse."""
+        # camera_assegnata viene decisa molto dopo la convocazione: l'ospite
+        # trova il numero di camera al check-in, non in questa lettera.
         soggiorno = [
             ('Date di presenza',    _lt_esc(_lt_presenze(g))),
             ('Tipologia camera',    _lt_esc(g.tipo_camera)),
-            ('Camera assegnata',    _lt_esc(g.camera_assegnata)),
             ('In camera con',       _lt_esc(g.divide_stanza_con)),
             ('Esigenze alimentari', _lt_esc(g.restrizioni_alimentari)),
         ]
@@ -2993,6 +2998,10 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
         return [(t, [r for r in righe if r[1]]) for t, righe in blocchi
                 if any(r[1] for r in righe)]
 
+    def _lt_via_terra(g):
+        """True se l'ospite non vola: sede da cui si arriva in auto o pullman."""
+        return (g.sede_lavoro or '').strip().upper() in SEDI_SENZA_VOLO
+
     def _lt_warnings(g):
         """Dati mancanti da sistemare prima di inviare la lettera."""
         w = []
@@ -3000,13 +3009,11 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
             w.append('email mancante')
         if not any(getattr(g, f'presenza_{d}') for d in GIORNI_EVENTO):
             w.append('nessuna presenza indicata')
-        if not g.pnr_group:
+        if not g.pnr_group and not _lt_via_terra(g):
             if not (g.volo_arrivo or '').strip():
                 w.append('volo andata mancante')
             if not (g.volo_partenza or '').strip():
                 w.append('volo ritorno mancante')
-        if not (g.camera_assegnata or '').strip():
-            w.append('camera non assegnata')
         return w
 
     def _lt_html(g, intro=None):
