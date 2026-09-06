@@ -18,7 +18,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from models import (db, User, AuditLog, Todo, Guest, RoomingClientToken, RoomContract, EmailLog,
-                     LetteraInvio,
+                     LetteraInvio, Impostazione,
                      TourRoomBaseline,
                      PartiviaQuote, PartiviaRoomRate,
                      PartiviaMeetingRoom, PartiviaFBOption,
@@ -3368,14 +3368,33 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
 
     # ── Invio delle lettere via MS Graph ───────────────────────────────────
 
-    # Casella da cui partono e casella su cui arrivano le prove. L'invio vero
-    # resta spento finche' LETTERE_INVIO_ATTIVO non vale 1: cosi' nessuno lo
-    # fa partire per sbaglio prima che i dati siano completi.
-    LETTERE_MITTENTE = os.environ.get('LETTERE_MITTENTE', 'evento.eps@sabae20.it')
-    LETTERE_PROVA_A  = os.environ.get('LETTERE_PROVA_A', 'evento.eps@sabae20.it')
+    # Casella da cui partono le lettere, casella su cui arrivano le prove e
+    # interruttore dell'invio vero: stanno a database e si cambiano
+    # dall'interfaccia, non fra le variabili d'ambiente.
+    LETTERE_DEFAULT = {
+        'lettere_mittente': 'evento.eps@sabae20.it',
+        'lettere_prova_a': 'evento.eps@sabae20.it',
+        'lettere_invio_attivo': '0',
+    }
+
+    def _imp(chiave):
+        riga = Impostazione.query.get(chiave)
+        if riga and (riga.valore or '').strip():
+            return riga.valore.strip()
+        return LETTERE_DEFAULT.get(chiave, '')
+
+    def _imp_set(chiave, valore):
+        riga = Impostazione.query.get(chiave)
+        if not riga:
+            riga = Impostazione(chiave=chiave)
+            db.session.add(riga)
+        riga.valore = (valore or '').strip()
+        riga.modificata_da = (current_user.email if current_user.is_authenticated
+                              else 'system')
+        return riga
 
     def _lt_invio_attivo():
-        return os.environ.get('LETTERE_INVIO_ATTIVO', '') == '1'
+        return _imp('lettere_invio_attivo') == '1'
 
     def _lt_gia_inviata(gid):
         return LetteraInvio.query.filter_by(
@@ -3384,7 +3403,7 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
     def _lt_spedisci(g, intro=None, prova=False):
         """Manda una lettera e registra l'esito. Torna la riga di registro.
 
-        In prova il destinatario e' sempre LETTERE_PROVA_A e l'oggetto porta
+        In prova il destinatario e' sempre l'indirizzo delle prove e l'oggetto porta
         un prefisso, cosi' non si confonde con una convocazione vera.
         """
         from graph_mailer import send_mail, InvioError
@@ -3393,7 +3412,7 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
         oggetto = payload['subject']
         destinatario = payload['email']
         if prova:
-            destinatario = LETTERE_PROVA_A
+            destinatario = _imp('lettere_prova_a')
             oggetto = f'[PROVA · {g.cognome} {g.nome or ""}] {oggetto}'.strip()
 
         riga = LetteraInvio(
@@ -3406,7 +3425,8 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
                         else 'system'),
         )
         try:
-            send_mail(LETTERE_MITTENTE, destinatario, oggetto, payload['html'])
+            send_mail(_imp('lettere_mittente'), destinatario, oggetto,
+                      payload['html'])
         except InvioError as e:
             riga.esito = 'errore'
             riga.errore = str(e)[:1000]
@@ -3449,9 +3469,9 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
                           'tipo': 'pullman' if _lt_via_terra(g) else 'volo',
                           'esito': r.esito, 'errore': r.errore})
         log_audit('rooming', 'Lettera', 0, 'prova',
-                  summary=f'{len(esiti)} lettere di prova a {LETTERE_PROVA_A}')
-        return jsonify(ok=True, destinatario=LETTERE_PROVA_A,
-                       mittente=LETTERE_MITTENTE, esiti=esiti)
+                  summary=f"{len(esiti)} lettere di prova a {_imp('lettere_prova_a')}")
+        return jsonify(ok=True, destinatario=_imp('lettere_prova_a'),
+                       mittente=_imp('lettere_mittente'), esiti=esiti)
 
     @app.post('/api/rooming/lettere/invia')
     def rooming_lettere_invia():
@@ -3463,9 +3483,9 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
         """
         if not _lt_invio_attivo():
             return jsonify(ok=False, error=(
-                "Invio disattivato. Serve LETTERE_INVIO_ATTIVO=1 fra le "
-                "variabili d'ambiente: finche' non c'e', da qui parte solo "
-                "l'invio di prova.")), 403
+                "Invio disattivato. Accendilo dal pulsante nella finestra "
+                "delle lettere: finche' e' spento parte solo l'invio di "
+                "prova.")), 403
 
         from graph_mailer import credenziali_pronte
         ok, mancanti = credenziali_pronte()
@@ -3509,6 +3529,46 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
                        totale_errori=len(inviate) - ok_n,
                        totale_saltate=len(saltate))
 
+    @app.get('/api/rooming/lettere/config')
+    def rooming_lettere_config():
+        """Mittente, indirizzo delle prove e stato dell'invio."""
+        from graph_mailer import credenziali_pronte
+        pronte, mancanti = credenziali_pronte()
+        return jsonify(ok=True,
+                       mittente=_imp('lettere_mittente'),
+                       prova_a=_imp('lettere_prova_a'),
+                       invio_attivo=_lt_invio_attivo(),
+                       graph_pronto=pronte,
+                       graph_mancanti=mancanti,
+                       inviate=LetteraInvio.query.filter_by(
+                           esito='inviata', prova=False).count())
+
+    @app.post('/api/rooming/lettere/config')
+    def rooming_lettere_config_salva():
+        """Cambia mittente, indirizzo delle prove o interruttore dell'invio."""
+        data = request.json or {}
+        cambiati = []
+        for chiave, campo in (('lettere_mittente', 'mittente'),
+                              ('lettere_prova_a', 'prova_a')):
+            if campo in data:
+                valore = (data[campo] or '').strip()
+                if valore and '@' not in valore:
+                    return jsonify(ok=False,
+                                   error=f'{campo}: indirizzo non valido'), 400
+                _imp_set(chiave, valore)
+                cambiati.append(f'{campo}={valore}')
+        if 'invio_attivo' in data:
+            acceso = '1' if data['invio_attivo'] else '0'
+            _imp_set('lettere_invio_attivo', acceso)
+            cambiati.append('invio ' + ('acceso' if acceso == '1' else 'spento'))
+        db.session.commit()
+        if cambiati:
+            log_audit('rooming', 'Lettera', 0, 'config',
+                      summary='; '.join(cambiati))
+        return jsonify(ok=True, mittente=_imp('lettere_mittente'),
+                       prova_a=_imp('lettere_prova_a'),
+                       invio_attivo=_lt_invio_attivo())
+
     @app.get('/api/rooming/lettere/invii')
     def rooming_lettere_invii():
         """Registro degli invii, il piu' recente per primo."""
@@ -3518,8 +3578,8 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
         righe = q.order_by(LetteraInvio.inviata_at.desc()).limit(500).all()
         return jsonify(ok=True,
                        invio_attivo=_lt_invio_attivo(),
-                       mittente=LETTERE_MITTENTE,
-                       prova_a=LETTERE_PROVA_A,
+                       mittente=_imp('lettere_mittente'),
+                       prova_a=_imp('lettere_prova_a'),
                        invii=[{
                            'id': r.id,
                            'guest_id': r.guest_id,

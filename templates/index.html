@@ -1044,6 +1044,37 @@ textarea { resize: vertical; min-height: 120px; }
       </div>
     </div>
 
+    <div id="lettInvioBox" style="margin-top:12px;border:1px solid #e0d8d3;border-radius:8px;padding:10px 12px;background:#fafafa">
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <span id="lettInvioStato" style="font-size:12px"></span>
+        <span style="flex:1"></span>
+        <button class="btn btn-outline btn-sm" onclick="inviaProva()" title="Due lettere all'indirizzo di prova: una di chi vola, una di chi arriva in pullman">
+          <span class="material-icons-round" style="font-size:16px">science</span> Invia prova
+        </button>
+        <button class="btn btn-sm" id="lettInviaBtn" onclick="inviaLettere()" style="background:#2e7d32;color:white">
+          <span class="material-icons-round" style="font-size:16px">send</span> Invia agli elencati
+        </button>
+        <button class="btn btn-outline btn-sm" onclick="toggleLettConfig()" title="Mittente, indirizzo di prova, interruttore">
+          <span class="material-icons-round" style="font-size:16px">settings</span>
+        </button>
+      </div>
+      <div id="lettConfigBox" style="display:none;margin-top:10px;padding-top:10px;border-top:1px solid #e0d8d3">
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+          <label style="font-size:12px">Mittente<br>
+            <input type="text" id="lettMittente" style="padding:5px 8px;border:1px solid #d7ccc8;border-radius:6px;font-family:inherit;font-size:13px;width:220px">
+          </label>
+          <label style="font-size:12px">Indirizzo per le prove<br>
+            <input type="text" id="lettProvaA" style="padding:5px 8px;border:1px solid #d7ccc8;border-radius:6px;font-family:inherit;font-size:13px;width:220px">
+          </label>
+          <label style="font-size:13px;display:flex;align-items:center;gap:5px;cursor:pointer;padding-bottom:6px">
+            <input type="checkbox" id="lettInvioAttivo"> Invio vero acceso
+          </label>
+          <button class="btn btn-primary btn-sm" onclick="salvaLettConfig()">Salva</button>
+        </div>
+      </div>
+      <div id="lettEsito" style="display:none;margin-top:10px;font-size:12px;max-height:180px;overflow:auto"></div>
+    </div>
+
     <div class="btn-group">
       <button class="btn btn-sm" onclick="copiaLetteraHtml()" style="background:var(--primary);color:white">
         <span class="material-icons-round" style="font-size:16px">content_copy</span> Copia HTML
@@ -2994,6 +3025,117 @@ async function showLettere(gid) {
     document.getElementById('lettConEmail').checked = false;
   }
   await loadLettere(gid);
+  caricaLettConfig();
+}
+
+let _lettCfg = {};
+
+async function caricaLettConfig() {
+  try {
+    const r = await fetch('/api/rooming/lettere/config');
+    _lettCfg = await r.json();
+  } catch (e) { _lettCfg = {}; }
+  document.getElementById('lettMittente').value = _lettCfg.mittente || '';
+  document.getElementById('lettProvaA').value = _lettCfg.prova_a || '';
+  document.getElementById('lettInvioAttivo').checked = !!_lettCfg.invio_attivo;
+  let msg;
+  if (!_lettCfg.graph_pronto) {
+    msg = '<span style="color:var(--error)">Credenziali Graph incomplete: ' +
+          (_lettCfg.graph_mancanti || []).join(', ') + '</span>';
+  } else if (_lettCfg.invio_attivo) {
+    msg = '<span style="color:#2e7d32;font-weight:600">Invio ACCESO</span> · da ' +
+          _lettCfg.mittente + ' · ' + _lettCfg.inviate + ' gia inviate';
+  } else {
+    msg = '<span style="color:#c62828;font-weight:600">Invio spento</span> · ' +
+          'da qui parte solo la prova a ' + _lettCfg.prova_a;
+  }
+  document.getElementById('lettInvioStato').innerHTML = msg;
+  document.getElementById('lettInviaBtn').style.opacity = _lettCfg.invio_attivo ? '1' : '0.5';
+}
+
+function toggleLettConfig() {
+  const b = document.getElementById('lettConfigBox');
+  b.style.display = b.style.display === 'none' ? 'block' : 'none';
+}
+
+async function salvaLettConfig() {
+  const body = {
+    mittente: document.getElementById('lettMittente').value.trim(),
+    prova_a: document.getElementById('lettProvaA').value.trim(),
+    invio_attivo: document.getElementById('lettInvioAttivo').checked
+  };
+  if (body.invio_attivo && !_lettCfg.invio_attivo &&
+      !confirm("Accendere l'invio vero? Da questo momento il pulsante verde spedisce davvero agli ospiti.")) return;
+  const r = await fetch('/api/rooming/lettere/config', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(body)
+  });
+  const j = await r.json();
+  if (!j.ok) { alert(j.error || 'Errore'); return; }
+  await caricaLettConfig();
+}
+
+function mostraEsitoInvio(html) {
+  const box = document.getElementById('lettEsito');
+  box.style.display = 'block';
+  box.innerHTML = html;
+}
+
+async function inviaProva() {
+  if (!confirm('Inviare 2 lettere di prova a ' + _lettCfg.prova_a +
+               '? Una di chi vola e una di chi arriva in pullman.')) return;
+  mostraEsitoInvio('<span class="spinner"></span> invio in corso...');
+  const intro = document.getElementById('lettIntro').value.trim();
+  const r = await fetch('/api/rooming/lettere/prova', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(intro ? {intro: intro} : {})
+  });
+  const j = await r.json();
+  if (!j.ok) { mostraEsitoInvio('<span style="color:var(--error)">' + j.error + '</span>'); return; }
+  mostraEsitoInvio('<b>Prova a ' + j.destinatario + '</b> (da ' + j.mittente + ')<br>' +
+    j.esiti.map(function (e) {
+      return e.esito === 'inviata'
+        ? '✓ ' + e.ospite + ' <span style="color:#888">(' + e.tipo + ')</span>'
+        : '<span style="color:var(--error)">✕ ' + e.ospite + ' — ' + e.errore + '</span>';
+    }).join('<br>'));
+  caricaLettConfig();
+}
+
+async function inviaLettere() {
+  if (!_lettere.length) { alert('Nessuna lettera in elenco.'); return; }
+  if (!_lettCfg.invio_attivo) {
+    alert("L'invio vero e spento. Accendilo dall'ingranaggio qui accanto.");
+    return;
+  }
+  const conWarn = _lettere.filter(function (l) { return l.warnings && l.warnings.length; }).length;
+  let msg = 'Inviare ' + _lettere.length + ' lettere agli ospiti in elenco, da ' +
+            _lettCfg.mittente + '?';
+  if (conWarn) msg += '\n\n' + conWarn + ' verranno saltate perche hanno dati mancanti.';
+  if (!confirm(msg)) return;
+  mostraEsitoInvio('<span class="spinner"></span> invio in corso...');
+  const intro = document.getElementById('lettIntro').value.trim();
+  const body = {ids: _lettere.map(function (l) { return l.id; })};
+  if (intro) body.intro = intro;
+  const r = await fetch('/api/rooming/lettere/invia', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(body)
+  });
+  const j = await r.json();
+  if (!j.ok) { mostraEsitoInvio('<span style="color:var(--error)">' + j.error + '</span>'); return; }
+  let out = '<b>' + j.totale_inviate + ' inviate</b>';
+  if (j.totale_errori) out += ' · <span style="color:var(--error)">' + j.totale_errori + ' errori</span>';
+  if (j.totale_saltate) out += ' · ' + j.totale_saltate + ' saltate';
+  out += '<br>';
+  out += j.inviate.filter(function (v) { return v.esito !== 'inviata'; })
+    .map(function (v) { return '<span style="color:var(--error)">✕ ' + v.ospite + ' — ' + (v.errore || '') + '</span>'; })
+    .join('<br>');
+  if (j.saltate.length) {
+    out += '<div style="margin-top:6px;color:#888">Saltate:<br>' +
+      j.saltate.map(function (v) { return '— ' + v.ospite + ': ' + v.motivo; }).join('<br>') +
+      '</div>';
+  }
+  mostraEsitoInvio(out);
+  caricaLettConfig();
 }
 
 function toggleLettIntro() {

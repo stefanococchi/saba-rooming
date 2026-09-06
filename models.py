@@ -447,3 +447,15 @@ class LetteraInvio(db.Model):
     inviata_at   = db.Column(db.DateTime, default=datetime.utcnow)
 
     guest = db.relationship('Guest', backref='invii_lettera')
+
+
+class Impostazione(db.Model):
+    """Impostazioni modificabili dall'app, senza passare da variabili
+    d'ambiente: chi le cambia lo fa dall'interfaccia e resta scritto qui."""
+    __tablename__ = 'impostazioni'
+
+    chiave      = db.Column(db.String(60), primary_key=True)
+    valore      = db.Column(db.Text)
+    modificata_da = db.Column(db.String(120))
+    modificata_at = db.Column(db.DateTime, default=datetime.utcnow,
+                              onupdate=datetime.utcnow)
