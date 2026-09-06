@@ -2996,6 +2996,13 @@ async function showLettere(gid) {
   await loadLettere(gid);
 }
 
+function toggleLettIntro() {
+  const box = document.getElementById('lettIntroBox');
+  const chiuso = box.style.display === 'none';
+  box.style.display = chiuso ? 'block' : 'none';
+  if (chiuso) document.getElementById('lettIntro').focus();
+}
+
 async function loadLettere(selectId) {
   const list = document.getElementById('lettList');
   list.innerHTML = '<div style="text-align:center;padding:16px"><span class="spinner"></span></div>';
