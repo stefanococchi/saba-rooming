@@ -2160,9 +2160,12 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
             if not pnr_code:
                 continue
 
-            # Seats + group name: "0. 32PAOLACATANIADOS  NM: 0"
-            group_match = re.search(r'0\.\s*(\d+)(\w+)\s+NM:', block)
-            seats = int(group_match.group(1)) if group_match else 0
+            # Seats + group name: "0. 32PAOLACATANIADOS  NM: 0" oppure "0.  0PAOLASICILIA  NM:32".
+            # Il numero davanti al gruppo sono i posti ancora senza nome, NM quelli gia'
+            # nominati: i posti del PNR sono la somma dei due. Leggendo solo il primo,
+            # un PNR con tutti i nomi dentro risultava da zero posti.
+            group_match = re.search(r'0\.\s*(\d+)(\w+)\s+NM:\s*(\d+)', block)
+            seats = int(group_match.group(1)) + int(group_match.group(3)) if group_match else 0
             group_name = group_match.group(2) if group_match else ''
 
             # Voli: "1  AZ1765 S 08OCT 4 LINPMO HK32  0955 1135  *1A/E*"
