@@ -2336,6 +2336,7 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
         # non corrisponde più al PNR a cui sono agganciati.
         seats_used = {pg.id: 0 for pg in groups}
         to_assign = []
+        aderenti = {}   # pg.id → ospiti i cui voli coincidono con quelli del PNR
         for g in Guest.query.filter(Guest.deleted == False).order_by(
                 Guest.cognome, Guest.nome).all():
             pg = pnr_by_id.get(g.pnr_group_id) if g.pnr_group_id else None
@@ -2348,10 +2349,22 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
                 seats_used[pg.id] += 1
                 continue
             if key_g == (normalize_flight(pg.volo_andata), normalize_flight(pg.volo_ritorno)):
-                seats_used[pg.id] += 1
+                aderenti.setdefault(pg.id, []).append(g)
                 continue
             # volo cambiato dopo l'assegnazione: libera il posto e rimettilo in gioco
             to_assign.append(g)
+
+        # Un PNR può ritrovarsi con più nomi che posti: succede quando l'agenzia
+        # riduce i posti e sposta gli altri su un PNR con gli stessi voli. Prima
+        # questi ospiti restavano fermi perché i voli coincidevano, e il PNR
+        # gemello restava vuoto: un -2 da una parte e un +3 dall'altra che la
+        # routine non sanava mai. Chi non ci sta torna nel pool e si cerca un
+        # posto libero; se non lo trova resta dov'è e il riepilogo lo segnala.
+        for pg_id, ospiti in aderenti.items():
+            capienza = max(pnr_by_id[pg_id].seats - seats_used[pg_id], 0)
+            seats_used[pg_id] += len(ospiti[:capienza])
+            to_assign.extend(ospiti[capienza:])
+        to_assign.sort(key=lambda g: ((g.cognome or '').lower(), (g.nome or '').lower()))
 
         matched = []       # match esatto andata+ritorno
         partial = []       # solo andata o solo ritorno matcha
@@ -2389,11 +2402,15 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
             key = (andata, ritorno)
             candidates = pnr_index.get(key, [])
 
-            assigned_pg = None
-            for pg in candidates:
-                if seats_used.get(pg.id, 0) < pg.seats:
-                    assigned_pg = pg
-                    break
+            # Fra più PNR con gli stessi voli si sceglie quello con meno posti
+            # liberi: si chiudono prima i quasi pieni e restano interi i blocchi
+            # ancora vuoti. A parità decide il codice del PNR, così l'esito non
+            # dipende dall'ordine in cui i gruppi sono finiti a database.
+            liberi = [pg for pg in candidates if seats_used.get(pg.id, 0) < pg.seats]
+            assigned_pg = min(
+                liberi,
+                key=lambda pg: (pg.seats - seats_used.get(pg.id, 0), pg.pnr_code),
+            ) if liberi else None
 
             if assigned_pg:
                 orig_a = assigned_pg.rotta_andata[:3] if assigned_pg.rotta_andata and len(assigned_pg.rotta_andata) >= 6 else ''
