@@ -1,41 +1,23 @@
 # Lettere di convocazione — dove siamo
 
-Aggiornato: **6 settembre 2026**, fine giornata.
+Aggiornato: **7 settembre 2026**, mattina.
 Ultimo commit: `1e388fb`. Tutto pushato su `main`, working tree pulito.
 
 ---
 
-## Il blocco che ferma tutto
+## Il blocco e' stato tolto — 7 settembre 2026
 
-**L'app non ha il permesso per spedire.** Ho letto il token di Microsoft alle
-15:40 UTC di oggi: contiene solo `Mail.Read`, `Mail.Send` non c'è.
+**`Mail.Send` applicativo c'e' ed e' concesso.** Il permesso mancava perche'
+sull'app registration `saba-form` la riga `Mail.Send` esisteva solo di tipo
+**Delegato**, che nei token applicativi non compare. Ne e' stata aggiunta una
+seconda di tipo **Applicazione** ("Send mail as any user") e dato il consenso
+amministratore. Ora Microsoft Graph ha 13 autorizzazioni e `Mail.Send` compare
+due volte, come gia' faceva `Mail.Read`.
 
-Finché non c'è, il pulsante "Invia prova" risponde `403 Access denied`.
-Tutto il resto è pronto e provato.
-
-### Cosa controllare, nell'ordine
-
-Portale: **portal.azure.com → Microsoft Entra ID → Registrazioni app →
-saba-form → Autorizzazioni API**. Collegamento diretto:
-
-```
-https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationMenuBlade/~/CallAnAPI/appId/548a2cbb-d4ab-4caa-80e6-056841cf48d5
-```
-
-1. **La riga `Mail.Send` che tipo ha?** Deve dire **Applicazione**.
-   Se dice **Delegato** è inutile: nei token applicativi i permessi delegati
-   non compaiono. Va rimosso e rifatto scegliendo "Autorizzazioni
-   applicazione", che il portale *non* preseleziona.
-2. **Lo stato è verde?** Serve "Concesso per…". Il triangolo arancione
-   significa che manca il pulsante **Concedi consenso amministratore**.
-3. **È l'app giusta?** In Panoramica, ID applicazione (client) deve essere
-   `548a2cbb-d4ab-4caa-80e6-056841cf48d5`. Tenant
-   `3ccb04bd-31a9-4f86-9125-2ff8ea92a66f`.
-
-### Come verificare senza spedire niente
+Il token adesso dice `['Mail.Read', 'Mail.Send']`. Si ricontrolla cosi':
 
 ```bash
-/c/Users/stefa/PythonProjects/venv/Scripts/python.exe - <<'EOF'
+/c/Users/stefa/PythonProjects/venv/Scripts/python.exe - <<'PY'
 import os, json, base64
 for l in open('.env', encoding='utf-8'):
     if '=' in l and not l.startswith('#'):
@@ -43,21 +25,37 @@ for l in open('.env', encoding='utf-8'):
 import graph_mailer
 t = graph_mailer._token(); p = t.split('.')[1]; p += '=' * (-len(p) % 4)
 print(sorted(json.loads(base64.urlsafe_b64decode(p)).get('roles', [])))
-EOF
+PY
 ```
 
-Deve stampare `['Mail.Read', 'Mail.Send']`. Dopo il consenso serve un
-**redeploy su Railway**: il token in circolo dura fino a un'ora.
+**`evento.eps@sabae20.it` e' una casella vera**, non un alias: Graph ne legge le
+cartelle (200). Il dubbio su `MailboxNotEnabledForRESTAPI` e' chiuso.
 
-### Poi
+### Cosa resta da fare per spedire
 
-Apri le lettere → **Invia prova**. Arrivano due mail su
-`evento.eps@sabae20.it`, una di chi vola e una di chi arriva in pullman.
+1. **Redeploy su Railway** — l'istanza in produzione ha ancora in mano il token
+   vecchio, senza `Mail.Send`. Dura fino a un'ora.
+2. **Invia prova** dalle lettere: due mail su `evento.eps@sabae20.it`, una di chi
+   vola e una di chi arriva in pullman. Mai fatta finora.
+3. L'invio vero resta spento dall'interruttore nell'ingranaggio.
 
-Dubbio ancora aperto: **`evento.eps@sabae20.it` è una casella vera o un
-alias?** Se è un alias, `sendMail` risponde `404
-MailboxNotEnabledForRESTAPI`. In quel caso si cambia il mittente
-dall'ingranaggio, senza toccare il codice.
+### Debito rimasto su Azure
+
+`saba-rooming` si presenta a Microsoft con l'identita' di **`saba-form`**:
+`MS_CLIENT_ID` nel `.env` e' l'app registration di quell'altro progetto, e
+`MS_CERT_PATH` punta ancora al certificato di un vecchio PC
+(`C:\Users\ACER\PycharmProjects\saba-form\...`), che infatti non esiste.
+
+Conseguenze: i due progetti condividono un segreto solo, `saba-form` eredita il
+permesso di spedire da qualsiasi casella del tenant, e nei log di Exchange le
+lettere risultano spedite da "saba-form".
+
+Deciso il 7 settembre di **rimandare**: prima le lettere, poi una registrazione
+dedicata `saba-rooming` con il solo `Mail.Send`. Si cambiano due variabili nel
+`.env` e su Railway, il codice non si tocca.
+
+Se si vuole restringere l'invio alla sola casella dell'evento senza separare le
+identita', si fa lato Exchange con una *Application Access Policy*.
 
 ---
 
