@@ -2908,12 +2908,38 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
     # sparire la riga corrispondente: meglio un buco che un orario inventato.
     PULLMAN_CATANIA = {
         'indirizzo': '',      # via e civico della sede di Catania
-        'ritrovo': '',        # es. '06:30'
-        'partenza': '',       # es. '06:45'
-        'arrivo': '',         # arrivo previsto al resort, es. '10:00'
-        'riconoscimento': '',  # es. 'un cartello con il logo EPS'
+        'ritrovo': '09:00',
+        'partenza': '',       # es. '09:15'
+        'arrivo': '',         # arrivo previsto al resort, es. '12:00'
         'durata': 'circa 3 ore',
     }
+
+    # A Linate c'e' il banco con le nostre assistenti; negli altri aeroporti
+    # non c'e' nessuno ad aspettare, quindi la frase non va scritta.
+    ASSISTENZA_LINATE = (
+        ', dove troverai un nostro assistente ad accoglierti e a fornirti '
+        "tutte le indicazioni necessarie per l'imbarco. Il giorno prima della "
+        'partenza ti comunicheremo i riferimenti di Alessia e Monica e il '
+        'numero di telefono da contattare in caso di necessità.'
+    )
+
+    # Il punto d'incontro esatto a Catania e la partenza dal resort del 10 non
+    # sono ancora decisi: due frasi volute dal cliente, che promettono i
+    # dettagli invece di tacere o di stampare un orario che verra' smentito.
+    ATTESA_RITROVO_CATANIA = (
+        'Ti forniremo a breve i dettagli precisi relativi al luogo di incontro.'
+    )
+    ATTESA_PARTENZA_HOTEL = (
+        'Ti forniremo a breve le indicazioni precise relative alla partenza '
+        "dall'hotel. Stiamo infatti valutando alcune possibilità per rendere "
+        'piacevole anche il pomeriggio del rientro, approfittando della '
+        'splendida zona che ci ospiterà.'
+    )
+
+    # Chi parte dopo quest'ora lascia il resort nel pomeriggio, e il pomeriggio
+    # del 10 e' ancora in definizione: niente ritrovo in lobby ne' orario del
+    # pullman, solo la promessa dei dettagli.
+    RIENTRO_SENZA_ORARI_DOPO = '15:30'
 
     # Quello che il form scrive quando l'ospite sceglie "altro" senza
     # specificare: non e' un'esigenza alimentare, non va stampata.
@@ -3007,6 +3033,8 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
             'data': _lt_data(data),
             'da': AEROPORTI.get(orig, orig),
             'a': AEROPORTI.get(dest, dest),
+            'da_iata': orig,
+            'a_iata': dest,
             'partenza': partenza,
             'arrivo': arrivo,
             'pnr': pg.pnr_code,
@@ -3028,6 +3056,12 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
         """True se l'ospite non vola: sede da cui si arriva in auto o pullman."""
         return (g.sede_lavoro or '').strip().upper() in SEDI_SENZA_VOLO
 
+    def _lt_rientro_tardi(partenza):
+        """True se il volo parte tanto tardi che la partenza dal resort cade nel
+        pomeriggio, ancora da programmare. Confronto fra 'HH:MM' con lo zero
+        davanti: l'ordine alfabetico coincide con quello cronologico."""
+        return (partenza or '') > RIENTRO_SENZA_ORARI_DOPO
+
     def _lt_warnings(g):
         """Dati mancanti da sistemare prima di inviare la lettera."""
         w = []
@@ -3036,9 +3070,10 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
         if not any(getattr(g, f'presenza_{d}') for d in GIORNI_EVENTO):
             w.append('nessuna presenza indicata')
         if _lt_via_terra(g):
-            if not all(PULLMAN_CATANIA[k] for k in
-                       ('indirizzo', 'ritrovo', 'partenza', 'arrivo')):
-                w.append('orari del pullman da Catania da definire')
+            # Basta l'ora di ritrovo: l'indirizzo della sede lo conoscono gia',
+            # e l'arrivo al resort si ricava dalla durata del tragitto.
+            if not PULLMAN_CATANIA['ritrovo']:
+                w.append('orario di ritrovo del pullman da Catania da definire')
         elif not g.pnr_group:
             if not (g.volo_arrivo or '').strip():
                 w.append('volo andata mancante')
@@ -3122,21 +3157,26 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
             ('Orario di partenza del pullman',  _lt_esc(c['partenza'])),
             (f'Arrivo previsto al {RESORT[0]}', _lt_esc(c['arrivo'])),
         ])
-        accoglienza = ("All'arrivo al punto di ritrovo di Catania troverai ad "
-                       "attenderti un'assistente dedicata")
-        accoglienza += (', facilmente riconoscibile grazie a '
-                        + _lt_esc(c['riconoscimento']) + '.'
-                        if c['riconoscimento'] else '.')
-        corpo += _lt_p(accoglienza)
-        corpo += _lt_p('Ti chiediamo di presentarti al punto di ritrovo almeno '
-                       '<b>10 minuti prima</b> della partenza.')
-        corpo += _lt_p("L'assistente ti accoglierà e ti mostrerà il pullman privato "
-                       'riservato, che effettuerà il trasferimento fino al '
-                       + _lt_esc(RESORT[0]) + '.')
+        # Voluta dal cliente: resta nella lettera anche se un domani qualcuno
+        # riempie l'indirizzo della sede, che comunque gli ospiti conoscono.
+        corpo += _lt_p(ATTESA_RITROVO_CATANIA)
+        if c['ritrovo'] and not c['partenza']:
+            # Senza l'ora di partenza in tabella, il margine va detto a parole:
+            # 'puntuale alle 09:00' da solo non dice quanto si puo' sforare.
+            corpo += _lt_p('Ti chiediamo di presentarti al punto di ritrovo '
+                           'puntuale alle ore <b>' + _lt_esc(c['ritrovo']) +
+                           '</b>: il pullman partirà pochi minuti dopo.')
+        elif c['ritrovo']:
+            corpo += _lt_p('Ti chiediamo di presentarti al punto di ritrovo '
+                           'puntuale alle ore <b>' + _lt_esc(c['ritrovo']) + '</b>.')
+        else:
+            corpo += _lt_p('Ti chiediamo di presentarti al punto di ritrovo almeno '
+                           '<b>10 minuti prima</b> della partenza.')
+        corpo += _lt_p('Il pullman privato riservato effettuerà il trasferimento '
+                       'fino al ' + _lt_esc(RESORT[0]) + '.')
         if c['durata']:
             corpo += _lt_p('La durata indicativa del tragitto dal punto di ritrovo '
-                           'al resort è di ' + _lt_esc(c['durata']) +
-                           '. Durante il trasferimento è prevista <b>1 sosta</b>.')
+                           'al resort è di ' + _lt_esc(c['durata']) + '.')
         corpo += _lt_bagaglio()
         return _lt_sezione('Partenza in pullman da Catania', corpo)
 
@@ -3163,8 +3203,10 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
             if t['compagnia']:
                 dove += ' voli ' + _lt_esc(t['compagnia'])
             aerop = f" dell'aeroporto di {_lt_esc(t['da'])}" if t['da'] else ''
-            corpo += _lt_p(f'Il ritrovo è previsto alle ore <b>{ritrovo}</b>, '
-                           f"presso l'<b>{dove}</b>{aerop}.")
+            frase = (f'Il ritrovo è previsto alle ore <b>{ritrovo}</b>, '
+                     f"presso l'<b>{dove}</b>{aerop}")
+            frase += (ASSISTENZA_LINATE if t.get('da_iata') == 'LIN' else '.')
+            corpo += _lt_p(frase)
         corpo += _lt_bagaglio()
         corpo += _lt_p('Ti raccomandiamo la massima puntualità, per consentire lo '
                        'svolgimento delle operazioni di check-in e imbarco con la '
@@ -3178,8 +3220,9 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
         if 'libero' in t:
             return _lt_sezione('Il tuo viaggio di rientro',
                                _lt_righe([('Volo', _lt_esc(t['libero']))]))
-        lobby = _lt_ora_meno(t['partenza'], RITROVO_LOBBY_MIN)
-        pullman = _lt_ora_meno(t['partenza'], PARTENZA_PULLMAN_MIN)
+        tardi = _lt_rientro_tardi(t['partenza'])
+        lobby = '' if tardi else _lt_ora_meno(t['partenza'], RITROVO_LOBBY_MIN)
+        pullman = '' if tardi else _lt_ora_meno(t['partenza'], PARTENZA_PULLMAN_MIN)
         etichetta_bus = (f"Partenza del pullman per l'aeroporto di {t['da']}"
                          if t['da'] else "Partenza del pullman per l'aeroporto")
         corpo = _lt_righe([
@@ -3193,10 +3236,20 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
             (f'Orario di arrivo a {t["a"]}' if t['a'] else 'Orario di arrivo',
              _lt_esc(t['arrivo'])),
         ])
-        corpo += _lt_p('Ti chiediamo di presentarti nella lobby del resort con il '
-                       'bagaglio pronto almeno <b>5 minuti prima</b> della partenza '
-                       'del pullman.')
+        if tardi:
+            corpo += _lt_p(ATTESA_PARTENZA_HOTEL)
+        else:
+            corpo += _lt_p('Ti chiediamo di presentarti nella lobby del resort con il '
+                           'bagaglio pronto almeno <b>5 minuti prima</b> della partenza '
+                           'del pullman.')
         return _lt_sezione('Il tuo viaggio di rientro', corpo)
+
+    def _lt_sez_rientro_pullman(g):
+        """Chi torna a Catania via terra: la partenza dal resort non e' ancora
+        fissata, quindi la sezione contiene solo la promessa dei dettagli.
+        Senza di lei la lettera non direbbe nulla sul rientro."""
+        return _lt_sezione('Il tuo rientro in pullman a Catania',
+                           _lt_p(ATTESA_PARTENZA_HOTEL))
 
     def _lt_html(g, intro=None):
         """Lettera di convocazione in HTML email-safe: tabelle e stili inline,
@@ -3246,7 +3299,8 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
             contatti += '<br>' + _lt_esc(EVENTO['contatto_email'])
 
         # Chi parte da Catania sale sul pullman, gli altri volano.
-        viaggio = (_lt_sez_pullman(g) if _lt_via_terra(g)
+        viaggio = (_lt_sez_pullman(g) + _lt_sez_rientro_pullman(g)
+                   if _lt_via_terra(g)
                    else _lt_sez_andata(g) + _lt_sez_ritorno(g))
 
         sezioni = (
