@@ -2923,12 +2923,8 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
         'numero di telefono da contattare in caso di necessità.'
     )
 
-    # Il punto d'incontro esatto a Catania e la partenza dal resort del 10 non
-    # sono ancora decisi: due frasi volute dal cliente, che promettono i
-    # dettagli invece di tacere o di stampare un orario che verra' smentito.
-    ATTESA_RITROVO_CATANIA = (
-        'Ti forniremo a breve i dettagli precisi relativi al luogo di incontro.'
-    )
+    # La partenza dal resort del 10 non e' ancora decisa: promettere i dettagli
+    # e' meglio che tacere o che stampare un orario che verra' smentito.
     ATTESA_PARTENZA_HOTEL = (
         'Ti forniremo a breve le indicazioni precise relative alla partenza '
         "dall'hotel. Stiamo infatti valutando alcune possibilità per rendere "
@@ -3157,9 +3153,6 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
             ('Orario di partenza del pullman',  _lt_esc(c['partenza'])),
             (f'Arrivo previsto al {RESORT[0]}', _lt_esc(c['arrivo'])),
         ])
-        # Voluta dal cliente: resta nella lettera anche se un domani qualcuno
-        # riempie l'indirizzo della sede, che comunque gli ospiti conoscono.
-        corpo += _lt_p(ATTESA_RITROVO_CATANIA)
         if c['ritrovo'] and not c['partenza']:
             # Senza l'ora di partenza in tabella, il margine va detto a parole:
             # 'puntuale alle 09:00' da solo non dice quanto si puo' sforare.
@@ -3195,8 +3188,9 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
              _lt_esc(t['partenza'])),
             (f'Orario di arrivo a {t["a"]}' if t['a'] else 'Orario di arrivo',
              _lt_esc(t['arrivo'])),
-            ('Codice prenotazione (PNR)', _lt_esc(t['pnr'])),
         ])
+        # Niente PNR: al banco il check-in lo facciamo noi, e il codice non
+        # serve a chi la carta d'imbarco ce l'ha gia'.
         ritrovo = _lt_ora_meno(t['partenza'], RITROVO_AEROPORTO_MIN)
         if ritrovo:
             dove = 'area check-in'
