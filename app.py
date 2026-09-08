@@ -2893,10 +2893,12 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
     # non le nomina.
     BAGAGLIO_MISURE = ''
 
-    # Minuti di anticipo, calcolati sull'orario di partenza del volo.
+    # Minuti di anticipo dei ritrovi, sul volo salvo dove detto altrimenti.
     RITROVO_AEROPORTO_MIN = 90     # ritrovo in aeroporto all'andata
-    RITROVO_LOBBY_MIN     = 180    # ritrovo nella lobby al rientro
     PARTENZA_PULLMAN_MIN  = 180    # partenza del pullman per l'aeroporto
+    # Il ritrovo in lobby si conta dal pullman, non dal volo: cosi' l'ora in
+    # tabella e i minuti scritti nella frase non possono divergere.
+    ANTICIPO_LOBBY_MIN    = 5      # quanto prima del pullman si sta in lobby
 
     LETTERA_INTRO = (
         'siamo felici di condividere con te tutti i dettagli della tua '
@@ -3215,8 +3217,8 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
             return _lt_sezione('Il tuo viaggio di rientro',
                                _lt_righe([('Volo', _lt_esc(t['libero']))]))
         tardi = _lt_rientro_tardi(t['partenza'])
-        lobby = '' if tardi else _lt_ora_meno(t['partenza'], RITROVO_LOBBY_MIN)
         pullman = '' if tardi else _lt_ora_meno(t['partenza'], PARTENZA_PULLMAN_MIN)
+        lobby = _lt_ora_meno(pullman, ANTICIPO_LOBBY_MIN)
         etichetta_bus = (f"Partenza del pullman per l'aeroporto di {t['da']}"
                          if t['da'] else "Partenza del pullman per l'aeroporto")
         corpo = _lt_righe([
@@ -3234,8 +3236,8 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
             corpo += _lt_p(ATTESA_PARTENZA_HOTEL)
         else:
             corpo += _lt_p('Ti chiediamo di presentarti nella lobby del resort con il '
-                           'bagaglio pronto almeno <b>5 minuti prima</b> della partenza '
-                           'del pullman.')
+                           f'bagaglio pronto almeno <b>{ANTICIPO_LOBBY_MIN} minuti '
+                           'prima</b> della partenza del pullman.')
         return _lt_sezione('Il tuo viaggio di rientro', corpo)
 
     def _lt_sez_rientro_pullman(g):
