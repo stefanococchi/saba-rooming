@@ -24,20 +24,17 @@
   --radius: 16px;
   --radius-sm: 12px;
   --shadow-sm: 0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.06);
-  --shadow-md: 0 4px 12px rgba(0,0,0,.1);
 }
 * { box-sizing: border-box; }
 body {
   margin: 0; background: var(--surface); color: var(--on-surface);
   font-family: 'Inter', system-ui, -apple-system, sans-serif; font-size: 14px;
 }
-.wrap { max-width: 1180px; margin: 0 auto; padding: 24px 20px 64px; }
-header.top {
-  display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 6px;
-}
+.wrap { max-width: 1240px; margin: 0 auto; padding: 24px 20px 64px; }
+header.top { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 6px; }
 header.top h1 { font-size: 24px; font-weight: 700; margin: 0; }
 .sub { color: var(--on-surface-variant); margin: 0 0 24px; font-size: 13px; }
-a.back {
+a.back, a.plain {
   display: inline-flex; align-items: center; gap: 6px; text-decoration: none;
   color: var(--primary-dark); font-weight: 600; font-size: 13px;
 }
@@ -54,15 +51,14 @@ a.back {
 .card > h2 .note { font-weight: 400; color: var(--on-surface-variant); font-size: 12.5px; }
 .pad { padding: 16px 20px; }
 table { width: 100%; border-collapse: collapse; font-size: 13px; }
-th, td { padding: 9px 12px; text-align: left; border-bottom: 1px solid var(--outline-variant); }
+th, td { padding: 8px 11px; text-align: left; border-bottom: 1px solid var(--outline-variant);
+         vertical-align: top; }
 th { font-weight: 600; color: var(--on-surface-variant); font-size: 12px;
      text-transform: uppercase; letter-spacing: .3px; background: #fbf7f2; }
 td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 tr:last-child td { border-bottom: none; }
-.chip {
-  display: inline-block; padding: 2px 9px; border-radius: 999px;
-  font-size: 11.5px; font-weight: 600; white-space: nowrap;
-}
+.chip { display: inline-block; padding: 2px 9px; border-radius: 999px;
+        font-size: 11.5px; font-weight: 600; white-space: nowrap; }
 .chip.ok   { background: #e6f4ea; color: var(--success); }
 .chip.warn { background: #fff3e0; color: var(--warn); }
 .chip.err  { background: #fdecea; color: var(--error); }
@@ -70,36 +66,65 @@ tr:last-child td { border-bottom: none; }
 .chip.mute { background: #f0ebe5; color: var(--on-surface-variant); }
 .hotel-row {
   display: grid; grid-template-columns: 78px 1fr auto; gap: 14px; align-items: center;
-  padding: 14px 20px; border-bottom: 1px solid var(--outline-variant); cursor: default;
+  padding: 14px 20px; border-bottom: 1px solid var(--outline-variant);
 }
-.hotel-row:last-child { border-bottom: none; }
-.hotel-row .night {
-  font-weight: 700; color: var(--primary-dark); font-size: 13px;
-}
+.hotel-row:last-of-type { border-bottom: none; }
+.hotel-row .night { font-weight: 700; color: var(--primary-dark); font-size: 13px; }
 .hotel-row .night small { display: block; font-weight: 400; color: var(--on-surface-variant); }
 .hotel-row .name { font-weight: 600; }
 .hotel-row .meta { color: var(--on-surface-variant); font-size: 12.5px; margin-top: 2px; }
-.hotel-row .right { text-align: right; display: flex; gap: 8px; align-items: center; }
+.hotel-row .right { text-align: right; display: flex; gap: 8px; align-items: center;
+                    flex-wrap: wrap; justify-content: flex-end; }
 button.link {
   background: none; border: none; color: var(--primary-dark); font-weight: 600;
-  cursor: pointer; font-size: 13px; font-family: inherit; padding: 4px 6px;
+  cursor: pointer; font-size: 13px; font-family: inherit; padding: 4px 8px;
   border-radius: 6px;
 }
 button.link:hover { background: var(--surface-variant); }
-.detail { padding: 0 20px 20px; background: #fdfaf7; border-bottom: 1px solid var(--outline-variant); }
+button.link:disabled { color: var(--on-surface-variant); cursor: default; background: none; }
+button.ghost {
+  background: #fff; border: 1px solid var(--outline); border-radius: 8px;
+  padding: 4px 10px; font-size: 12px; font-family: inherit; cursor: pointer;
+  color: var(--on-surface-variant);
+}
+button.ghost:hover { border-color: var(--primary); color: var(--primary-dark); }
+.detail { padding: 0 20px 22px; background: #fdfaf7;
+          border-bottom: 1px solid var(--outline-variant); }
 .detail h3 { font-size: 13px; text-transform: uppercase; letter-spacing: .4px;
-             color: var(--on-surface-variant); margin: 20px 0 8px; }
+             color: var(--on-surface-variant); margin: 22px 0 8px;
+             display: flex; align-items: center; gap: 10px; }
 .kpis { display: flex; gap: 10px; flex-wrap: wrap; margin: 16px 0 4px; }
-.kpi { background: #fff; border: 1px solid var(--outline-variant); border-radius: var(--radius-sm);
-       padding: 10px 14px; min-width: 140px; }
+.kpi { background: #fff; border: 1px solid var(--outline-variant);
+       border-radius: var(--radius-sm); padding: 10px 14px; min-width: 142px; }
 .kpi .lbl { font-size: 11.5px; color: var(--on-surface-variant); }
 .kpi .val { font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; margin-top: 2px; }
 .kpi .val.neg { color: var(--error); }
 .kpi .val.pos { color: var(--success); }
-.empty { color: var(--on-surface-variant); font-style: italic; padding: 14px 0; }
+.empty { color: var(--on-surface-variant); font-style: italic; padding: 12px 0; }
 .rule { color: var(--on-surface-variant); font-size: 12px; }
-.legend { font-size: 12px; color: var(--on-surface-variant); margin-top: 10px; line-height: 1.6; }
+.legend { font-size: 12px; color: var(--on-surface-variant); line-height: 1.6; }
 code { background: #f2ece6; padding: 1px 5px; border-radius: 4px; font-size: 12px; }
+
+/* campi modificabili */
+select.ed, input.ed {
+  font-family: inherit; font-size: 12.5px; color: inherit;
+  border: 1px solid transparent; background: transparent;
+  border-radius: 6px; padding: 3px 6px; width: 100%; min-width: 70px;
+}
+select.ed { border-color: var(--outline-variant); background: #fff; }
+input.ed:hover, select.ed:hover { border-color: var(--outline); }
+input.ed:focus, select.ed:focus {
+  outline: none; border-color: var(--primary); background: #fff;
+}
+input.ed.num { text-align: right; font-variant-numeric: tabular-nums; }
+.salvato { color: var(--success); font-size: 11.5px; font-weight: 600; }
+.errore { color: var(--error); font-size: 12px; font-weight: 600; }
+#stato-globale {
+  position: fixed; right: 18px; bottom: 18px; background: #fff;
+  border: 1px solid var(--outline); border-radius: 10px; padding: 9px 14px;
+  box-shadow: 0 4px 14px rgba(0,0,0,.12); font-size: 13px; display: none;
+  z-index: 50; max-width: 380px;
+}
 </style>
 </head>
 <body>
@@ -113,23 +138,18 @@ code { background: #f2ece6; padding: 1px 5px; border-radius: 4px; font-size: 12p
     Liqui Moly Nexus Auto Tour 2026 — gruppo CARZILLA. Confronto fra le fatture
     ricevute dagli alberghi e l'ACTUAL: il rooming effettivamente mandato, e per
     i pasti i coperti attesi.
-    <a href="/api/tour/consuntivi" target="_blank">JSON</a>
+    <a class="plain" href="/api/tour/consuntivi" target="_blank">JSON</a>
   </p>
 
   <!-- ── Pasti ────────────────────────────────────────────────────── -->
   <div class="card">
-    <h2>Pasti — coperti attesi
-      <span class="note">ricalcolati adesso dal rooming</span>
-    </h2>
+    <h2>Pasti — coperti attesi <span class="note">ricalcolati adesso dal rooming</span></h2>
     <table>
       <thead>
         <tr>
-          <th>Data</th>
-          <th>Riferimento ACTUAL</th>
-          <th class="num">Cena netti</th>
-          <th class="num">Cena lordi</th>
-          <th class="num">Pranzo netti</th>
-          <th class="num">Pranzo lordi</th>
+          <th>Data</th><th>Riferimento ACTUAL</th>
+          <th class="num">Cena netti</th><th class="num">Cena lordi</th>
+          <th class="num">Pranzo netti</th><th class="num">Pranzo lordi</th>
         </tr>
       </thead>
       <tbody>
@@ -166,21 +186,20 @@ code { background: #f2ece6; padding: 1px 5px; border-radius: 4px; font-size: 12p
         <div class="meta">ACTUAL: {{ h.camere_actual }} camere, {{ h.ospiti_actual }} ospiti</div>
       </div>
       <div class="right">
-        {% if h.fatture %}
-          {% for f in h.fatture %}
-            {% set s = f.sintesi %}
-            {% if s.n_punti_aperti %}
-              <span class="chip warn">{{ s.n_punti_aperti }} da chiarire</span>
-            {% elif s.n_anomalie %}
-              <span class="chip info">{{ s.n_anomalie }} anomalie</span>
-            {% else %}
-              <span class="chip ok">quadra</span>
-            {% endif %}
-            <button class="link" onclick="apri({{ f.id }}, this)">Fattura {{ f.numero }}</button>
-          {% endfor %}
+        {% for f in h.fatture %}
+          {% set s = f.sintesi %}
+          {% if s.n_punti_aperti %}
+            <span class="chip warn">{{ s.n_punti_aperti }} da chiarire</span>
+          {% elif s.n_anomalie %}
+            <span class="chip info">{{ s.n_anomalie }} anomalie</span>
+          {% else %}
+            <span class="chip ok">quadra</span>
+          {% endif %}
+          <button class="link" onclick="apri({{ f.id }}, this)">Fattura {{ f.numero }}</button>
         {% else %}
           <span class="chip mute">nessuna fattura</span>
-        {% endif %}
+        {% endfor %}
+        <button class="ghost" onclick="scegliFile({{ h.hotel_id }})">+ carica fattura</button>
       </div>
     </div>
     <div class="detail" id="det-{{ h.hotel_id }}" style="display:none"></div>
@@ -189,16 +208,14 @@ code { background: #f2ece6; padding: 1px 5px; border-radius: 4px; font-size: 12p
 
 </div>
 
-<script>
-const EUR = n => (n === null || n === undefined)
-  ? '—'
-  : n.toLocaleString('it-IT', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' €';
+<input type="file" id="fileFattura" accept="application/pdf,.pdf" style="display:none">
+<div id="stato-globale"></div>
 
-const CHIP = {
-  'OK': 'ok', 'OK_GRATUITA': 'ok', 'OK_2ND_OCCUPANTE': 'ok',
-  'NON_FATTURATA': 'err', 'NON_NEL_ROOMING': 'err',
-  'ABBINAMENTO_IPOTETICO': 'warn',
-};
+<script>
+const STATI_CAMERA = ['OK', 'OK_2ND_OCCUPANTE', 'OK_GRATUITA', 'NON_FATTURATA',
+                      'NON_NEL_ROOMING', 'ABBINAMENTO_IPOTETICO'];
+const STATI_PASTO = ['DA_VERIFICARE', 'OK', 'CONTESTATO'];
+
 const ETICHETTA = {
   'OK': 'OK',
   'OK_GRATUITA': 'OK · gratuita',
@@ -206,7 +223,60 @@ const ETICHETTA = {
   'NON_FATTURATA': 'nel rooming, non fatturata',
   'NON_NEL_ROOMING': 'fatturata, non nel rooming',
   'ABBINAMENTO_IPOTETICO': 'abbinamento ipotetico',
+  'DA_VERIFICARE': 'da verificare',
+  'CONTESTATO': 'contestato',
 };
+const CHIP = {
+  'OK': 'ok', 'OK_GRATUITA': 'ok', 'OK_2ND_OCCUPANTE': 'ok',
+  'NON_FATTURATA': 'err', 'NON_NEL_ROOMING': 'err',
+  'ABBINAMENTO_IPOTETICO': 'warn', 'DA_VERIFICARE': 'warn', 'CONTESTATO': 'err',
+};
+
+const esc = s => (s === null || s === undefined) ? '' : String(s)
+  .replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
+  .replaceAll('"', '&quot;').replaceAll("'", '&#39;');
+const EUR = n => (n === null || n === undefined)
+  ? '—'
+  : n.toLocaleString('it-IT', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' €';
+
+function avvisa(testo, errore) {
+  const box = document.getElementById('stato-globale');
+  box.innerHTML = errore ? `<span class="errore">${esc(testo)}</span>` : esc(testo);
+  box.style.display = 'block';
+  clearTimeout(box._t);
+  box._t = setTimeout(() => { box.style.display = 'none'; }, errore ? 9000 : 2500);
+}
+
+/* ── caricamento di una fattura ──────────────────────────────────── */
+
+function scegliFile(hotelId) {
+  const inp = document.getElementById('fileFattura');
+  inp.value = '';
+  inp.onchange = () => inp.files[0] && caricaFattura(hotelId, inp.files[0]);
+  inp.click();
+}
+
+async function caricaFattura(hotelId, file) {
+  avvisa(`Leggo ${file.name}…`);
+  const fd = new FormData();
+  fd.append('hotel_id', hotelId);
+  fd.append('file', file);
+  let j;
+  try {
+    const r = await fetch('/api/tour/consuntivo/carica', {method: 'POST', body: fd});
+    j = await r.json();
+  } catch (e) {
+    avvisa('Caricamento non riuscito: ' + e, true);
+    return;
+  }
+  if (!j.ok) { avvisa(j.error || 'Caricamento non riuscito', true); return; }
+  avvisa(`Fattura ${j.numero}: ${j.voci_lette} voci lette, `
+         + `${j.camere_confrontate} camere confrontate, `
+         + `${j.punti_aperti} punti da chiarire. Ricarico…`);
+  setTimeout(() => location.reload(), 1400);
+}
+
+/* ── apertura del dettaglio ──────────────────────────────────────── */
 
 async function apri(invId, btn) {
   const box = btn.closest('.hotel-row').nextElementSibling;
@@ -216,11 +286,99 @@ async function apri(invId, btn) {
   box.style.display = 'block';
   box.dataset.open = String(invId);
   box.innerHTML = '<p class="empty">Carico…</p>';
+  await ridisegna(invId, box);
+}
+
+async function ridisegna(invId, box) {
   const r = await fetch(`/api/tour/consuntivo/${invId}`);
   const j = await r.json();
-  if (!j.ok) { box.innerHTML = `<p class="empty">Errore: ${j.error || '?'}</p>`; return; }
+  if (!j.ok) { box.innerHTML = `<p class="empty">Errore: ${esc(j.error)}</p>`; return; }
   box.innerHTML = rendi(j.fattura);
+  box._invId = invId;
 }
+
+function boxDi(el) { return el.closest('.detail'); }
+
+/* ── salvataggio dei campi modificabili ──────────────────────────── */
+
+async function salva(el) {
+  const tipo = el.dataset.t, id = el.dataset.id, campo = el.dataset.k;
+  let valore = el.value;
+  if (el.dataset.tipo === 'numero') valore = valore === '' ? null : parseFloat(valore);
+  const url = {
+    recon: `/api/tour/recon-row/${id}`,
+    fb: `/api/tour/fb-recon/${id}`,
+    issue: `/api/tour/consuntivo-issue/${id}`,
+  }[tipo];
+  try {
+    const r = await fetch(url, {
+      method: 'PUT',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({[campo]: valore}),
+    });
+    const j = await r.json();
+    if (!j.ok) { avvisa(j.error || 'Salvataggio non riuscito', true); return; }
+  } catch (e) {
+    avvisa('Salvataggio non riuscito: ' + e, true);
+    return;
+  }
+  avvisa('Salvato');
+  // gli stati e gli importi cambiano il saldo: si rilegge tutto
+  if (campo === 'stato' || campo === 'effetto_euro' || campo === 'importo') {
+    const box = boxDi(el);
+    if (box && box._invId) ridisegna(box._invId, box);
+  }
+}
+
+async function riallinea(fid, el) {
+  const r = await fetch(`/api/tour/fb-recon/${fid}/riallinea`, {method: 'POST'});
+  const j = await r.json();
+  if (!j.ok) { avvisa(j.error || 'Riallineamento non riuscito', true); return; }
+  avvisa(`Coperti attesi: da ${j.prima} a ${j.adesso}`);
+  const box = boxDi(el);
+  if (box && box._invId) ridisegna(box._invId, box);
+}
+
+async function chiudiPunto(iid, chiudi, el) {
+  const r = await fetch(`/api/tour/consuntivo-issue/${iid}`, {
+    method: 'PUT', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({stato: chiudi ? 'chiuso' : 'aperto'}),
+  });
+  const j = await r.json();
+  if (!j.ok) { avvisa(j.error || 'Non riuscito', true); return; }
+  const box = boxDi(el);
+  if (box && box._invId) ridisegna(box._invId, box);
+}
+
+async function nuovoPunto(invId, el) {
+  const punto = prompt('Che cosa chiedi all\'albergo?');
+  if (!punto || !punto.trim()) return;
+  const r = await fetch('/api/tour/consuntivo-issue', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({invoice_id: invId, punto: punto.trim()}),
+  });
+  const j = await r.json();
+  if (!j.ok) { avvisa(j.error || 'Non riuscito', true); return; }
+  const box = boxDi(el);
+  if (box && box._invId) ridisegna(box._invId, box);
+}
+
+/* ── costruzione del dettaglio ───────────────────────────────────── */
+
+const selStato = (tipo, id, valore, opzioni) =>
+  `<select class="ed" data-t="${tipo}" data-id="${id}" data-k="stato" onchange="salva(this)">`
+  + opzioni.map(o => `<option value="${o}"${o === valore ? ' selected' : ''}>`
+                     + esc(ETICHETTA[o] || o) + '</option>').join('')
+  + '</select>';
+
+const inpTesto = (tipo, id, campo, valore, segnaposto) =>
+  `<input class="ed" data-t="${tipo}" data-id="${id}" data-k="${campo}" `
+  + `value="${esc(valore)}" placeholder="${esc(segnaposto || '')}" onchange="salva(this)">`;
+
+const inpNum = (tipo, id, campo, valore) =>
+  `<input class="ed num" type="number" step="0.01" data-tipo="numero" `
+  + `data-t="${tipo}" data-id="${id}" data-k="${campo}" `
+  + `value="${valore === null || valore === undefined ? '' : valore}" onchange="salva(this)">`;
 
 function rendi(f) {
   const s = f.sintesi;
@@ -234,28 +392,11 @@ function rendi(f) {
     <div class="kpi"><div class="lbl">Totale documento</div><div class="val">${EUR(s.totale_documento)}</div></div>
     <div class="kpi"><div class="lbl">Netto a pagare</div><div class="val">${EUR(s.netto_a_pagare)}</div></div>
   </div>`;
-  h += `<p class="rule">Fattura ${f.numero}${f.data ? ' del ' + f.data : ''} — ${f.fornitore || ''}
-        ${f.stato_pagamento ? '· <span class="chip mute">' + f.stato_pagamento + '</span>' : ''}
-        ${f.ha_pdf ? `· <a href="/api/tour/consuntivo/${f.id}/pdf" target="_blank">PDF</a>` : ''}
-        · <a href="/api/tour/consuntivo/${f.id}" target="_blank">JSON</a></p>`;
-
-  // Anomalie
-  const anomalie = f.camere.filter(c => c.stato !== 'OK');
-  h += `<h3>Anomalie camere (${anomalie.length})</h3>`;
-  if (!anomalie.length) h += `<p class="empty">Nessuna: ogni camera del rooming ha la sua riga in fattura.</p>`;
-  else {
-    h += `<table><thead><tr><th>Stato</th><th>Camera</th><th>Dettaglio</th>
-          <th class="num">Effetto</th><th>Nota</th></tr></thead><tbody>`;
-    for (const c of anomalie) {
-      h += `<tr>
-        <td><span class="chip ${CHIP[c.stato] || 'mute'}">${ETICHETTA[c.stato] || c.stato}</span></td>
-        <td>${c.numero_camera ? '#' + c.numero_camera : '—'} ${c.categoria || ''}</td>
-        <td>${c.ospiti_rooming || c.nome_in_fattura || ''}</td>
-        <td class="num ${c.effetto_euro > 0 ? 'neg' : ''}">${EUR(c.effetto_euro)}</td>
-        <td class="rule">${c.note || ''}</td></tr>`;
-    }
-    h += `</tbody></table>`;
-  }
+  h += `<p class="rule">Fattura ${esc(f.numero)}${f.data ? ' del ' + esc(f.data) : ''}
+        — ${esc(f.fornitore)}
+        ${f.stato_pagamento ? '· <span class="chip mute">' + esc(f.stato_pagamento) + '</span>' : ''}
+        ${f.ha_pdf ? `· <a class="plain" href="/api/tour/consuntivo/${f.id}/pdf" target="_blank">PDF</a>` : ''}
+        · <a class="plain" href="/api/tour/consuntivo/${f.id}" target="_blank">JSON</a></p>`;
 
   // Pasti
   h += `<h3>Pasti</h3>`;
@@ -263,75 +404,91 @@ function rendi(f) {
   else {
     h += `<table><thead><tr><th>Data</th><th>Servizio</th>
           <th class="num">Attesi netti</th><th class="num">Attesi lordi</th>
-          <th class="num">Fatturati</th><th class="num">Prezzo</th><th class="num">Importo</th>
-          <th>Nota</th></tr></thead><tbody>`;
+          <th class="num">Fatturati</th><th class="num">Prezzo</th>
+          <th class="num">Importo</th><th>Stato</th><th>Nota</th></tr></thead><tbody>`;
     for (const p of f.pasti) {
-      const drift = (p.coperti_attesi_oggi !== null && p.coperti_attesi !== null
-                     && p.coperti_attesi_oggi !== p.coperti_attesi)
-        ? ` <span class="chip warn" title="il rooming è cambiato dopo">oggi ${p.coperti_attesi_oggi}</span>` : '';
+      const scostato = (p.coperti_attesi_oggi !== null && p.coperti_attesi !== null
+                        && p.coperti_attesi_oggi !== p.coperti_attesi);
       h += `<tr>
-        <td>${p.data_servizio || '—'}</td>
-        <td>${p.servizio}${p.descrizione ? ' · ' + p.descrizione : ''}</td>
-        <td class="num">${p.coperti_attesi ?? '—'}${drift}</td>
+        <td>${esc(p.data_servizio) || '—'}</td>
+        <td>${esc(p.servizio)}${p.descrizione ? ' · ' + esc(p.descrizione) : ''}</td>
+        <td class="num">${p.coperti_attesi ?? '—'}
+            ${scostato ? `<br><button class="ghost" onclick="riallinea(${p.id}, this)"
+               title="il rooming e cambiato dopo">oggi ${p.coperti_attesi_oggi} →</button>` : ''}</td>
         <td class="num">${p.coperti_attesi_lordi ?? '—'}</td>
-        <td class="num">${p.coperti_fatturati ?? '<span class="chip mute">a corpo</span>'}</td>
-        <td class="num">${p.prezzo_unitario === null ? '—' : EUR(p.prezzo_unitario)}</td>
+        <td class="num">${inpNum('fb', p.id, 'coperti_fatturati', p.coperti_fatturati)}</td>
+        <td class="num">${inpNum('fb', p.id, 'prezzo_unitario', p.prezzo_unitario)}</td>
         <td class="num">${EUR(p.importo)}</td>
-        <td class="rule">${p.note || ''}</td></tr>`;
+        <td>${selStato('fb', p.id, p.stato, STATI_PASTO)}</td>
+        <td>${inpTesto('fb', p.id, 'note', p.note)}</td></tr>`;
     }
-    h += `</tbody></table>`;
+    h += `</tbody></table>
+      <p class="legend" style="margin-top:8px">Se in fattura non c'è la quantità,
+      <em>Fatturati</em> è vuoto: scrivici quanti coperti dichiara l'albergo, così
+      il confronto con gli attesi diventa un numero invece che un'impressione.</p>`;
   }
 
   // Punti aperti
   const aperti = f.punti_aperti.filter(p => p.stato === 'aperto');
-  h += `<h3>Da chiarire con l'albergo (${aperti.length} aperti su ${f.punti_aperti.length})</h3>`;
+  h += `<h3>Da chiarire con l'albergo (${aperti.length} aperti su ${f.punti_aperti.length})
+        <button class="ghost" onclick="nuovoPunto(${f.id}, this)">+ aggiungi</button></h3>`;
   if (!f.punti_aperti.length) h += `<p class="empty">Nessun punto aperto.</p>`;
   else {
     h += `<table><thead><tr><th>#</th><th>Punto</th><th>Perché</th>
-          <th class="num">In gioco</th><th>Stato</th></tr></thead><tbody>`;
+          <th class="num">In gioco</th><th>Risposta dell'albergo</th>
+          <th></th></tr></thead><tbody>`;
     for (const p of f.punti_aperti) {
       h += `<tr>
         <td>${p.numero ?? ''}</td>
-        <td><strong>${p.punto}</strong></td>
-        <td class="rule">${p.perche || ''}${p.risposta_hotel ? '<br><em>Risposta: ' + p.risposta_hotel + '</em>' : ''}</td>
+        <td><strong>${esc(p.punto)}</strong></td>
+        <td class="rule">${esc(p.perche)}</td>
         <td class="num">${p.importo_in_gioco ? EUR(p.importo_in_gioco) : '—'}</td>
-        <td><span class="chip ${p.stato === 'chiuso' ? 'ok' : 'warn'}">${p.stato}</span></td></tr>`;
+        <td>${inpTesto('issue', p.id, 'risposta_hotel', p.risposta_hotel, 'cosa hanno risposto')}</td>
+        <td>${p.stato === 'chiuso'
+              ? `<span class="chip ok">chiuso</span>
+                 <button class="ghost" onclick="chiudiPunto(${p.id}, false, this)">riapri</button>`
+              : `<button class="ghost" onclick="chiudiPunto(${p.id}, true, this)">chiudi</button>`}
+        </td></tr>`;
     }
     h += `</tbody></table>`;
   }
 
-  // Dettaglio camera per camera
-  h += `<h3>Dettaglio camera per camera (${f.camere.length})</h3>`;
-  h += `<table><thead><tr><th>Stato</th><th class="num">#</th><th>Tipo</th>
+  // Dettaglio camera per camera, modificabile
+  h += `<h3>Camera per camera (${f.camere.length})</h3>`;
+  h += `<table><thead><tr><th style="min-width:150px">Stato</th><th class="num">#</th><th>Tipo</th>
         <th>Ospiti da rooming</th><th>Nome in fattura</th><th>Camera</th>
-        <th>Data</th><th class="num">Importo</th></tr></thead><tbody>`;
+        <th>Data</th><th class="num">Importo</th>
+        <th class="num" title="+ fatturato di troppo, − non fatturato">Effetto</th>
+        <th>Nota</th></tr></thead><tbody>`;
   for (const c of f.camere) {
     h += `<tr>
-      <td><span class="chip ${CHIP[c.stato] || 'mute'}">${ETICHETTA[c.stato] || c.stato}</span></td>
+      <td>${selStato('recon', c.id, c.stato, STATI_CAMERA)}</td>
       <td class="num">${c.numero_camera ?? ''}</td>
-      <td>${c.categoria || ''}</td>
-      <td>${c.ospiti_rooming || ''}</td>
-      <td>${c.nome_in_fattura || ''}</td>
-      <td>${c.camera_hotel || ''}</td>
-      <td>${c.data_servizio || ''}</td>
-      <td class="num">${c.importo === null ? '' : EUR(c.importo)}</td></tr>`;
+      <td>${esc(c.categoria)}</td>
+      <td>${esc(c.ospiti_rooming)}</td>
+      <td>${esc(c.nome_in_fattura)}</td>
+      <td>${esc(c.camera_hotel)}</td>
+      <td>${esc(c.data_servizio)}</td>
+      <td class="num">${c.importo === null ? '' : EUR(c.importo)}</td>
+      <td class="num">${inpNum('recon', c.id, 'effetto_euro', c.effetto_euro)}</td>
+      <td>${inpTesto('recon', c.id, 'note', c.note)}</td></tr>`;
   }
   h += `</tbody></table>`;
 
-  // Righe fattura non camera
+  // Righe non camera
   const altre = f.righe_fattura.filter(l => l.kind !== 'camera');
   if (altre.length) {
     h += `<h3>Altre righe del documento</h3>`;
     h += `<table><thead><tr><th>Tipo</th><th>Descrizione</th><th>Data</th>
           <th class="num">Importo</th></tr></thead><tbody>`;
     for (const l of altre) {
-      h += `<tr><td><span class="chip mute">${l.kind}</span></td>
-        <td>${l.descrizione || ''}</td><td>${l.data_servizio || ''}</td>
+      h += `<tr><td><span class="chip mute">${esc(l.kind)}</span></td>
+        <td>${esc(l.descrizione)}</td><td>${esc(l.data_servizio)}</td>
         <td class="num">${EUR(l.importo)}</td></tr>`;
     }
     h += `</tbody></table>`;
   }
-  if (f.note_iva) h += `<p class="legend">${f.note_iva}</p>`;
+  if (f.note_iva) h += `<p class="legend">${esc(f.note_iva)}</p>`;
   return h;
 }
 </script>

@@ -237,6 +237,11 @@ tr.cancelled td { opacity: .45; }
     <span class="material-icons-round" style="font-size:18px">restaurant</span> Dinners
   </a>
   {% if not client_view %}
+  <a href="/tour/consuntivi" class="home-link btn-xlsx">
+    <span class="material-icons-round" style="font-size:18px">receipt_long</span> Consuntivi
+  </a>
+  {% endif %}
+  {% if not client_view %}
   <div style="display:flex;align-items:center;gap:12px;margin-left:auto;">
     <span style="font-size:13px;opacity:.8">{{ current_user.username }}</span>
     {% if current_user.is_superuser %}

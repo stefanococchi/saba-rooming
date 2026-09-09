@@ -7375,7 +7375,7 @@ Notes: {q.notes or 'N/A'}"""
         if 'effetto_euro' in data:
             r.effetto_euro = data['effetto_euro'] or 0
         if 'note' in data:
-            r.note = data['note']
+            r.note = (data['note'] or '').strip() or None
         db.session.commit()
         return jsonify(ok=True)
 
@@ -7383,15 +7383,19 @@ Notes: {q.notes or 'N/A'}"""
     def tour_fb_recon_update(fid):
         f = TourFbRecon.query.get_or_404(fid)
         data = request.get_json(silent=True) or {}
-        for campo in ('servizio', 'descrizione', 'stato', 'note'):
+        for campo in ('servizio', 'descrizione', 'stato'):
             if campo in data:
                 setattr(f, campo, data[campo])
-        for campo in ('coperti_fatturati',):
+        if 'note' in data:
+            f.note = (data['note'] or '').strip() or None
+        # Vuoto vuol dire "non lo so ancora", che non e' zero: un prezzo a
+        # zero direbbe che l'albergo non ha chiesto niente.
+        for campo in ('coperti_fatturati', 'prezzo_unitario', 'importo'):
             if campo in data:
-                setattr(f, campo, data[campo])
-        for campo in ('prezzo_unitario', 'importo', 'effetto_euro'):
-            if campo in data:
-                setattr(f, campo, data[campo] or 0)
+                setattr(f, campo, data[campo] if data[campo] not in ('', None)
+                        else None)
+        if 'effetto_euro' in data:
+            f.effetto_euro = data['effetto_euro'] or 0
         db.session.commit()
         return jsonify(ok=True)
 
@@ -7410,9 +7414,14 @@ Notes: {q.notes or 'N/A'}"""
     def tour_issue_update(iid):
         i = TourInvoiceIssue.query.get_or_404(iid)
         data = request.get_json(silent=True) or {}
-        for campo in ('punto', 'perche', 'risposta_hotel'):
+        if 'punto' in data:
+            nuovo = (data['punto'] or '').strip()
+            if not nuovo:
+                return jsonify(ok=False, error='Il punto non puo essere vuoto'), 400
+            i.punto = nuovo
+        for campo in ('perche', 'risposta_hotel'):
             if campo in data:
-                setattr(i, campo, data[campo])
+                setattr(i, campo, (data[campo] or '').strip() or None)
         if 'importo_in_gioco' in data:
             i.importo_in_gioco = data['importo_in_gioco'] or 0
         if 'stato' in data:
