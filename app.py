@@ -771,6 +771,16 @@ def create_app():
                 except Exception:
                     pass
 
+            try:
+                fb_cols = [c['name'] for c in
+                           inspect(db.engine).get_columns('tour_fb_recon')]
+                if 'coperti_annunciati' not in fb_cols:
+                    conn.execute(text('ALTER TABLE tour_fb_recon '
+                                      'ADD COLUMN coperti_annunciati INTEGER'))
+                    conn.commit()
+            except Exception:
+                pass
+
             # Un pasto puo' non avere una fattura in questo sistema: la cena
             # del 3 la fattura il Circolo dei Negozianti, non un albergo del
             # tour. Il vincolo NOT NULL su invoice_id impediva di annotarne
@@ -7284,12 +7294,24 @@ Notes: {q.notes or 'N/A'}"""
         return x.isoformat() if x else None
 
     def _riga_pasto(d, servizio):
-        """Un pasto: quanti ne avevamo annunciati e quanti ce ne fatturano."""
-        netti, lordi, _ = _fb_coperti_attesi(d, servizio)
+        """Un pasto: quanti ne avevamo annunciati e quanti ce ne fatturano.
+
+        Se il numero comunicato e' stato registrato vince quello. Il calcolo
+        sul rooming di oggi resta come stima, e viene detto che lo e': la
+        lista si muove dopo che l'hai mandata, e ricalcolarla adesso da' un
+        numero che non hai mai comunicato a nessuno.
+        """
+        netti, stima, _ = _fb_coperti_attesi(d, servizio)
         r = _pasto_esistente(d, servizio)
+        annunciati = r.coperti_annunciati if r else None
         fatturati = r.coperti_fatturati if r else None
+        lordi = annunciati if annunciati is not None else stima
         return {
-            'lordi': lordi, 'netti': netti,
+            'annunciati': annunciati,
+            'stima': stima,
+            'lordi': lordi,
+            'e_stima': annunciati is None,
+            'netti': netti,
             'fatturati': fatturati,
             'differenza': (None if fatturati is None or lordi is None
                            else fatturati - lordi),
@@ -7350,6 +7372,7 @@ Notes: {q.notes or 'N/A'}"""
         d['pasti'] = [{
             'id': f.id, 'data_servizio': _iso(f.data_servizio),
             'servizio': f.servizio, 'descrizione': f.descrizione,
+            'coperti_annunciati': f.coperti_annunciati,
             'coperti_attesi': f.coperti_attesi,
             'coperti_attesi_lordi': f.coperti_attesi_lordi,
             'coperti_attesi_oggi': _fb_coperti_attesi(f.data_servizio, f.servizio)[0],
@@ -7400,30 +7423,42 @@ Notes: {q.notes or 'N/A'}"""
         if servizio not in ('pranzo', 'cena'):
             return jsonify(ok=False, error='Servizio non valido'), 400
 
-        grezzo = dati.get('coperti_fatturati')
-        if grezzo in ('', None):
-            valore = None
-        else:
+        valori = {}
+        for campo in ('coperti_annunciati', 'coperti_fatturati'):
+            if campo not in dati:
+                continue
+            grezzo = dati[campo]
+            if grezzo in ('', None):
+                valori[campo] = None
+                continue
             try:
-                valore = int(grezzo)
+                v = int(grezzo)
             except (TypeError, ValueError):
                 return jsonify(ok=False, error='I coperti devono essere un numero'), 400
-            if valore < 0:
+            if v < 0:
                 return jsonify(ok=False, error='I coperti non possono essere negativi'), 400
+            valori[campo] = v
+        if not valori:
+            return jsonify(ok=False, error='Non c e niente da salvare'), 400
 
         r = _pasto_esistente(d, servizio)
         if r is None:
-            netti, lordi, _ = _fb_coperti_attesi(d, servizio)
+            netti, stima, _ = _fb_coperti_attesi(d, servizio)
             r = TourFbRecon(data_servizio=d, servizio=servizio,
-                            coperti_attesi=netti, coperti_attesi_lordi=lordi,
+                            coperti_attesi=netti, coperti_attesi_lordi=stima,
                             stato='DA_VERIFICARE')
             db.session.add(r)
-        r.coperti_fatturati = valore
+        for campo, v in valori.items():
+            setattr(r, campo, v)
         db.session.commit()
-        lordi = r.coperti_attesi_lordi
+
+        netti, stima, _ = _fb_coperti_attesi(d, servizio)
+        lordi = r.coperti_annunciati if r.coperti_annunciati is not None else stima
+        fatt = r.coperti_fatturati
         return jsonify(ok=True, id=r.id, lordi=lordi,
-                       differenza=(None if valore is None or lordi is None
-                                   else valore - lordi))
+                       e_stima=r.coperti_annunciati is None,
+                       differenza=(None if fatt is None or lordi is None
+                                   else fatt - lordi))
 
     @app.get('/tour/consuntivi')
     def tour_consuntivi():
@@ -7712,27 +7747,41 @@ Notes: {q.notes or 'N/A'}"""
         # pranzi e cene
         for v in (x for x in voci if x['kind'] == 'fb'):
             servizio = _servizio_da_descrizione(v['descrizione'])
-            netti, lordi, _ = _fb_coperti_attesi(v['data'], servizio)
-            nota = None
-            if v['importo'] and lordi:
-                nota = (f"importo a corpo: nessuna quantita in fattura. "
-                        f"Diviso per i {lordi} coperti annunciati fa "
-                        f"{v['importo'] / lordi:.2f} a persona.")
-                punti.append((
-                    f"{v['descrizione']} del {v['data']}: quanti coperti",
-                    f"Fatturato {v['importo']:.2f} euro senza quantita ne "
-                    f"prezzo unitario. Annunciati {lordi}: farebbe "
-                    f"{v['importo'] / lordi:.2f} a persona. Chiedere il "
-                    f"dettaglio dei coperti.", 0))
+            netti, stima, _ = _fb_coperti_attesi(v['data'], servizio)
+
             r = _pasto_esistente(v['data'], servizio)
             if r is None or r.invoice_id:
                 r = TourFbRecon(data_servizio=v['data'], servizio=servizio)
                 db.session.add(r)
+
+            # Il riferimento e' quello che abbiamo comunicato, se lo sappiamo.
+            # La stima di oggi lo dice per quello che e'.
+            annunciati = r.coperti_annunciati
+            riferimento = annunciati if annunciati is not None else stima
+            certo = annunciati is not None
+
+            nota = None
+            if v['importo'] and riferimento:
+                quota = v['importo'] / riferimento
+                nota = (f"importo a corpo: nessuna quantita in fattura. "
+                        f"Diviso per i {riferimento} coperti "
+                        f"{'annunciati' if certo else 'stimati'} fa "
+                        f"{quota:.2f} a persona.")
+                punti.append((
+                    f"{v['descrizione']} del {v['data']}: quanti coperti",
+                    f"Fatturato {v['importo']:.2f} euro senza quantita ne "
+                    f"prezzo unitario. Su {riferimento} coperti "
+                    f"{'annunciati' if certo else 'stimati dal rooming di oggi'}"
+                    f" farebbe {quota:.2f} a persona."
+                    + ('' if certo else ' Il numero comunicato all albergo '
+                                        'non e registrato: scriverlo rende '
+                                        'il conto verificabile.'), 0))
+
             r.invoice_id = inv.id
             r.line_id = righe[id(v)].id
             r.descrizione = v['descrizione']
             r.coperti_attesi = netti
-            r.coperti_attesi_lordi = lordi
+            r.coperti_attesi_lordi = stima
             r.importo = v['importo']
             r.stato = 'DA_VERIFICARE'
             r.note = nota

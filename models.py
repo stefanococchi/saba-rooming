@@ -588,9 +588,15 @@ class TourFbRecon(db.Model):
     servizio      = db.Column(db.String(20), nullable=False)   # pranzo | cena | altro
     descrizione   = db.Column(db.String(200))
 
-    coperti_attesi = db.Column(db.Integer)            # dato di servizio, senza no-show
-    coperti_attesi_lordi = db.Column(db.Integer)      # LORDI: annunciati all'albergo
+    # Quanti ne abbiamo comunicati all'albergo. E' un fatto del passato: non
+    # si ricalcola, si registra. Il rooming cambia dopo (un no-show si scopre
+    # la sera stessa), e ricalcolarlo oggi da' un numero che non e' mai stato
+    # comunicato a nessuno. Se e' vuoto si ripiega sulla stima, dicendo che
+    # e' una stima.
+    coperti_annunciati = db.Column(db.Integer)        # LORDI, come comunicati
     coperti_fatturati = db.Column(db.Integer)         # NETTI: fatturati. None = importo a corpo
+    coperti_attesi = db.Column(db.Integer)            # stima di oggi, senza no-show
+    coperti_attesi_lordi = db.Column(db.Integer)      # stima di oggi, lista intera
     prezzo_unitario = db.Column(db.Numeric(12, 2))
     importo       = db.Column(db.Numeric(12, 2))
 

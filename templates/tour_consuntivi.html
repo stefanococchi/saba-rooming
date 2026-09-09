@@ -120,6 +120,9 @@ input.ed:focus, select.ed:focus {
   outline: none; border-color: var(--primary); background: #fff;
 }
 input.ed.num { text-align: right; font-variant-numeric: tabular-nums; }
+/* casella vuota: il segnaposto e' la stima di oggi, non un numero comunicato */
+input.ed.stima { border-style: dashed; border-color: var(--outline-variant); }
+input.ed::placeholder { color: var(--on-surface-variant); opacity: .45; font-style: italic; }
 .salvato { color: var(--success); font-size: 11.5px; font-weight: 600; }
 .errore { color: var(--error); font-size: 12px; font-weight: 600; }
 #stato-globale {
@@ -140,21 +143,21 @@ input.ed.num { text-align: right; font-variant-numeric: tabular-nums; }
   <p class="sub">
     Liqui Moly Nexus Auto Tour 2026 — gruppo CARZILLA. Confronto fra le fatture
     ricevute dagli alberghi e l'ACTUAL: il rooming effettivamente mandato, e per
-    i pasti i coperti attesi.
+    i pasti i coperti comunicati.
     <a class="plain" href="/api/tour/consuntivi" target="_blank">JSON</a>
   </p>
 
   <!-- ── Pasti ────────────────────────────────────────────────────── -->
   <div class="card">
-    <h2>Pasti — coperti attesi <span class="note">ricalcolati adesso dal rooming</span></h2>
+    <h2>Pasti — coperti <span class="note">quanti ne hai comunicati, quanti te ne fatturano</span></h2>
     <table>
       <thead>
         <tr>
           <th>Data</th><th>Riferimento ACTUAL</th>
-          <th class="num">Cena · LORDI<span class="q">annunciati</span></th>
+          <th class="num">Cena · LORDI<span class="q">comunicati all'albergo</span></th>
           <th class="num">Cena · NETTI<span class="q">fatturati dal servizio</span></th>
           <th class="num">Cena<span class="q">differenza</span></th>
-          <th class="num">Pranzo · LORDI<span class="q">annunciati</span></th>
+          <th class="num">Pranzo · LORDI<span class="q">comunicati all'albergo</span></th>
           <th class="num">Pranzo · NETTI<span class="q">fatturati dal servizio</span></th>
           <th class="num">Pranzo<span class="q">differenza</span></th>
         </tr>
@@ -166,12 +169,19 @@ input.ed.num { text-align: right; font-variant-numeric: tabular-nums; }
           <td class="rule">{{ g.regola }}</td>
           {% for servizio in ['cena', 'pranzo'] %}
             {% set p = g[servizio] %}
-            <td class="num">{{ p.lordi }}</td>
+            <td class="num">
+              <input class="ed num {{ 'stima' if p.e_stima }}" type="number" min="0" step="1"
+                     value="{{ p.annunciati if p.annunciati is not none else '' }}"
+                     placeholder="{{ p.stima }}"
+                     data-data="{{ g.data }}" data-servizio="{{ servizio }}"
+                     data-campo="coperti_annunciati" onchange="salvaCoperti(this)"
+                     title="{% if p.e_stima %}stima dal rooming di oggi: {{ p.stima }}. Scrivi il numero che hai comunicato{% else %}numero comunicato all'albergo{% endif %}">
+            </td>
             <td class="num">
               <input class="ed num" type="number" min="0" step="1"
                      value="{{ p.fatturati if p.fatturati is not none else '' }}"
                      data-data="{{ g.data }}" data-servizio="{{ servizio }}"
-                     onchange="salvaCoperti(this)"
+                     data-campo="coperti_fatturati" onchange="salvaCoperti(this)"
                      {% if p.su_fattura %}title="viene da una fattura caricata"{% endif %}>
             </td>
             <td class="num" id="diff-{{ g.data }}-{{ servizio }}">
@@ -189,17 +199,20 @@ input.ed.num { text-align: right; font-variant-numeric: tabular-nums; }
       </tbody>
     </table>
     <div class="pad legend">
-      <strong>LORDI</strong> = quanti ne avevi annunciati, lista intera:
-      il servizio ha comprato il cibo e messo il personale su quel numero, e su
-      quel numero fattura. <strong>NETTI</strong> = quanti te ne fattura davvero:
-      scrivili tu, anche prima di avere la fattura in mano. Una differenza
+      <strong>LORDI</strong> = quanti ne hai comunicati all'albergo.
+      <strong>Scrivilo</strong>: è un fatto del passato e non si ricalcola.
+      La lista si muove dopo che l'hai mandata — un no-show si scopre la sera
+      stessa — quindi il conteggio di oggi dà un numero che non hai mai
+      comunicato a nessuno. Finché la casella è vuota, il numero in grigio è
+      solo la stima dal rooming di adesso, e il bordo tratteggiato lo ricorda.
+      <strong>NETTI</strong> = quanti te ne fattura il servizio. Una differenza
       positiva vuol dire che ti stanno fatturando più coperti di quanti gliene
-      avevi annunciati.
+      avevi comunicati.
       Chi non si è presentato resta dentro i lordi: un no-show è un problema tuo,
       non del servizio, e non è materia da contestare in fattura.
-      Il numero vale anche per le cene fuori albergo — il Circolo dei Negozianti
-      il 3, l'Antica Fratta il 5 — che una fattura in questo sistema non ce
-      l'hanno. Se poi carichi la fattura, il numero resta lo stesso.
+      Le caselle valgono anche per le cene fuori albergo — il Circolo dei
+      Negozianti il 3, l'Antica Fratta il 5 — che una fattura in questo sistema
+      non ce l'hanno.
     </div>
   </div>
 
@@ -279,11 +292,13 @@ function avvisa(testo, errore) {
 
 async function salvaCoperti(inp) {
   const data = inp.dataset.data, servizio = inp.dataset.servizio;
+  const corpo = {data, servizio};
+  corpo[inp.dataset.campo] = inp.value;
   let j;
   try {
     const r = await fetch('/api/tour/pasto-coperti', {
       method: 'PUT', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({data, servizio, coperti_fatturati: inp.value}),
+      body: JSON.stringify(corpo),
     });
     j = await r.json();
   } catch (e) {
@@ -291,6 +306,8 @@ async function salvaCoperti(inp) {
     return;
   }
   if (!j.ok) { avvisa(j.error || 'Salvataggio non riuscito', true); return; }
+  // scritto il numero comunicato, la casella smette di essere una stima
+  if (inp.dataset.campo === 'coperti_annunciati') inp.classList.toggle('stima', j.e_stima);
 
   const cella = document.getElementById(`diff-${data}-${servizio}`);
   if (cella) {
@@ -461,14 +478,17 @@ function rendi(f) {
   if (!f.pasti.length) h += `<p class="empty">Nessuna riga pasti su questa fattura.</p>`;
   else {
     h += `<table><thead><tr><th>Data</th><th>Servizio</th>
-          <th class="num">LORDI<span class="q">annunciati all'albergo</span></th>
+          <th class="num">LORDI<span class="q">comunicati all'albergo</span></th>
           <th class="num">NETTI<span class="q">fatturati dall'albergo</span></th>
           <th class="num">Differenza</th>
           <th class="num">Prezzo</th>
           <th class="num">Importo</th><th>Stato</th><th>Nota</th></tr></thead><tbody>`;
     for (const p of f.pasti) {
-      const lordi = p.coperti_attesi_lordi;
-      const scostato = (p.coperti_lordi_oggi !== null && lordi !== null
+      // Vince il numero comunicato, se registrato. Altrimenti la stima, detta
+      // per quello che e': non si contesta una fattura con una stima.
+      const certo = p.coperti_annunciati !== null && p.coperti_annunciati !== undefined;
+      const lordi = certo ? p.coperti_annunciati : p.coperti_attesi_lordi;
+      const scostato = (!certo && p.coperti_lordi_oggi !== null && lordi !== null
                         && p.coperti_lordi_oggi !== lordi);
       const d = (p.coperti_fatturati === null || p.coperti_fatturati === undefined
                  || lordi === null || lordi === undefined)
@@ -477,6 +497,7 @@ function rendi(f) {
         <td>${esc(p.data_servizio) || '—'}</td>
         <td>${esc(p.servizio)}${p.descrizione ? ' · ' + esc(p.descrizione) : ''}</td>
         <td class="num">${lordi ?? '—'}
+            ${certo ? '' : ' <span class="chip warn" title="nessun numero comunicato registrato: scrivilo nella tabella dei pasti in cima">stima</span>'}
             ${scostato ? `<br><button class="ghost" onclick="riallinea(${p.id}, this)"
                title="il rooming e cambiato dopo">oggi ${p.coperti_lordi_oggi} →</button>` : ''}</td>
         <td class="num">${inpNum('fb', p.id, 'coperti_fatturati', p.coperti_fatturati)}</td>
@@ -490,11 +511,13 @@ function rendi(f) {
     }
     h += `</tbody></table>
       <p class="legend" style="margin-top:8px">
-      <strong>LORDI</strong>: quanti ne avevi annunciati all'albergo.
+      <strong>LORDI</strong>: quanti ne avevi comunicati. Se è marcato
+      <em>stima</em> non è un numero comunicato ma il calcolo sul rooming di
+      oggi: scrivi quello vero nella tabella dei pasti in cima, altrimenti
+      staresti contestando una fattura con una supposizione.
       <strong>NETTI</strong>: quanti te ne fattura. Se in fattura non c'è la
       quantità la casella è vuota — scrivici il numero che dichiara l'albergo,
-      e la differenza si calcola da sé. Una differenza positiva vuol dire che
-      ti sta fatturando più coperti di quanti gliene avevi annunciati.</p>`;
+      e la differenza si calcola da sé.</p>`;
   }
 
   // Punti aperti
