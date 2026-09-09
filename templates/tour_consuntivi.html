@@ -151,8 +151,12 @@ input.ed.num { text-align: right; font-variant-numeric: tabular-nums; }
       <thead>
         <tr>
           <th>Data</th><th>Riferimento ACTUAL</th>
-          <th class="num">Cena · LORDI<span class="q">annunciati all'albergo</span></th>
-          <th class="num">Pranzo · LORDI<span class="q">annunciati all'albergo</span></th>
+          <th class="num">Cena · LORDI<span class="q">annunciati</span></th>
+          <th class="num">Cena · NETTI<span class="q">fatturati dal servizio</span></th>
+          <th class="num">Cena<span class="q">differenza</span></th>
+          <th class="num">Pranzo · LORDI<span class="q">annunciati</span></th>
+          <th class="num">Pranzo · NETTI<span class="q">fatturati dal servizio</span></th>
+          <th class="num">Pranzo<span class="q">differenza</span></th>
         </tr>
       </thead>
       <tbody>
@@ -160,20 +164,42 @@ input.ed.num { text-align: right; font-variant-numeric: tabular-nums; }
         <tr>
           <td><strong>{{ g.data }}</strong></td>
           <td class="rule">{{ g.regola }}</td>
-          <td class="num">{{ g.cena_lordi }}</td>
-          <td class="num">{{ g.pranzo_lordi }}</td>
+          {% for servizio in ['cena', 'pranzo'] %}
+            {% set p = g[servizio] %}
+            <td class="num">{{ p.lordi }}</td>
+            <td class="num">
+              <input class="ed num" type="number" min="0" step="1"
+                     value="{{ p.fatturati if p.fatturati is not none else '' }}"
+                     data-data="{{ g.data }}" data-servizio="{{ servizio }}"
+                     onchange="salvaCoperti(this)"
+                     {% if p.su_fattura %}title="viene da una fattura caricata"{% endif %}>
+            </td>
+            <td class="num" id="diff-{{ g.data }}-{{ servizio }}">
+              {% if p.differenza is none %}
+                <span class="chip mute">—</span>
+              {% elif p.differenza == 0 %}
+                <span class="chip ok">0</span>
+              {% else %}
+                <span class="chip {{ 'err' if p.differenza > 0 else 'warn' }}">{{ '+' if p.differenza > 0 }}{{ p.differenza }}</span>
+              {% endif %}
+            </td>
+          {% endfor %}
         </tr>
         {% endfor %}
       </tbody>
     </table>
     <div class="pad legend">
-      <strong>LORDI</strong> = quanti ne avevi annunciati all'albergo, lista
-      intera. È il termine di paragone del consuntivo: l'albergo ha comprato il
-      cibo e messo il personale su quel numero, e su quel numero fattura.
-      I <strong>NETTI</strong> — quanti l'albergo te ne fattura davvero —
-      compaiono nel dettaglio della fattura, quando l'hai caricata.
+      <strong>LORDI</strong> = quanti ne avevi annunciati, lista intera:
+      il servizio ha comprato il cibo e messo il personale su quel numero, e su
+      quel numero fattura. <strong>NETTI</strong> = quanti te ne fattura davvero:
+      scrivili tu, anche prima di avere la fattura in mano. Una differenza
+      positiva vuol dire che ti stanno fatturando più coperti di quanti gliene
+      avevi annunciati.
       Chi non si è presentato resta dentro i lordi: un no-show è un problema tuo,
-      non dell'albergo, e non è materia da contestare in fattura.
+      non del servizio, e non è materia da contestare in fattura.
+      Il numero vale anche per le cene fuori albergo — il Circolo dei Negozianti
+      il 3, l'Antica Fratta il 5 — che una fattura in questo sistema non ce
+      l'hanno. Se poi carichi la fattura, il numero resta lo stesso.
     </div>
   </div>
 
@@ -247,6 +273,36 @@ function avvisa(testo, errore) {
   box.style.display = 'block';
   clearTimeout(box._t);
   box._t = setTimeout(() => { box.style.display = 'none'; }, errore ? 9000 : 2500);
+}
+
+/* ── coperti fatturati, scritti a mano dalla tabella in cima ─────── */
+
+async function salvaCoperti(inp) {
+  const data = inp.dataset.data, servizio = inp.dataset.servizio;
+  let j;
+  try {
+    const r = await fetch('/api/tour/pasto-coperti', {
+      method: 'PUT', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({data, servizio, coperti_fatturati: inp.value}),
+    });
+    j = await r.json();
+  } catch (e) {
+    avvisa('Salvataggio non riuscito: ' + e, true);
+    return;
+  }
+  if (!j.ok) { avvisa(j.error || 'Salvataggio non riuscito', true); return; }
+
+  const cella = document.getElementById(`diff-${data}-${servizio}`);
+  if (cella) {
+    const d = j.differenza;
+    cella.innerHTML = (d === null || d === undefined)
+      ? '<span class="chip mute">—</span>'
+      : (d === 0 ? '<span class="chip ok">0</span>'
+                 : `<span class="chip ${d > 0 ? 'err' : 'warn'}">${d > 0 ? '+' : ''}${d}</span>`);
+  }
+  avvisa(j.differenza > 0
+    ? `Salvato: ti fatturano ${j.differenza} coperti in più di quanti ne avevi annunciati`
+    : 'Salvato');
 }
 
 /* ── caricamento di una fattura ──────────────────────────────────── */

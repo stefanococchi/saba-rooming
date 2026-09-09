@@ -578,7 +578,10 @@ class TourFbRecon(db.Model):
     __tablename__ = 'tour_fb_recon'
 
     id            = db.Column(db.Integer, primary_key=True)
-    invoice_id    = db.Column(db.Integer, db.ForeignKey('tour_invoices.id'), nullable=False)
+    # Senza fattura: certe cene le fattura un locale che non e' un albergo
+    # del tour (il Circolo dei Negozianti, l'Antica Fratta). I coperti si
+    # devono poter scrivere lo stesso, o quel pasto resta senza consuntivo.
+    invoice_id    = db.Column(db.Integer, db.ForeignKey('tour_invoices.id'))
     line_id       = db.Column(db.Integer, db.ForeignKey('tour_invoice_lines.id'))
 
     data_servizio = db.Column(db.Date, nullable=False)

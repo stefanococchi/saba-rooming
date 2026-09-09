@@ -330,6 +330,25 @@ def _fb_coperti_attesi(data_servizio, servizio='cena'):
     return len(netti), len(guests), netti
 
 
+def _pasto_esistente(data_servizio, servizio):
+    """La riga gia' aperta per un pasto, se c'e'.
+
+    Un pasto e' uno: che i coperti li abbia scritti a mano prima, o che
+    siano arrivati caricando una fattura dopo, il numero deve restare in
+    un posto solo. Fra piu' righe vince quella legata a una fattura, che
+    ha dietro un documento.
+    """
+    righe = (TourFbRecon.query
+             .filter_by(data_servizio=data_servizio, servizio=servizio)
+             .order_by(TourFbRecon.id).all())
+    if not righe:
+        return None
+    for r in righe:
+        if r.invoice_id:
+            return r
+    return righe[0]
+
+
 def _clean_cat_name(name):
     """Il nome categoria come lo legge l'albergo, senza i suffissi
     commerciali che servono solo a noi."""
@@ -751,6 +770,20 @@ def create_app():
                         conn.commit()
                 except Exception:
                     pass
+
+            # Un pasto puo' non avere una fattura in questo sistema: la cena
+            # del 3 la fattura il Circolo dei Negozianti, non un albergo del
+            # tour. Il vincolo NOT NULL su invoice_id impediva di annotarne
+            # i coperti.
+            try:
+                fb_cols = {c['name']: c for c in
+                           inspect(db.engine).get_columns('tour_fb_recon')}
+                if fb_cols.get('invoice_id', {}).get('nullable') is False:
+                    conn.execute(text('ALTER TABLE tour_fb_recon '
+                                      'ALTER COLUMN invoice_id DROP NOT NULL'))
+                    conn.commit()
+            except Exception:
+                pass
 
         # Migrate Italian statuses to English (one-time)
         _status_map = {
@@ -7250,8 +7283,22 @@ Notes: {q.notes or 'N/A'}"""
     def _iso(x):
         return x.isoformat() if x else None
 
+    def _riga_pasto(d, servizio):
+        """Un pasto: quanti ne avevamo annunciati e quanti ce ne fatturano."""
+        netti, lordi, _ = _fb_coperti_attesi(d, servizio)
+        r = _pasto_esistente(d, servizio)
+        fatturati = r.coperti_fatturati if r else None
+        return {
+            'lordi': lordi, 'netti': netti,
+            'fatturati': fatturati,
+            'differenza': (None if fatturati is None or lordi is None
+                           else fatturati - lordi),
+            'recon_id': r.id if r else None,
+            'su_fattura': bool(r and r.invoice_id),
+        }
+
     def _fb_giornate():
-        """Le date del tour con i coperti attesi, ricalcolati adesso."""
+        """Le date del tour, con i coperti ricalcolati adesso dal rooming."""
         date_tour = [h.night_date for h in
                      TourHotel.query.with_entities(TourHotel.night_date)
                      .distinct().order_by(TourHotel.night_date).all()]
@@ -7259,15 +7306,13 @@ Notes: {q.notes or 'N/A'}"""
         for d in date_tour:
             if not d:
                 continue
-            netti, lordi, _ = _fb_coperti_attesi(d, 'cena')
-            p_netti, p_lordi, _ = _fb_coperti_attesi(d, 'pranzo')
             out.append({
                 'data': _iso(d),
                 'regola': ('colonna cena del singolo ospite'
                            if d in FB_COLONNA_CENA
                            else 'presenze attese in albergo quella notte'),
-                'cena_netti': netti, 'cena_lordi': lordi,
-                'pranzo_netti': p_netti, 'pranzo_lordi': p_lordi,
+                'cena': _riga_pasto(d, 'cena'),
+                'pranzo': _riga_pasto(d, 'pranzo'),
             })
         return out
 
@@ -7336,6 +7381,49 @@ Notes: {q.notes or 'N/A'}"""
                 'fatture': [_invoice_json(i) for i in h.invoices],
             })
         return {'hotel_notte': righe, 'pasti': _fb_giornate()}
+
+    @app.put('/api/tour/pasto-coperti')
+    def tour_pasto_coperti():
+        """Quanti coperti fattura il servizio per un pasto.
+
+        Non serve che ci sia una fattura caricata: la cena del 3 la fattura
+        il Circolo dei Negozianti, che non e' un albergo del tour. Se una
+        riga per quel pasto esiste gia' si aggiorna quella, cosi' il numero
+        resta in un posto solo.
+        """
+        dati = request.get_json(silent=True) or {}
+        try:
+            d = datetime.strptime(dati.get('data', ''), '%Y-%m-%d').date()
+        except ValueError:
+            return jsonify(ok=False, error='Data non valida'), 400
+        servizio = dati.get('servizio')
+        if servizio not in ('pranzo', 'cena'):
+            return jsonify(ok=False, error='Servizio non valido'), 400
+
+        grezzo = dati.get('coperti_fatturati')
+        if grezzo in ('', None):
+            valore = None
+        else:
+            try:
+                valore = int(grezzo)
+            except (TypeError, ValueError):
+                return jsonify(ok=False, error='I coperti devono essere un numero'), 400
+            if valore < 0:
+                return jsonify(ok=False, error='I coperti non possono essere negativi'), 400
+
+        r = _pasto_esistente(d, servizio)
+        if r is None:
+            netti, lordi, _ = _fb_coperti_attesi(d, servizio)
+            r = TourFbRecon(data_servizio=d, servizio=servizio,
+                            coperti_attesi=netti, coperti_attesi_lordi=lordi,
+                            stato='DA_VERIFICARE')
+            db.session.add(r)
+        r.coperti_fatturati = valore
+        db.session.commit()
+        lordi = r.coperti_attesi_lordi
+        return jsonify(ok=True, id=r.id, lordi=lordi,
+                       differenza=(None if valore is None or lordi is None
+                                   else valore - lordi))
 
     @app.get('/tour/consuntivi')
     def tour_consuntivi():
@@ -7631,12 +7719,18 @@ Notes: {q.notes or 'N/A'}"""
                     f"prezzo unitario. Annunciati {lordi}: farebbe "
                     f"{v['importo'] / lordi:.2f} a persona. Chiedere il "
                     f"dettaglio dei coperti.", 0))
-            db.session.add(TourFbRecon(
-                invoice_id=inv.id, line_id=righe[id(v)].id,
-                data_servizio=v['data'], servizio=servizio,
-                descrizione=v['descrizione'],
-                coperti_attesi=netti, coperti_attesi_lordi=lordi,
-                importo=v['importo'], stato='DA_VERIFICARE', note=nota))
+            r = _pasto_esistente(v['data'], servizio)
+            if r is None or r.invoice_id:
+                r = TourFbRecon(data_servizio=v['data'], servizio=servizio)
+                db.session.add(r)
+            r.invoice_id = inv.id
+            r.line_id = righe[id(v)].id
+            r.descrizione = v['descrizione']
+            r.coperti_attesi = netti
+            r.coperti_attesi_lordi = lordi
+            r.importo = v['importo']
+            r.stato = 'DA_VERIFICARE'
+            r.note = nota
 
         # totali del documento
         somma = lambda k: sum(v['importo'] for v in voci if v['kind'] == k)  # noqa: E731
