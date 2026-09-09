@@ -7577,6 +7577,11 @@ Notes: {q.notes or 'N/A'}"""
         try:
             voci = _leggi_fattura_pdf(dati)
             testata = _intestazione_fattura(dati)
+        except ModuleNotFoundError as e:
+            # Non e' la fattura a essere illeggibile: manca il lettore.
+            return jsonify(ok=False, error=(
+                f'Sul server manca la libreria per leggere i PDF ({e.name}). '
+                'La fattura e a posto: va installata la dipendenza.')), 500
         except Exception as e:                      # noqa: BLE001
             return jsonify(ok=False, error=f'PDF illeggibile: {e}'), 400
         if not voci:

@@ -1,7 +1,9 @@
 flask
 flask-sqlalchemy
+sqlalchemy
 flask-login
 openpyxl
+pypdf
 anthropic
 python-dotenv
 gunicorn
