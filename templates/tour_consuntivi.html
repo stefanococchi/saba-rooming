@@ -120,6 +120,11 @@ input.ed:focus, select.ed:focus {
   outline: none; border-color: var(--primary); background: #fff;
 }
 input.ed.num { text-align: right; font-variant-numeric: tabular-nums; }
+/* le note sono frasi, non sigle: vanno lette senza doverci cliccare dentro */
+input.ed.nota { min-width: 300px; }
+td:has(> input.ed.nota) { min-width: 320px; }
+/* tabelle larghe: si scorrono, non si tagliano */
+.detail, #incassi { overflow-x: auto; }
 .tariffe { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
 .tariffe input.tar { width: 78px; min-width: 78px; border-color: var(--outline-variant); }
 /* casella vuota: il segnaposto e' la stima di oggi, non un numero comunicato */
@@ -621,8 +626,10 @@ const selStato = (tipo, id, valore, opzioni) =>
   + '</select>';
 
 const inpTesto = (tipo, id, campo, valore, segnaposto) =>
-  `<input class="ed" data-t="${tipo}" data-id="${id}" data-k="${campo}" `
-  + `value="${esc(valore)}" placeholder="${esc(segnaposto || '')}" onchange="salva(this)">`;
+  `<input class="ed${campo === 'note' ? ' nota' : ''}" data-t="${tipo}" `
+  + `data-id="${id}" data-k="${campo}" value="${esc(valore)}" `
+  + `title="${esc(valore)}" placeholder="${esc(segnaposto || '')}" `
+  + `onchange="salva(this); this.title = this.value">`;
 
 const inpNum = (tipo, id, campo, valore) =>
   `<input class="ed num" type="number" step="0.01" data-tipo="numero" `
