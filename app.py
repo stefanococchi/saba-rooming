@@ -8079,8 +8079,22 @@ Notes: {q.notes or 'N/A'}"""
             }
 
         righe = [_p(p) for p in pagamenti]
+
+        # Chi paga due volte in genere sta pagando per qualcun altro: la
+        # seconda quota e' di una persona che il sistema non sa chi sia, e
+        # darla per attribuita nasconde sia il pagante sia il beneficiario.
+        conteggio = defaultdict(list)
+        for r in righe:
+            if r['guest_id']:
+                conteggio[r['guest_id']].append(r)
+        doppie = [r for lista in conteggio.values() if len(lista) > 1
+                  for r in lista]
+        for r in doppie:
+            r['quota_doppia'] = True
+
         return {
             'pagamenti': righe,
+            'quote_da_attribuire': doppie,
             'totali': {
                 'quote': len(righe),
                 'lordo': round(sum(r['lordo'] or 0 for r in righe), 2),
@@ -8151,6 +8165,9 @@ Notes: {q.notes or 'N/A'}"""
                 riga.abbinato_da = come
             if riga.guest_id:
                 agganciati += 1
+                # Le quote doppie le segnala la lista, non una nota scritta
+                # d'ufficio: quale delle due sia quella "in piu'" non lo
+                # sappiamo, e il campo nota serve a chi attribuisce.
             else:
                 senza_ospite.append(p.get('nome_carta') or p.get('email_pagante')
                                     or p.get('transazione'))

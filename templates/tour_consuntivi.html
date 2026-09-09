@@ -386,6 +386,28 @@ async function disegnaIncassi() {
       soldi sono ancora nostri.</p>`;
   }
 
+  if (j.quote_da_attribuire && j.quote_da_attribuire.length) {
+    h += `<h3 style="padding:0 20px">Quote da attribuire (${j.quote_da_attribuire.length})</h3>`;
+    h += `<table><thead><tr><th>Attribuita a</th><th>Nome sulla carta</th>
+          <th>Email che ha pagato</th><th>Data</th><th class="num">Netto</th>
+          <th>Nota</th></tr></thead><tbody>`;
+    for (const p of j.quote_da_attribuire) {
+      h += `<tr>
+        <td>${esc(p.ospite)}</td>
+        <td>${esc(p.nome_carta)}</td>
+        <td class="rule">${esc(p.email_pagante)}</td>
+        <td class="rule">${esc(p.data)}</td>
+        <td class="num">${EUR(p.netto)}</td>
+        <td>${inpTesto('incasso', p.id, 'note', p.note)}</td></tr>`;
+    }
+    h += `</tbody></table>
+      <p class="legend pad">La stessa persona risulta aver pagato più di una
+      quota. Quasi sempre vuol dire che ne ha pagata una per un collega: quella
+      in più appartiene a qualcun altro, e finché non si sa a chi, il conto di
+      chi ha pagato non è giusto in due punti — manca il beneficiario e avanza
+      il pagante.</p>`;
+  }
+
   h += `<h3 style="padding:0 20px">Sono nel rooming ma nessun incasso a loro nome (${j.venuto_senza_pagare.length})</h3>`;
   if (!j.venuto_senza_pagare.length) h += `<p class="empty pad">Nessuno.</p>`;
   else {
