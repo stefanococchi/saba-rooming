@@ -459,3 +459,158 @@ class Impostazione(db.Model):
     modificata_da = db.Column(db.String(120))
     modificata_at = db.Column(db.DateTime, default=datetime.utcnow,
                               onupdate=datetime.utcnow)
+
+
+# ── Tour: consuntivi (fatture alberghi vs ACTUAL) ────────────────────
+
+
+class TourInvoice(db.Model):
+    """Fattura ricevuta da un albergo del tour.
+
+    Il consuntivo confronta questa con l'ACTUAL: il rooming effettivamente
+    mandato all'albergo (tour_room_assignments) e, per pranzi e cene, i
+    coperti attesi. Una fattura sta su un hotel-notte, ma puo' contenere
+    righe di altre date (il Centro Paolo VI fattura il 1 e il 2 settembre
+    sullo stesso documento): la data che conta e' sempre quella di riga.
+    """
+    __tablename__ = 'tour_invoices'
+
+    id            = db.Column(db.Integer, primary_key=True)
+    hotel_id      = db.Column(db.Integer, db.ForeignKey('tour_hotels.id'), nullable=False)
+    numero        = db.Column(db.String(50), nullable=False)
+    data          = db.Column(db.Date)
+    fornitore     = db.Column(db.String(200))
+    piva          = db.Column(db.String(30))
+    totale_documento = db.Column(db.Numeric(12, 2))
+    acconto       = db.Column(db.Numeric(12, 2), default=0)
+    netto_a_pagare = db.Column(db.Numeric(12, 2))
+    stato_pagamento = db.Column(db.String(30))          # sospeso | pagata | contestata
+    note_iva      = db.Column(db.Text)
+    note          = db.Column(db.Text)
+    pdf_filename  = db.Column(db.String(200))
+    pdf_mime      = db.Column(db.String(100))
+    pdf_data      = db.Column(db.LargeBinary)           # il PDF resta attaccato al consuntivo
+    created_at    = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at    = db.Column(db.DateTime, default=datetime.utcnow,
+                              onupdate=datetime.utcnow)
+
+    hotel = db.relationship('TourHotel', backref=db.backref(
+                'invoices', cascade='all, delete-orphan', lazy='select'))
+
+
+class TourInvoiceLine(db.Model):
+    """Riga della fattura, trascritta fedelmente da come e' scritta sul PDF.
+
+    Non si corregge qui quello che l'albergo ha sbagliato: la correzione sta
+    nel confronto (TourReconRow / TourFbRecon), cosi' resta visibile la
+    differenza fra quello che e' stato fatturato e quello che era giusto.
+    """
+    __tablename__ = 'tour_invoice_lines'
+
+    id            = db.Column(db.Integer, primary_key=True)
+    invoice_id    = db.Column(db.Integer, db.ForeignKey('tour_invoices.id'), nullable=False)
+    kind          = db.Column(db.String(20), nullable=False)   # camera | fb | city_tax | acconto | altro
+    descrizione   = db.Column(db.String(300))
+    nome_in_fattura = db.Column(db.String(200))       # intestatario della camera
+    camera_hotel  = db.Column(db.String(30))          # numero camera dell'albergo, es. 250/1
+    data_servizio = db.Column(db.Date)
+    quantita      = db.Column(db.Numeric(10, 2))      # None = importo a corpo
+    prezzo_unitario = db.Column(db.Numeric(12, 2))
+    importo       = db.Column(db.Numeric(12, 2))
+    sort_order    = db.Column(db.Integer, default=0)
+
+    invoice = db.relationship('TourInvoice', backref=db.backref(
+                'lines', cascade='all, delete-orphan', lazy='select',
+                order_by='TourInvoiceLine.sort_order'))
+
+
+class TourReconRow(db.Model):
+    """Confronto camera per camera: una riga per ogni camera del rooming E
+    per ogni riga di fattura senza corrispondenza.
+
+    Le anomalie non sono un secondo elenco da tenere allineato a mano: sono
+    semplicemente le righe con stato diverso da OK.
+    """
+    __tablename__ = 'tour_recon_rows'
+
+    STATI = ('OK', 'OK_2ND_OCCUPANTE', 'OK_GRATUITA', 'NON_FATTURATA',
+             'NON_NEL_ROOMING', 'ABBINAMENTO_IPOTETICO')
+
+    id            = db.Column(db.Integer, primary_key=True)
+    invoice_id    = db.Column(db.Integer, db.ForeignKey('tour_invoices.id'), nullable=False)
+    line_id       = db.Column(db.Integer, db.ForeignKey('tour_invoice_lines.id'))  # None = non fatturata
+
+    # lato ACTUAL (rooming mandato all'albergo)
+    numero_camera = db.Column(db.Integer)             # progressivo nel rooming
+    room_code     = db.Column(db.String(50))
+    categoria     = db.Column(db.String(100))
+    ospiti_rooming = db.Column(db.String(300))        # "BACIU IOAN MATEI + BACIU RODICA"
+    guest_id      = db.Column(db.Integer, db.ForeignKey('tour_guests.id'))
+
+    stato         = db.Column(db.String(30), nullable=False, default='OK')
+    effetto_euro  = db.Column(db.Numeric(12, 2), default=0)   # +: fatturato di troppo, -: non fatturato
+    note          = db.Column(db.Text)
+
+    invoice = db.relationship('TourInvoice', backref=db.backref(
+                'recon_rows', cascade='all, delete-orphan', lazy='select',
+                order_by='TourReconRow.numero_camera'))
+    line    = db.relationship('TourInvoiceLine')
+    guest   = db.relationship('TourGuest')
+
+
+class TourFbRecon(db.Model):
+    """Confronto pranzi e cene, per data e servizio.
+
+    ACTUAL: per la cena del 2 settembre fa fede la colonna cena del singolo
+    ospite (tour_guests.dinner); per ogni altro giorno fanno fede le presenze
+    attese in albergo quella notte. E' la stessa regola dell'export cene.
+
+    I coperti attesi si ricalcolano sempre dal rooming di adesso; qui si
+    conserva anche lo snapshot del momento in cui il consuntivo e' stato
+    fatto, perche' il rooming puo' cambiare dopo.
+    """
+    __tablename__ = 'tour_fb_recon'
+
+    id            = db.Column(db.Integer, primary_key=True)
+    invoice_id    = db.Column(db.Integer, db.ForeignKey('tour_invoices.id'), nullable=False)
+    line_id       = db.Column(db.Integer, db.ForeignKey('tour_invoice_lines.id'))
+
+    data_servizio = db.Column(db.Date, nullable=False)
+    servizio      = db.Column(db.String(20), nullable=False)   # pranzo | cena | altro
+    descrizione   = db.Column(db.String(200))
+
+    coperti_attesi = db.Column(db.Integer)            # snapshot, esclusi no-show e cancellati
+    coperti_attesi_lordi = db.Column(db.Integer)      # snapshot, lista confermata intera
+    coperti_fatturati = db.Column(db.Integer)         # None = importo a corpo
+    prezzo_unitario = db.Column(db.Numeric(12, 2))
+    importo       = db.Column(db.Numeric(12, 2))
+
+    stato         = db.Column(db.String(30), nullable=False, default='OK')
+    effetto_euro  = db.Column(db.Numeric(12, 2), default=0)
+    note          = db.Column(db.Text)
+
+    invoice = db.relationship('TourInvoice', backref=db.backref(
+                'fb_recon', cascade='all, delete-orphan', lazy='select',
+                order_by='TourFbRecon.data_servizio'))
+    line    = db.relationship('TourInvoiceLine')
+
+
+class TourInvoiceIssue(db.Model):
+    """Punto aperto con l'albergo: la domanda da fare, e la risposta quando
+    arriva. Un consuntivo e' chiuso quando non restano punti aperti."""
+    __tablename__ = 'tour_invoice_issues'
+
+    id            = db.Column(db.Integer, primary_key=True)
+    invoice_id    = db.Column(db.Integer, db.ForeignKey('tour_invoices.id'), nullable=False)
+    numero        = db.Column(db.Integer)
+    punto         = db.Column(db.String(200), nullable=False)
+    perche        = db.Column(db.Text)
+    importo_in_gioco = db.Column(db.Numeric(12, 2), default=0)
+    stato         = db.Column(db.String(20), nullable=False, default='aperto')  # aperto | chiuso
+    risposta_hotel = db.Column(db.Text)
+    chiuso_at     = db.Column(db.DateTime)
+    created_at    = db.Column(db.DateTime, default=datetime.utcnow)
+
+    invoice = db.relationship('TourInvoice', backref=db.backref(
+                'issues', cascade='all, delete-orphan', lazy='select',
+                order_by='TourInvoiceIssue.numero'))

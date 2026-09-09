@@ -3,7 +3,7 @@ import re
 import json
 import unicodedata
 import urllib.parse
-from datetime import datetime
+from datetime import datetime, date, timedelta
 from io import BytesIO
 from functools import wraps
 
@@ -26,7 +26,9 @@ from models import (db, User, AuditLog, Todo, Guest, RoomingClientToken, RoomCon
                      TourHotel, TourRoomCategory,
                      TourGuest, TourRoomAssignment,
                      TourHotelToken, TourHotelAccessLog,
-                     TourClientToken, TourGuestDocument)
+                     TourClientToken, TourGuestDocument,
+                     TourInvoice, TourInvoiceLine, TourReconRow,
+                     TourFbRecon, TourInvoiceIssue)
 
 
 def normalize_flight(s):
@@ -283,6 +285,336 @@ def _tour_assignments(hotel_id=None, hotel_ids=None):
     if hotel_ids is not None:
         q = q.filter(TourRoomAssignment.hotel_id.in_(hotel_ids))
     return q.all()
+
+
+
+# ── Tour: consuntivi ─────────────────────────────────────────────────
+
+# Chi non si e' presentato non mangia e non dorme: fuori dal conto atteso,
+# esattamente come nelle liste cena che vanno ai ristoranti.
+FB_ESCLUSI = ('PAID-CANCELLED', 'NO SHOW')
+
+# Cene con lista propria, indipendente da chi dorme in albergo: la cena del
+# 2 settembre e' aperta anche a chi quella notte non pernotta. Per ogni
+# altro pasto il riferimento sono le presenze attese in albergo quella notte.
+FB_COLONNA_CENA = {date(2026, 9, 2): 'dinner'}
+
+
+def _fb_coperti_attesi(data_servizio, servizio='cena'):
+    """Coperti attesi per un pasto: (netti, lordi, ospiti_netti).
+
+    netti = senza no-show e cancellati, cioe' chi ci si aspetta davvero a
+    tavola; lordi = la lista confermata per intero. La differenza fra i due
+    e' la contestazione tipica con l'albergo, quindi si tengono entrambi.
+    """
+    campo = FB_COLONNA_CENA.get(data_servizio) if servizio == 'cena' else None
+    if campo:
+        guests = (TourGuest.query
+                  .filter_by(deleted=False)
+                  .filter(getattr(TourGuest, campo).is_(True))
+                  .all())
+    else:
+        guests = (TourGuest.query
+                  .filter_by(deleted=False)
+                  .join(TourRoomAssignment,
+                        TourRoomAssignment.guest_id == TourGuest.id)
+                  .join(TourHotel, TourHotel.id == TourRoomAssignment.hotel_id)
+                  .filter(TourHotel.night_date == data_servizio)
+                  .distinct()
+                  .all())
+    netti = [g for g in guests if (g.payment or '') not in FB_ESCLUSI]
+    return len(netti), len(guests), netti
+
+
+def _clean_cat_name(name):
+    """Il nome categoria come lo legge l'albergo, senza i suffissi
+    commerciali che servono solo a noi."""
+    for sfx in (' - Single Use', ' for Single Use', ' (twin beds on request)',
+                ' with Single Bed', ' / Double for Single Use'):
+        name = name.replace(sfx, '')
+    return name
+
+
+def _tour_rooming_rooms(hotel_id):
+    """Le camere dell'ACTUAL: il rooming effettivamente mandato all'albergo.
+
+    Stessa aggregazione dell'export per hotel, cosi' la numerazione delle
+    camere nel consuntivo coincide con quella del file che l'albergo ha in
+    mano: i codici con suffisso (PD-D2) sono una camera condivisa, quelli
+    senza (GS) una camera a testa.
+    """
+    import re as _re_cons
+    hotel = TourHotel.query.get(hotel_id)
+    if hotel is None:
+        return []
+    base_re = _re_cons.compile(r'-[A-Z]*\d+$')
+    cat_names = {c.code: _clean_cat_name(c.category_name) for c in hotel.categories}
+    cat_order = {c.code: c.sort_order for c in hotel.categories}
+
+    rooms, shared = [], {}
+    for a in _tour_assignments(hotel_id=hotel_id):
+        if base_re.search(a.room_code or ''):
+            shared.setdefault(a.room_code, []).append(a)
+        else:
+            rooms.append({'raw_code': a.room_code, 'base_code': a.room_code,
+                          'guests': [a.guest]})
+    for raw_code, assigns in shared.items():
+        rooms.append({'raw_code': raw_code,
+                      'base_code': base_re.sub('', raw_code),
+                      'guests': [a.guest for a in assigns]})
+
+    rooms.sort(key=lambda r: (cat_order.get(r['base_code'], 999),
+                              r['guests'][0].cognome.upper()))
+    for i, r in enumerate(rooms, 1):
+        r['numero'] = i
+        r['categoria'] = cat_names.get(r['base_code'], r['base_code'])
+        r['ospiti'] = ' + '.join(
+            f'{g.cognome} {g.nome}'.strip().upper() for g in r['guests'])
+        r['guest_ids'] = [g.id for g in r['guests']]
+    return rooms
+
+
+def _consuntivo_sintesi(inv):
+    """I numeri di una fattura: quadratura camere, pasti, punti aperti.
+
+    L'atteso non viene da un listino (per gli hotel del tour non ne abbiamo
+    in banca dati) ma dal fatturato corretto delle anomalie, che e' lo stesso
+    metodo usato a mano sulla 5770: atteso = fatturato - saldo anomalie.
+    """
+    def _f(x):
+        return float(x or 0)
+
+    righe_camera = [l for l in inv.lines if l.kind == 'camera']
+    fatturato_camere = sum(_f(l.importo) for l in righe_camera)
+    effetto_camere = sum(_f(r.effetto_euro) for r in inv.recon_rows)
+    effetto_fb = sum(_f(r.effetto_euro) for r in inv.fb_recon)
+
+    anomalie = [r for r in inv.recon_rows if r.stato != 'OK']
+    aperti = [i for i in inv.issues if i.stato == 'aperto']
+
+    return {
+        'camere_rooming': sum(1 for r in inv.recon_rows
+                              if r.stato != 'NON_NEL_ROOMING'),
+        'camere_fatturate': len(righe_camera),
+        'fatturato_camere': round(fatturato_camere, 2),
+        'atteso_camere': round(fatturato_camere - effetto_camere, 2),
+        'saldo_anomalie': round(effetto_camere + effetto_fb, 2),
+        'n_anomalie': len(anomalie),
+        'n_punti_aperti': len(aperti),
+        'importo_in_gioco': round(sum(_f(i.importo_in_gioco) for i in aperti), 2),
+        'totale_documento': _f(inv.totale_documento),
+        'netto_a_pagare': _f(inv.netto_a_pagare),
+    }
+
+
+# ── Tour: lettura fattura e riconciliazione ──────────────────────────
+
+# Una voce del conto: data, descrizione, importo. Si cerca ovunque nella
+# riga perche' molti gestionali alberghieri impaginano su due colonne e
+# ripetono ogni voce due volte sulla stessa riga di testo.
+VOCE_FATTURA = re.compile(r'(?P<data>\d{2}/\d{2}/\d{4})\s+'
+                          r'(?P<desc>.+?)\s+'
+                          r'(?P<importo>-?[\d.]+,\d{2})')
+CAMERA_HOTEL = re.compile(r'\s(?P<cam>\d{1,4}/\d)\s*$')
+
+# Voci che non sono pernottamenti. Confrontate come parole intere: cercate
+# come sottostringhe, 'BAR' scatterebbe dentro SCHAFERBARTHOLD e ALBARA.
+NON_CAMERA = ('BUFFET', 'RISTORANTE', 'BAR', 'MINIBAR', 'GARAGE', 'PARCHEGGIO',
+              'TRANSFER', 'CAPARRA', 'ACCONTO', 'CITY TAX', 'RIF. F',
+              'FATTURA N', 'TOTALE', 'IMPONIBILE')
+
+# Sotto questa soglia una voce intestata a una persona non e' una camera ma
+# la sua city tax, che l'albergo appende al nome invece che al blocco.
+SOGLIA_CITY_TAX = 10.0
+
+# Sotto questo punteggio l'abbinamento di un nome e' un'ipotesi, non un
+# fatto: un solo nome di battesimo in comune e i cognomi diversi.
+SOGLIA_IPOTETICO = 0.6
+
+
+def _euro_it(s):
+    return float(s.replace('.', '').replace(',', '.'))
+
+
+def _classifica_voce(desc, importo):
+    su = desc.upper()
+    parole = set(re.findall(r'[A-Z]+', su))
+    colpito = {k for k in NON_CAMERA
+               if (k in su if (' ' in k or '.' in k) else k in parole)}
+    if colpito:
+        if 'CITY TAX' in colpito:
+            return 'city_tax'
+        if {'ACCONTO', 'CAPARRA', 'RIF. F'} & colpito:
+            return 'acconto'
+        if {'BUFFET', 'RISTORANTE'} & colpito:
+            return 'fb'
+        return 'altro'
+    if importo != 0 and abs(importo) < SOGLIA_CITY_TAX:
+        return 'city_tax'
+    return 'camera'
+
+
+def _leggi_fattura_pdf(dati_pdf):
+    """Le voci di una fattura albergo, lette dal PDF.
+
+    Torna una lista di dizionari gia' classificati. Se il PDF e' una
+    scansione senza testo non esce niente, e allora la fattura va inserita
+    a mano: meglio niente che numeri inventati.
+    """
+    import pypdf
+    lettore = pypdf.PdfReader(BytesIO(dati_pdf))
+    testo = chr(10).join(p.extract_text() or '' for p in lettore.pages)
+
+    voci, viste = [], set()
+    for raw in testo.splitlines():
+        for m in VOCE_FATTURA.finditer(raw.strip()):
+            desc = m.group('desc').strip()
+            importo = _euro_it(m.group('importo'))
+            try:
+                d = datetime.strptime(m.group('data'), '%d/%m/%Y').date()
+            except ValueError:
+                continue
+
+            cam = None
+            mc = CAMERA_HOTEL.search(desc)
+            if mc:
+                cam = mc.group('cam')
+                desc = desc[:mc.start()].strip()
+
+            chiave = (d, desc, cam, importo)
+            if chiave in viste:      # la doppia colonna ripete ogni voce
+                continue
+            viste.add(chiave)
+            voci.append({'data': d, 'descrizione': desc, 'camera_hotel': cam,
+                         'importo': importo,
+                         'kind': _classifica_voce(desc, importo)})
+
+    # Alcune voci non portano data: la city tax addebitata in blocco, per
+    # esempio. Si raccolgono solo quelle riconoscibili per nome; i totali
+    # e l'IVA restano fuori, altrimenti si conterebbero due volte.
+    for raw in testo.splitlines():
+        su = raw.upper()
+        if any(k in su for k in ('TOTALE', 'IMPONIBILE', 'IVA ', 'NETTO')):
+            continue
+        for etichetta in ('CITY TAX', 'TASSA DI SOGGIORNO'):
+            if etichetta not in su:
+                continue
+            m = re.search(r'(-?[\d.]+,\d{2})', raw)
+            if not m:
+                continue
+            importo = _euro_it(m.group(1))
+            chiave = (None, etichetta, None, importo)
+            if chiave in viste:
+                continue
+            viste.add(chiave)
+            voci.append({'data': None, 'descrizione': etichetta.title(),
+                         'camera_hotel': None, 'importo': importo,
+                         'kind': 'city_tax'})
+    return voci
+
+
+def _token_nome(s):
+    s = unicodedata.normalize('NFKD', s or '')
+    s = ''.join(ch for ch in s if not unicodedata.combining(ch))
+    s = re.sub(r'[^A-Za-z ]', ' ', s.upper())
+    return {t for t in s.split() if len(t) > 1}
+
+
+def _parole_uguali(a, b):
+    """Due parole sono la stessa parola se coincidono, o se una e' contenuta
+    nell'altra ed e' abbastanza lunga da non essere un caso: MASSI dentro
+    MASSIMILIANO (nome troncato nel rooming), BARA dentro ALBARA."""
+    if a == b:
+        return True
+    corta, lunga = (a, b) if len(a) <= len(b) else (b, a)
+    return len(corta) >= 4 and corta in lunga
+
+
+def _punteggio_nome(nome_fattura, ospiti):
+    """Quanto un nome in fattura somiglia a uno degli ospiti della camera.
+    Confronto per insiemi di parole: regge inversioni cognome/nome, accenti,
+    secondi nomi troncati e lettere di differenza."""
+    tf = _token_nome(nome_fattura)
+    best = 0.0
+    for g in ospiti:
+        to = _token_nome(f'{g.cognome} {g.nome}')
+        if not tf or not to:
+            continue
+        comuni = sum(1 for t in tf if any(_parole_uguali(t, u) for u in to))
+        if comuni:
+            best = max(best, comuni / max(len(tf), len(to)))
+    return best
+
+
+def _abbina_camere(voci_camera, camere_actual):
+    """Abbina le righe camera della fattura alle camere del rooming.
+
+    Greedy sul punteggio: si assegna prima la coppia che somiglia di piu',
+    cosi' un cognome comune non ruba l'abbinamento a chi combacia meglio.
+    Torna (esiti, orfane): esiti ha una voce per ogni camera del rooming,
+    orfane sono le righe di fattura rimaste senza camera.
+    """
+    coppie = []
+    for i, rf in enumerate(voci_camera):
+        for ca in camere_actual:
+            pt = _punteggio_nome(rf['descrizione'], ca['guests'])
+            if pt > 0:
+                coppie.append((pt, i, rf, ca))
+    coppie.sort(key=lambda x: (-x[0], x[1]))
+
+    usate_f, usate_a, abb = set(), set(), {}
+    for pt, i, rf, ca in coppie:
+        if i in usate_f or ca['numero'] in usate_a:
+            continue
+        usate_f.add(i)
+        usate_a.add(ca['numero'])
+        abb[ca['numero']] = (rf, pt)
+
+    esiti = []
+    for ca in camere_actual:
+        ab = abb.get(ca['numero'])
+        if not ab:
+            esiti.append({'stato': 'NON_FATTURATA', 'camera': ca,
+                          'voce': None, 'punteggio': 0.0})
+            continue
+        rf, pt = ab
+        if rf['importo'] == 0:
+            stato = 'OK_GRATUITA'
+        elif pt < SOGLIA_IPOTETICO:
+            stato = 'ABBINAMENTO_IPOTETICO'
+        elif _punteggio_nome(rf['descrizione'], ca['guests'][:1]) == 0:
+            stato = 'OK_2ND_OCCUPANTE'
+        else:
+            stato = 'OK'
+        esiti.append({'stato': stato, 'camera': ca, 'voce': rf,
+                      'punteggio': pt})
+    orfane = [rf for i, rf in enumerate(voci_camera) if i not in usate_f]
+    return esiti, orfane
+
+
+def _tariffa_tipica(esiti, n_ospiti):
+    """La tariffa che l'albergo applica alle camere con questo numero di
+    occupanti, ricavata dalla fattura stessa.
+
+    Per gli hotel del tour non abbiamo un listino in banca dati, quindi
+    l'unico riferimento onesto e' quello che l'albergo ha fatturato alle
+    camere uguali: e' lo stesso ragionamento fatto a mano sulla 5770.
+    """
+    importi = [e['voce']['importo'] for e in esiti
+               if e['voce'] and e['voce']['importo'] > 0
+               and len(e['camera']['guests']) == n_ospiti]
+    if not importi:
+        return 0.0
+    return max(set(importi), key=importi.count)
+
+
+def _servizio_da_descrizione(desc):
+    su = (desc or '').upper()
+    if any(k in su for k in ('LUNCH', 'PRANZO')):
+        return 'pranzo'
+    if any(k in su for k in ('BUFFET', 'DINNER', 'CENA', 'GALA')):
+        return 'cena'
+    return 'altro'
 
 
 def create_app():
@@ -6904,6 +7236,410 @@ Notes: {q.notes or 'N/A'}"""
         filename = f'rooming_{hotel.night_label}_{safe_name}.xlsx'
         return send_file(buf, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
                          as_attachment=True, download_name=filename)
+
+    # ── TOUR: consuntivi (fatture alberghi vs ACTUAL) ─────────────────
+
+    def _d(x):
+        """Decimal -> float, per poterlo mettere in JSON."""
+        return None if x is None else float(x)
+
+    def _iso(x):
+        return x.isoformat() if x else None
+
+    def _fb_giornate():
+        """Le date del tour con i coperti attesi, ricalcolati adesso."""
+        date_tour = [h.night_date for h in
+                     TourHotel.query.with_entities(TourHotel.night_date)
+                     .distinct().order_by(TourHotel.night_date).all()]
+        out = []
+        for d in date_tour:
+            if not d:
+                continue
+            netti, lordi, _ = _fb_coperti_attesi(d, 'cena')
+            p_netti, p_lordi, _ = _fb_coperti_attesi(d, 'pranzo')
+            out.append({
+                'data': _iso(d),
+                'regola': ('colonna cena del singolo ospite'
+                           if d in FB_COLONNA_CENA
+                           else 'presenze attese in albergo quella notte'),
+                'cena_netti': netti, 'cena_lordi': lordi,
+                'pranzo_netti': p_netti, 'pranzo_lordi': p_lordi,
+            })
+        return out
+
+    def _invoice_json(inv, completo=False):
+        d = {
+            'id': inv.id, 'hotel_id': inv.hotel_id,
+            'numero': inv.numero, 'data': _iso(inv.data),
+            'fornitore': inv.fornitore, 'piva': inv.piva,
+            'totale_documento': _d(inv.totale_documento),
+            'acconto': _d(inv.acconto),
+            'netto_a_pagare': _d(inv.netto_a_pagare),
+            'stato_pagamento': inv.stato_pagamento,
+            'note_iva': inv.note_iva, 'note': inv.note,
+            'ha_pdf': bool(inv.pdf_data),
+            'sintesi': _consuntivo_sintesi(inv),
+        }
+        if not completo:
+            return d
+        d['righe_fattura'] = [{
+            'id': l.id, 'kind': l.kind, 'descrizione': l.descrizione,
+            'nome_in_fattura': l.nome_in_fattura, 'camera_hotel': l.camera_hotel,
+            'data_servizio': _iso(l.data_servizio), 'quantita': _d(l.quantita),
+            'prezzo_unitario': _d(l.prezzo_unitario), 'importo': _d(l.importo),
+        } for l in inv.lines]
+        d['camere'] = [{
+            'id': r.id, 'numero_camera': r.numero_camera,
+            'room_code': r.room_code, 'categoria': r.categoria,
+            'ospiti_rooming': r.ospiti_rooming, 'stato': r.stato,
+            'effetto_euro': _d(r.effetto_euro), 'note': r.note,
+            'nome_in_fattura': r.line.nome_in_fattura if r.line else None,
+            'camera_hotel': r.line.camera_hotel if r.line else None,
+            'data_servizio': _iso(r.line.data_servizio) if r.line else None,
+            'importo': _d(r.line.importo) if r.line else None,
+        } for r in inv.recon_rows]
+        d['pasti'] = [{
+            'id': f.id, 'data_servizio': _iso(f.data_servizio),
+            'servizio': f.servizio, 'descrizione': f.descrizione,
+            'coperti_attesi': f.coperti_attesi,
+            'coperti_attesi_lordi': f.coperti_attesi_lordi,
+            'coperti_attesi_oggi': _fb_coperti_attesi(f.data_servizio, f.servizio)[0],
+            'coperti_fatturati': f.coperti_fatturati,
+            'prezzo_unitario': _d(f.prezzo_unitario),
+            'importo': _d(f.importo), 'stato': f.stato,
+            'effetto_euro': _d(f.effetto_euro), 'note': f.note,
+        } for f in inv.fb_recon]
+        d['punti_aperti'] = [{
+            'id': i.id, 'numero': i.numero, 'punto': i.punto,
+            'perche': i.perche, 'importo_in_gioco': _d(i.importo_in_gioco),
+            'stato': i.stato, 'risposta_hotel': i.risposta_hotel,
+        } for i in inv.issues]
+        return d
+
+    def _consuntivi_dati():
+        hotels = (TourHotel.query
+                  .order_by(TourHotel.night_date, TourHotel.hotel_name).all())
+        righe = []
+        for h in hotels:
+            rooms = _tour_rooming_rooms(h.id)
+            righe.append({
+                'hotel_id': h.id, 'night_label': h.night_label,
+                'night_date': _iso(h.night_date),
+                'hotel_name': h.hotel_name, 'city': h.city,
+                'camere_actual': len(rooms),
+                'ospiti_actual': sum(len(r['guests']) for r in rooms),
+                'fatture': [_invoice_json(i) for i in h.invoices],
+            })
+        return {'hotel_notte': righe, 'pasti': _fb_giornate()}
+
+    @app.get('/tour/consuntivi')
+    def tour_consuntivi():
+        return render_template('tour_consuntivi.html', dati=_consuntivi_dati())
+
+    @app.get('/api/tour/consuntivi')
+    def tour_consuntivi_json():
+        return jsonify(ok=True, **_consuntivi_dati())
+
+    @app.get('/api/tour/consuntivo/<int:inv_id>')
+    def tour_consuntivo_json(inv_id):
+        inv = TourInvoice.query.get_or_404(inv_id)
+        return jsonify(ok=True, fattura=_invoice_json(inv, completo=True))
+
+    @app.get('/api/tour/consuntivo/<int:inv_id>/pdf')
+    def tour_consuntivo_pdf(inv_id):
+        inv = TourInvoice.query.get_or_404(inv_id)
+        if not inv.pdf_data:
+            return jsonify(ok=False, error='Nessun PDF allegato'), 404
+        return send_file(BytesIO(inv.pdf_data),
+                         mimetype=inv.pdf_mime or 'application/pdf',
+                         download_name=inv.pdf_filename or f'fattura_{inv.numero}.pdf')
+
+    @app.get('/api/tour/consuntivo/<int:inv_id>/actual')
+    def tour_consuntivo_actual(inv_id):
+        """L'ACTUAL di adesso, per rileggerlo senza passare dal consuntivo."""
+        inv = TourInvoice.query.get_or_404(inv_id)
+        rooms = _tour_rooming_rooms(inv.hotel_id)
+        return jsonify(ok=True, camere=[{
+            'numero': r['numero'], 'room_code': r['raw_code'],
+            'categoria': r['categoria'], 'ospiti': r['ospiti'],
+        } for r in rooms])
+
+    @app.put('/api/tour/recon-row/<int:rid>')
+    def tour_recon_row_update(rid):
+        r = TourReconRow.query.get_or_404(rid)
+        data = request.get_json(silent=True) or {}
+        if 'stato' in data:
+            if data['stato'] not in TourReconRow.STATI:
+                return jsonify(ok=False, error=f'Stato non valido: {data["stato"]}'), 400
+            r.stato = data['stato']
+        if 'effetto_euro' in data:
+            r.effetto_euro = data['effetto_euro'] or 0
+        if 'note' in data:
+            r.note = data['note']
+        db.session.commit()
+        return jsonify(ok=True)
+
+    @app.put('/api/tour/fb-recon/<int:fid>')
+    def tour_fb_recon_update(fid):
+        f = TourFbRecon.query.get_or_404(fid)
+        data = request.get_json(silent=True) or {}
+        for campo in ('servizio', 'descrizione', 'stato', 'note'):
+            if campo in data:
+                setattr(f, campo, data[campo])
+        for campo in ('coperti_fatturati',):
+            if campo in data:
+                setattr(f, campo, data[campo])
+        for campo in ('prezzo_unitario', 'importo', 'effetto_euro'):
+            if campo in data:
+                setattr(f, campo, data[campo] or 0)
+        db.session.commit()
+        return jsonify(ok=True)
+
+    @app.post('/api/tour/fb-recon/<int:fid>/riallinea')
+    def tour_fb_recon_riallinea(fid):
+        """Riporta i coperti attesi a quelli di adesso: serve quando il
+        rooming e' cambiato dopo che il consuntivo era gia' stato fatto."""
+        f = TourFbRecon.query.get_or_404(fid)
+        netti, lordi, _ = _fb_coperti_attesi(f.data_servizio, f.servizio)
+        prima = f.coperti_attesi
+        f.coperti_attesi, f.coperti_attesi_lordi = netti, lordi
+        db.session.commit()
+        return jsonify(ok=True, prima=prima, adesso=netti, lordi=lordi)
+
+    @app.put('/api/tour/consuntivo-issue/<int:iid>')
+    def tour_issue_update(iid):
+        i = TourInvoiceIssue.query.get_or_404(iid)
+        data = request.get_json(silent=True) or {}
+        for campo in ('punto', 'perche', 'risposta_hotel'):
+            if campo in data:
+                setattr(i, campo, data[campo])
+        if 'importo_in_gioco' in data:
+            i.importo_in_gioco = data['importo_in_gioco'] or 0
+        if 'stato' in data:
+            i.stato = data['stato']
+            i.chiuso_at = datetime.utcnow() if data['stato'] == 'chiuso' else None
+        db.session.commit()
+        return jsonify(ok=True)
+
+    @app.post('/api/tour/consuntivo-issue')
+    def tour_issue_create():
+        data = request.get_json(silent=True) or {}
+        inv = TourInvoice.query.get_or_404(data.get('invoice_id', 0))
+        prossimo = max([i.numero or 0 for i in inv.issues] or [0]) + 1
+        i = TourInvoiceIssue(invoice_id=inv.id, numero=prossimo,
+                             punto=(data.get('punto') or '').strip(),
+                             perche=data.get('perche'),
+                             importo_in_gioco=data.get('importo_in_gioco') or 0)
+        if not i.punto:
+            return jsonify(ok=False, error='Il punto non puo essere vuoto'), 400
+        db.session.add(i)
+        db.session.commit()
+        return jsonify(ok=True, id=i.id, numero=i.numero)
+
+    INTESTAZIONE = {
+        'numero': re.compile(r'Fattura\s+n\.?\s*(\d+)', re.I),
+        'piva': re.compile(r'Partita\s+IVA\s*([0-9]{11})', re.I),
+    }
+
+    def _intestazione_fattura(dati_pdf):
+        """Numero, data e partita IVA dalla testata del documento."""
+        import pypdf
+        testo = (pypdf.PdfReader(BytesIO(dati_pdf)).pages[0].extract_text() or '')
+        out = {}
+        for campo, rx in INTESTAZIONE.items():
+            m = rx.search(testo)
+            if m:
+                out[campo] = m.group(1)
+        m = re.search(r'Data\s+(\d{2}/\d{2}/\d{4})', testo)
+        if m:
+            out['data'] = datetime.strptime(m.group(1), '%d/%m/%Y').date()
+        return out
+
+    @app.post('/api/tour/consuntivo/carica')
+    def tour_consuntivo_carica():
+        """Carica il PDF di una fattura, lo legge e ne costruisce il consuntivo.
+
+        Quello che esce e' una bozza: ogni riga resta modificabile, perche'
+        un albergo puo' sempre scrivere il conto in un modo che il lettore
+        non aveva previsto. Meglio una bozza da correggere che un numero
+        inventato che sembra giusto.
+        """
+        hotel = TourHotel.query.get_or_404(request.form.get('hotel_id', type=int))
+        f = request.files.get('file')
+        if not f or not f.filename:
+            return jsonify(ok=False, error='Manca il file della fattura'), 400
+        dati = f.read()
+        if not dati:
+            return jsonify(ok=False, error='Il file e vuoto'), 400
+
+        try:
+            voci = _leggi_fattura_pdf(dati)
+            testata = _intestazione_fattura(dati)
+        except Exception as e:                      # noqa: BLE001
+            return jsonify(ok=False, error=f'PDF illeggibile: {e}'), 400
+        if not voci:
+            return jsonify(ok=False, error=(
+                'Nessuna voce riconosciuta: probabilmente e una scansione '
+                'senza testo. La fattura va inserita a mano.')), 422
+
+        numero = (request.form.get('numero') or testata.get('numero') or '').strip()
+        if not numero:
+            return jsonify(ok=False, error=(
+                'Numero fattura non trovato nel PDF: passalo a mano')), 422
+        if TourInvoice.query.filter_by(hotel_id=hotel.id, numero=numero).first():
+            return jsonify(ok=False, error=f'Fattura {numero} gia caricata '
+                                           f'per questo hotel-notte'), 409
+
+        inv = TourInvoice(
+            hotel_id=hotel.id, numero=numero,
+            data=testata.get('data'),
+            fornitore=request.form.get('fornitore') or hotel.hotel_name,
+            piva=testata.get('piva'),
+            stato_pagamento=request.form.get('stato_pagamento') or 'sospeso',
+            pdf_filename=f.filename, pdf_mime=f.mimetype or 'application/pdf',
+            pdf_data=dati)
+        db.session.add(inv)
+        db.session.flush()
+
+        # le righe del documento, trascritte come stanno scritte
+        righe = {}
+        for i, v in enumerate(voci):
+            l = TourInvoiceLine(
+                invoice_id=inv.id, kind=v['kind'], descrizione=v['descrizione'],
+                nome_in_fattura=v['descrizione'] if v['kind'] == 'camera' else None,
+                camera_hotel=v['camera_hotel'], data_servizio=v['data'],
+                importo=v['importo'], sort_order=i)
+            db.session.add(l)
+            righe[id(v)] = l
+        db.session.flush()
+
+        # ogni riga camera si confronta con l'hotel-notte della sua data.
+        # Se per quella data non esiste un hotel-notte si prova la notte
+        # prima: certi alberghi datano la camera al giorno di partenza.
+        notti = {h.night_date: h for h in
+                 TourHotel.query.filter_by(hotel_name=hotel.hotel_name).all()}
+        per_notte = {}
+        for v in (x for x in voci if x['kind'] == 'camera'):
+            d = v['data']
+            if d not in notti and (d - timedelta(days=1)) in notti:
+                v['data_spostata'] = d
+                d = d - timedelta(days=1)
+            per_notte.setdefault(d, []).append(v)
+
+        punti, n_camere, per_notte_esiti = [], 0, []
+        for d, voci_notte in sorted(per_notte.items()):
+            if d not in notti:
+                for v in voci_notte:
+                    db.session.add(TourReconRow(
+                        invoice_id=inv.id, line_id=righe[id(v)].id,
+                        stato='NON_NEL_ROOMING', effetto_euro=v['importo'],
+                        note=f"riga datata {v['data']}: nessuna notte "
+                             f"corrispondente in questo albergo"))
+                    punti.append((f"{v['descrizione']} fuori date",
+                                  f"Fatturata {v['importo']:.2f} euro con data "
+                                  f"{v['data']}, quando il gruppo non era in "
+                                  f"albergo.", v['importo']))
+                continue
+
+            camere = _tour_rooming_rooms(notti[d].id)
+            esiti, orfane = _abbina_camere(voci_notte, camere)
+            n_camere += len(esiti)
+            per_notte_esiti.append((d, esiti, orfane))
+
+        # La tariffa si ricava da tutta la fattura, non da una notte sola:
+        # una notte puo' non avere nemmeno una camera a pagamento da cui
+        # dedurla, come il 1 settembre al Centro Paolo VI.
+        tutti_esiti = [e for _, es, _ in per_notte_esiti for e in es]
+
+        for d, esiti, orfane in per_notte_esiti:
+            for e in esiti:
+                ca, v, stato = e['camera'], e['voce'], e['stato']
+                if v is not None and v.get('data_spostata') and stato == 'OK':
+                    stato = 'OK'
+                    nota = f"fatturata con data {v['data_spostata']}"
+                else:
+                    nota = None
+
+                effetto = 0.0
+                if stato == 'NON_FATTURATA':
+                    effetto = -(_tariffa_tipica(esiti, len(ca['guests']))
+                                or _tariffa_tipica(tutti_esiti,
+                                                   len(ca['guests'])))
+                    nota = 'camera del rooming senza addebito'
+                    punti.append((
+                        f"{ca['ospiti']} non fatturata",
+                        f"Camera {ca['numero']} ({ca['categoria']}) del "
+                        f"{d}: no-show, oppure arriva un'integrazione.",
+                        abs(effetto)))
+                elif stato == 'ABBINAMENTO_IPOTETICO':
+                    nota = (f"cognome diverso: in fattura "
+                            f"{v['descrizione']}, nel rooming {ca['ospiti']}")
+                    punti.append((
+                        f"{v['descrizione']} / {ca['ospiti']}",
+                        'Abbinamento ipotizzato sul nome di battesimo. Se '
+                        'sbagliato, cambiano anche le camere intorno.', 0))
+                elif stato == 'OK_2ND_OCCUPANTE':
+                    nota = 'intestata al secondo occupante della camera'
+                elif stato == 'OK_GRATUITA':
+                    nota = 'addebito zero'
+
+                db.session.add(TourReconRow(
+                    invoice_id=inv.id,
+                    line_id=righe[id(v)].id if v is not None else None,
+                    numero_camera=ca['numero'], room_code=ca['raw_code'],
+                    categoria=ca['categoria'], ospiti_rooming=ca['ospiti'],
+                    guest_id=ca['guest_ids'][0] if ca['guest_ids'] else None,
+                    stato=stato, effetto_euro=effetto, note=nota))
+
+            for v in orfane:
+                db.session.add(TourReconRow(
+                    invoice_id=inv.id, line_id=righe[id(v)].id,
+                    stato='NON_NEL_ROOMING', effetto_euro=v['importo'],
+                    note='fatturata ma non presente nel rooming'))
+                punti.append((
+                    f"{v['descrizione']} non e nel rooming",
+                    f"Fatturata {v['importo']:.2f} euro il {v['data']}, "
+                    f"camera {v['camera_hotel'] or 'senza numero'}. Chi e.",
+                    v['importo']))
+
+        # pranzi e cene
+        for v in (x for x in voci if x['kind'] == 'fb'):
+            servizio = _servizio_da_descrizione(v['descrizione'])
+            netti, lordi, _ = _fb_coperti_attesi(v['data'], servizio)
+            nota = None
+            if v['importo'] and netti:
+                nota = (f"importo a corpo: nessuna quantita in fattura. "
+                        f"Diviso per i {netti} coperti attesi fa "
+                        f"{v['importo'] / netti:.2f} a persona, per i {lordi} "
+                        f"della lista intera {v['importo'] / lordi:.2f}.")
+                punti.append((
+                    f"{v['descrizione']} del {v['data']}: quanti coperti",
+                    f"Fatturato {v['importo']:.2f} euro senza quantita ne "
+                    f"prezzo unitario. Attesi {netti} a tavola, {lordi} "
+                    f"sulla lista confermata.", 0))
+            db.session.add(TourFbRecon(
+                invoice_id=inv.id, line_id=righe[id(v)].id,
+                data_servizio=v['data'], servizio=servizio,
+                descrizione=v['descrizione'],
+                coperti_attesi=netti, coperti_attesi_lordi=lordi,
+                importo=v['importo'], stato='DA_VERIFICARE', note=nota))
+
+        # totali del documento
+        somma = lambda k: sum(v['importo'] for v in voci if v['kind'] == k)  # noqa: E731
+        inv.acconto = somma('acconto')
+        inv.totale_documento = (somma('camera') + somma('fb')
+                                + somma('city_tax') + somma('altro'))
+        inv.netto_a_pagare = inv.totale_documento + inv.acconto
+
+        for i, (punto, perche, in_gioco) in enumerate(punti, 1):
+            db.session.add(TourInvoiceIssue(
+                invoice_id=inv.id, numero=i, punto=punto[:200], perche=perche,
+                importo_in_gioco=round(abs(in_gioco or 0), 2)))
+
+        db.session.commit()
+        return jsonify(ok=True, invoice_id=inv.id, numero=inv.numero,
+                       voci_lette=len(voci), camere_confrontate=n_camere,
+                       punti_aperti=len(punti))
 
     # ── TOUR: upload documents ────────────────────────────────────────
 

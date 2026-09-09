@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Consuntivi — Liqui Moly Tour</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
+<style>
+:root {
+  --primary: #E65100;
+  --primary-dark: #BF360C;
+  --surface: #FFF8F0;
+  --surface-card: #ffffff;
+  --surface-variant: #FFF3E0;
+  --on-surface: #1c1b1f;
+  --on-surface-variant: #49454f;
+  --outline: #cac4bd;
+  --outline-variant: #e7e0d9;
+  --error: #ba1a1a;
+  --success: #2e7d32;
+  --info: #0277bd;
+  --warn: #a15c00;
+  --radius: 16px;
+  --radius-sm: 12px;
+  --shadow-sm: 0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.06);
+  --shadow-md: 0 4px 12px rgba(0,0,0,.1);
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--surface); color: var(--on-surface);
+  font-family: 'Inter', system-ui, -apple-system, sans-serif; font-size: 14px;
+}
+.wrap { max-width: 1180px; margin: 0 auto; padding: 24px 20px 64px; }
+header.top {
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 6px;
+}
+header.top h1 { font-size: 24px; font-weight: 700; margin: 0; }
+.sub { color: var(--on-surface-variant); margin: 0 0 24px; font-size: 13px; }
+a.back {
+  display: inline-flex; align-items: center; gap: 6px; text-decoration: none;
+  color: var(--primary-dark); font-weight: 600; font-size: 13px;
+}
+.card {
+  background: var(--surface-card); border: 1px solid var(--outline-variant);
+  border-radius: var(--radius); box-shadow: var(--shadow-sm); margin-bottom: 20px;
+  overflow: hidden;
+}
+.card > h2 {
+  margin: 0; padding: 16px 20px; font-size: 15px; font-weight: 700;
+  border-bottom: 1px solid var(--outline-variant); background: var(--surface-variant);
+  display: flex; align-items: center; gap: 8px;
+}
+.card > h2 .note { font-weight: 400; color: var(--on-surface-variant); font-size: 12.5px; }
+.pad { padding: 16px 20px; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th, td { padding: 9px 12px; text-align: left; border-bottom: 1px solid var(--outline-variant); }
+th { font-weight: 600; color: var(--on-surface-variant); font-size: 12px;
+     text-transform: uppercase; letter-spacing: .3px; background: #fbf7f2; }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+tr:last-child td { border-bottom: none; }
+.chip {
+  display: inline-block; padding: 2px 9px; border-radius: 999px;
+  font-size: 11.5px; font-weight: 600; white-space: nowrap;
+}
+.chip.ok   { background: #e6f4ea; color: var(--success); }
+.chip.warn { background: #fff3e0; color: var(--warn); }
+.chip.err  { background: #fdecea; color: var(--error); }
+.chip.info { background: #e3f2fd; color: var(--info); }
+.chip.mute { background: #f0ebe5; color: var(--on-surface-variant); }
+.hotel-row {
+  display: grid; grid-template-columns: 78px 1fr auto; gap: 14px; align-items: center;
+  padding: 14px 20px; border-bottom: 1px solid var(--outline-variant); cursor: default;
+}
+.hotel-row:last-child { border-bottom: none; }
+.hotel-row .night {
+  font-weight: 700; color: var(--primary-dark); font-size: 13px;
+}
+.hotel-row .night small { display: block; font-weight: 400; color: var(--on-surface-variant); }
+.hotel-row .name { font-weight: 600; }
+.hotel-row .meta { color: var(--on-surface-variant); font-size: 12.5px; margin-top: 2px; }
+.hotel-row .right { text-align: right; display: flex; gap: 8px; align-items: center; }
+button.link {
+  background: none; border: none; color: var(--primary-dark); font-weight: 600;
+  cursor: pointer; font-size: 13px; font-family: inherit; padding: 4px 6px;
+  border-radius: 6px;
+}
+button.link:hover { background: var(--surface-variant); }
+.detail { padding: 0 20px 20px; background: #fdfaf7; border-bottom: 1px solid var(--outline-variant); }
+.detail h3 { font-size: 13px; text-transform: uppercase; letter-spacing: .4px;
+             color: var(--on-surface-variant); margin: 20px 0 8px; }
+.kpis { display: flex; gap: 10px; flex-wrap: wrap; margin: 16px 0 4px; }
+.kpi { background: #fff; border: 1px solid var(--outline-variant); border-radius: var(--radius-sm);
+       padding: 10px 14px; min-width: 140px; }
+.kpi .lbl { font-size: 11.5px; color: var(--on-surface-variant); }
+.kpi .val { font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; margin-top: 2px; }
+.kpi .val.neg { color: var(--error); }
+.kpi .val.pos { color: var(--success); }
+.empty { color: var(--on-surface-variant); font-style: italic; padding: 14px 0; }
+.rule { color: var(--on-surface-variant); font-size: 12px; }
+.legend { font-size: 12px; color: var(--on-surface-variant); margin-top: 10px; line-height: 1.6; }
+code { background: #f2ece6; padding: 1px 5px; border-radius: 4px; font-size: 12px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top">
+    <h1>Consuntivi</h1>
+    <a class="back" href="/tour"><span class="material-icons-round" style="font-size:18px">arrow_back</span> Tour</a>
+  </header>
+  <p class="sub">
+    Liqui Moly Nexus Auto Tour 2026 — gruppo CARZILLA. Confronto fra le fatture
+    ricevute dagli alberghi e l'ACTUAL: il rooming effettivamente mandato, e per
+    i pasti i coperti attesi.
+    <a href="/api/tour/consuntivi" target="_blank">JSON</a>
+  </p>
+
+  <!-- ── Pasti ────────────────────────────────────────────────────── -->
+  <div class="card">
+    <h2>Pasti — coperti attesi
+      <span class="note">ricalcolati adesso dal rooming</span>
+    </h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Data</th>
+          <th>Riferimento ACTUAL</th>
+          <th class="num">Cena netti</th>
+          <th class="num">Cena lordi</th>
+          <th class="num">Pranzo netti</th>
+          <th class="num">Pranzo lordi</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for g in dati.pasti %}
+        <tr>
+          <td><strong>{{ g.data }}</strong></td>
+          <td class="rule">{{ g.regola }}</td>
+          <td class="num">{{ g.cena_netti }}</td>
+          <td class="num">{{ g.cena_lordi }}</td>
+          <td class="num">{{ g.pranzo_netti }}</td>
+          <td class="num">{{ g.pranzo_lordi }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <div class="pad legend">
+      <strong>Netti</strong> = senza no-show e cancellati (<code>NO SHOW</code>,
+      <code>PAID-CANCELLED</code>): chi ci si aspetta davvero a tavola, stessa
+      regola delle liste cena mandate ai ristoranti.
+      <strong>Lordi</strong> = la lista confermata per intero.
+      La differenza fra i due è quasi sempre l'oggetto della contestazione:
+      l'albergo fattura la lista, tu paghi chi si è presentato.
+    </div>
+  </div>
+
+  <!-- ── Hotel-notte ──────────────────────────────────────────────── -->
+  <div class="card">
+    <h2>Hotel-notte <span class="note">{{ dati.hotel_notte|length }} tappe</span></h2>
+    {% for h in dati.hotel_notte %}
+    <div class="hotel-row">
+      <div class="night">{{ h.night_label }}<small>{{ h.night_date }}</small></div>
+      <div>
+        <div class="name">{{ h.hotel_name }}{% if h.city %} <span class="rule">· {{ h.city }}</span>{% endif %}</div>
+        <div class="meta">ACTUAL: {{ h.camere_actual }} camere, {{ h.ospiti_actual }} ospiti</div>
+      </div>
+      <div class="right">
+        {% if h.fatture %}
+          {% for f in h.fatture %}
+            {% set s = f.sintesi %}
+            {% if s.n_punti_aperti %}
+              <span class="chip warn">{{ s.n_punti_aperti }} da chiarire</span>
+            {% elif s.n_anomalie %}
+              <span class="chip info">{{ s.n_anomalie }} anomalie</span>
+            {% else %}
+              <span class="chip ok">quadra</span>
+            {% endif %}
+            <button class="link" onclick="apri({{ f.id }}, this)">Fattura {{ f.numero }}</button>
+          {% endfor %}
+        {% else %}
+          <span class="chip mute">nessuna fattura</span>
+        {% endif %}
+      </div>
+    </div>
+    <div class="detail" id="det-{{ h.hotel_id }}" style="display:none"></div>
+    {% endfor %}
+  </div>
+
+</div>
+
+<script>
+const EUR = n => (n === null || n === undefined)
+  ? '—'
+  : n.toLocaleString('it-IT', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' €';
+
+const CHIP = {
+  'OK': 'ok', 'OK_GRATUITA': 'ok', 'OK_2ND_OCCUPANTE': 'ok',
+  'NON_FATTURATA': 'err', 'NON_NEL_ROOMING': 'err',
+  'ABBINAMENTO_IPOTETICO': 'warn',
+};
+const ETICHETTA = {
+  'OK': 'OK',
+  'OK_GRATUITA': 'OK · gratuita',
+  'OK_2ND_OCCUPANTE': 'OK · intestata al 2°',
+  'NON_FATTURATA': 'nel rooming, non fatturata',
+  'NON_NEL_ROOMING': 'fatturata, non nel rooming',
+  'ABBINAMENTO_IPOTETICO': 'abbinamento ipotetico',
+};
+
+async function apri(invId, btn) {
+  const box = btn.closest('.hotel-row').nextElementSibling;
+  if (box.dataset.open === String(invId)) {
+    box.style.display = 'none'; box.dataset.open = ''; return;
+  }
+  box.style.display = 'block';
+  box.dataset.open = String(invId);
+  box.innerHTML = '<p class="empty">Carico…</p>';
+  const r = await fetch(`/api/tour/consuntivo/${invId}`);
+  const j = await r.json();
+  if (!j.ok) { box.innerHTML = `<p class="empty">Errore: ${j.error || '?'}</p>`; return; }
+  box.innerHTML = rendi(j.fattura);
+}
+
+function rendi(f) {
+  const s = f.sintesi;
+  const segno = v => v > 0 ? 'neg' : (v < 0 ? 'pos' : '');
+  let h = '';
+
+  h += `<div class="kpis">
+    <div class="kpi"><div class="lbl">Atteso dal rooming</div><div class="val">${EUR(s.atteso_camere)}</div></div>
+    <div class="kpi"><div class="lbl">Fatturato camere</div><div class="val">${EUR(s.fatturato_camere)}</div></div>
+    <div class="kpi"><div class="lbl">Saldo anomalie</div><div class="val ${segno(s.saldo_anomalie)}">${EUR(s.saldo_anomalie)}</div></div>
+    <div class="kpi"><div class="lbl">Totale documento</div><div class="val">${EUR(s.totale_documento)}</div></div>
+    <div class="kpi"><div class="lbl">Netto a pagare</div><div class="val">${EUR(s.netto_a_pagare)}</div></div>
+  </div>`;
+  h += `<p class="rule">Fattura ${f.numero}${f.data ? ' del ' + f.data : ''} — ${f.fornitore || ''}
+        ${f.stato_pagamento ? '· <span class="chip mute">' + f.stato_pagamento + '</span>' : ''}
+        ${f.ha_pdf ? `· <a href="/api/tour/consuntivo/${f.id}/pdf" target="_blank">PDF</a>` : ''}
+        · <a href="/api/tour/consuntivo/${f.id}" target="_blank">JSON</a></p>`;
+
+  // Anomalie
+  const anomalie = f.camere.filter(c => c.stato !== 'OK');
+  h += `<h3>Anomalie camere (${anomalie.length})</h3>`;
+  if (!anomalie.length) h += `<p class="empty">Nessuna: ogni camera del rooming ha la sua riga in fattura.</p>`;
+  else {
+    h += `<table><thead><tr><th>Stato</th><th>Camera</th><th>Dettaglio</th>
+          <th class="num">Effetto</th><th>Nota</th></tr></thead><tbody>`;
+    for (const c of anomalie) {
+      h += `<tr>
+        <td><span class="chip ${CHIP[c.stato] || 'mute'}">${ETICHETTA[c.stato] || c.stato}</span></td>
+        <td>${c.numero_camera ? '#' + c.numero_camera : '—'} ${c.categoria || ''}</td>
+        <td>${c.ospiti_rooming || c.nome_in_fattura || ''}</td>
+        <td class="num ${c.effetto_euro > 0 ? 'neg' : ''}">${EUR(c.effetto_euro)}</td>
+        <td class="rule">${c.note || ''}</td></tr>`;
+    }
+    h += `</tbody></table>`;
+  }
+
+  // Pasti
+  h += `<h3>Pasti</h3>`;
+  if (!f.pasti.length) h += `<p class="empty">Nessuna riga pasti su questa fattura.</p>`;
+  else {
+    h += `<table><thead><tr><th>Data</th><th>Servizio</th>
+          <th class="num">Attesi netti</th><th class="num">Attesi lordi</th>
+          <th class="num">Fatturati</th><th class="num">Prezzo</th><th class="num">Importo</th>
+          <th>Nota</th></tr></thead><tbody>`;
+    for (const p of f.pasti) {
+      const drift = (p.coperti_attesi_oggi !== null && p.coperti_attesi !== null
+                     && p.coperti_attesi_oggi !== p.coperti_attesi)
+        ? ` <span class="chip warn" title="il rooming è cambiato dopo">oggi ${p.coperti_attesi_oggi}</span>` : '';
+      h += `<tr>
+        <td>${p.data_servizio || '—'}</td>
+        <td>${p.servizio}${p.descrizione ? ' · ' + p.descrizione : ''}</td>
+        <td class="num">${p.coperti_attesi ?? '—'}${drift}</td>
+        <td class="num">${p.coperti_attesi_lordi ?? '—'}</td>
+        <td class="num">${p.coperti_fatturati ?? '<span class="chip mute">a corpo</span>'}</td>
+        <td class="num">${p.prezzo_unitario === null ? '—' : EUR(p.prezzo_unitario)}</td>
+        <td class="num">${EUR(p.importo)}</td>
+        <td class="rule">${p.note || ''}</td></tr>`;
+    }
+    h += `</tbody></table>`;
+  }
+
+  // Punti aperti
+  const aperti = f.punti_aperti.filter(p => p.stato === 'aperto');
+  h += `<h3>Da chiarire con l'albergo (${aperti.length} aperti su ${f.punti_aperti.length})</h3>`;
+  if (!f.punti_aperti.length) h += `<p class="empty">Nessun punto aperto.</p>`;
+  else {
+    h += `<table><thead><tr><th>#</th><th>Punto</th><th>Perché</th>
+          <th class="num">In gioco</th><th>Stato</th></tr></thead><tbody>`;
+    for (const p of f.punti_aperti) {
+      h += `<tr>
+        <td>${p.numero ?? ''}</td>
+        <td><strong>${p.punto}</strong></td>
+        <td class="rule">${p.perche || ''}${p.risposta_hotel ? '<br><em>Risposta: ' + p.risposta_hotel + '</em>' : ''}</td>
+        <td class="num">${p.importo_in_gioco ? EUR(p.importo_in_gioco) : '—'}</td>
+        <td><span class="chip ${p.stato === 'chiuso' ? 'ok' : 'warn'}">${p.stato}</span></td></tr>`;
+    }
+    h += `</tbody></table>`;
+  }
+
+  // Dettaglio camera per camera
+  h += `<h3>Dettaglio camera per camera (${f.camere.length})</h3>`;
+  h += `<table><thead><tr><th>Stato</th><th class="num">#</th><th>Tipo</th>
+        <th>Ospiti da rooming</th><th>Nome in fattura</th><th>Camera</th>
+        <th>Data</th><th class="num">Importo</th></tr></thead><tbody>`;
+  for (const c of f.camere) {
+    h += `<tr>
+      <td><span class="chip ${CHIP[c.stato] || 'mute'}">${ETICHETTA[c.stato] || c.stato}</span></td>
+      <td class="num">${c.numero_camera ?? ''}</td>
+      <td>${c.categoria || ''}</td>
+      <td>${c.ospiti_rooming || ''}</td>
+      <td>${c.nome_in_fattura || ''}</td>
+      <td>${c.camera_hotel || ''}</td>
+      <td>${c.data_servizio || ''}</td>
+      <td class="num">${c.importo === null ? '' : EUR(c.importo)}</td></tr>`;
+  }
+  h += `</tbody></table>`;
+
+  // Righe fattura non camera
+  const altre = f.righe_fattura.filter(l => l.kind !== 'camera');
+  if (altre.length) {
+    h += `<h3>Altre righe del documento</h3>`;
+    h += `<table><thead><tr><th>Tipo</th><th>Descrizione</th><th>Data</th>
+          <th class="num">Importo</th></tr></thead><tbody>`;
+    for (const l of altre) {
+      h += `<tr><td><span class="chip mute">${l.kind}</span></td>
+        <td>${l.descrizione || ''}</td><td>${l.data_servizio || ''}</td>
+        <td class="num">${EUR(l.importo)}</td></tr>`;
+    }
+    h += `</tbody></table>`;
+  }
+  if (f.note_iva) h += `<p class="legend">${f.note_iva}</p>`;
+  return h;
+}
+</script>
+</body>
+</html>
