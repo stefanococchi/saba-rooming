@@ -400,9 +400,10 @@ def _tour_rooming_rooms(hotel_id):
 def _consuntivo_sintesi(inv):
     """I numeri di una fattura: quadratura camere, pasti, punti aperti.
 
-    L'atteso non viene da un listino (per gli hotel del tour non ne abbiamo
-    in banca dati) ma dal fatturato corretto delle anomalie, che e' lo stesso
-    metodo usato a mano sulla 5770: atteso = fatturato - saldo anomalie.
+    L'atteso e' la somma delle tariffe concordate con l'albergo per quella
+    notte. Dove non le abbiamo si ripiega sul vecchio metodo, quello usato a
+    mano sulla 5770: atteso = fatturato corretto delle anomalie. Funziona,
+    ma e' cieco a una tariffa applicata sbagliata.
     """
     def _f(x):
         return float(x or 0)
@@ -411,6 +412,9 @@ def _consuntivo_sintesi(inv):
     fatturato_camere = sum(_f(l.importo) for l in righe_camera)
     effetto_camere = sum(_f(r.effetto_euro) for r in inv.recon_rows)
     effetto_fb = sum(_f(r.effetto_euro) for r in inv.fb_recon)
+    con_atteso = [r for r in inv.recon_rows if r.importo_atteso is not None]
+    atteso_camere = (sum(_f(r.importo_atteso) for r in con_atteso)
+                     if con_atteso else fatturato_camere - effetto_camere)
 
     anomalie = [r for r in inv.recon_rows if r.stato != 'OK']
     aperti = [i for i in inv.issues if i.stato == 'aperto']
@@ -420,7 +424,9 @@ def _consuntivo_sintesi(inv):
                               if r.stato != 'NON_NEL_ROOMING'),
         'camere_fatturate': len(righe_camera),
         'fatturato_camere': round(fatturato_camere, 2),
-        'atteso_camere': round(fatturato_camere - effetto_camere, 2),
+        'atteso_camere': round(atteso_camere, 2),
+        'differenza_camere': round(fatturato_camere - atteso_camere, 2),
+        'atteso_da_contratto': bool(con_atteso),
         'saldo_anomalie': round(effetto_camere + effetto_fb, 2),
         'n_anomalie': len(anomalie),
         'n_punti_aperti': len(aperti),
@@ -615,6 +621,23 @@ def _abbina_camere(voci_camera, camere_actual):
     return esiti, orfane
 
 
+def _tariffa_attesa(hotel, n_ospiti, esiti_notte, esiti_tutti):
+    """Quanto dovrebbe costare una camera con questo numero di occupanti.
+
+    Prima la tariffa concordata con l'albergo per quella notte. Solo se non
+    l'abbiamo si ripiega su quella che l'albergo ha applicato piu' spesso
+    alle camere uguali, che e' un ripiego onesto ma cieco: se la tariffa
+    applicata e' sbagliata, sembra giusta.
+    """
+    concordata = (hotel.tariffa_doppia if n_ospiti >= 2
+                  else hotel.tariffa_singola)
+    if concordata is not None:
+        return float(concordata), True
+    dedotta = (_tariffa_tipica(esiti_notte, n_ospiti)
+               or _tariffa_tipica(esiti_tutti, n_ospiti))
+    return dedotta, False
+
+
 def _tariffa_tipica(esiti, n_ospiti):
     """La tariffa che l'albergo applica alle camere con questo numero di
     occupanti, ricavata dalla fattura stessa.
@@ -767,6 +790,20 @@ def create_app():
                         conn.commit()
                     if 'deleted_at' not in _cols:
                         conn.execute(text(f"ALTER TABLE {_tbl} ADD COLUMN deleted_at TIMESTAMP"))
+                        conn.commit()
+                except Exception:
+                    pass
+
+            for _tab, _col, _tipo in (
+                    ('tour_hotels', 'tariffa_singola', 'NUMERIC(10,2)'),
+                    ('tour_hotels', 'tariffa_doppia', 'NUMERIC(10,2)'),
+                    ('tour_recon_rows', 'importo_atteso', 'NUMERIC(12,2)'),
+                    ('tour_recon_rows', 'hotel_id', 'INTEGER')):
+                try:
+                    if _col not in [c['name'] for c in
+                                    inspect(db.engine).get_columns(_tab)]:
+                        conn.execute(text(f'ALTER TABLE {_tab} '
+                                          f'ADD COLUMN {_col} {_tipo}'))
                         conn.commit()
                 except Exception:
                     pass
@@ -7293,6 +7330,16 @@ Notes: {q.notes or 'N/A'}"""
     def _iso(x):
         return x.isoformat() if x else None
 
+    def _atteso_hotel(h, rooms):
+        """Quanto dovrebbe costare la notte, alle tariffe concordate."""
+        if h.tariffa_singola is None and h.tariffa_doppia is None:
+            return None
+        tot = 0.0
+        for r in rooms:
+            t = h.tariffa_doppia if len(r['guests']) >= 2 else h.tariffa_singola
+            tot += float(t or 0)
+        return round(tot, 2)
+
     def _riga_pasto(d, servizio):
         """Un pasto: quanti ne avevamo annunciati e quanti ce ne fatturano.
 
@@ -7363,6 +7410,7 @@ Notes: {q.notes or 'N/A'}"""
             'id': r.id, 'numero_camera': r.numero_camera,
             'room_code': r.room_code, 'categoria': r.categoria,
             'ospiti_rooming': r.ospiti_rooming, 'stato': r.stato,
+            'importo_atteso': _d(r.importo_atteso),
             'effetto_euro': _d(r.effetto_euro), 'note': r.note,
             'nome_in_fattura': r.line.nome_in_fattura if r.line else None,
             'camera_hotel': r.line.camera_hotel if r.line else None,
@@ -7401,6 +7449,11 @@ Notes: {q.notes or 'N/A'}"""
                 'hotel_name': h.hotel_name, 'city': h.city,
                 'camere_actual': len(rooms),
                 'ospiti_actual': sum(len(r['guests']) for r in rooms),
+                'singole_actual': sum(1 for r in rooms if len(r['guests']) == 1),
+                'doppie_actual': sum(1 for r in rooms if len(r['guests']) >= 2),
+                'tariffa_singola': _d(h.tariffa_singola),
+                'tariffa_doppia': _d(h.tariffa_doppia),
+                'atteso_totale': _atteso_hotel(h, rooms),
                 'fatture': [_invoice_json(i) for i in h.invoices],
             })
         return {'hotel_notte': righe, 'pasti': _fb_giornate()}
@@ -7459,6 +7512,67 @@ Notes: {q.notes or 'N/A'}"""
                        e_stima=r.coperti_annunciati is None,
                        differenza=(None if fatt is None or lordi is None
                                    else fatt - lordi))
+
+    @app.put('/api/tour/hotel/<int:hotel_id>/tariffe')
+    def tour_hotel_tariffe(hotel_id):
+        """Le tariffe concordate per una notte, per occupazione.
+
+        Ricalcola subito le fatture gia' caricate: cambiare una tariffa e
+        lasciare i consuntivi sui numeri vecchi vorrebbe dire tenere in
+        pagina due verita' diverse.
+        """
+        h = TourHotel.query.get_or_404(hotel_id)
+        dati = request.get_json(silent=True) or {}
+        for campo in ('tariffa_singola', 'tariffa_doppia'):
+            if campo not in dati:
+                continue
+            grezzo = dati[campo]
+            if grezzo in ('', None):
+                setattr(h, campo, None)
+                continue
+            try:
+                v = float(str(grezzo).replace(',', '.'))
+            except (TypeError, ValueError):
+                return jsonify(ok=False, error='La tariffa deve essere un numero'), 400
+            if v < 0:
+                return jsonify(ok=False, error='La tariffa non puo essere negativa'), 400
+            setattr(h, campo, v)
+        db.session.commit()
+
+        toccate = _ricalcola_attesi(h)
+        rooms = _tour_rooming_rooms(h.id)
+        return jsonify(ok=True, atteso_totale=_atteso_hotel(h, rooms),
+                       righe_ricalcolate=toccate)
+
+    def _ricalcola_attesi(hotel):
+        """Riporta l'atteso delle camere di questa notte alle tariffe di
+        adesso. Non tocca gli abbinamenti ne' gli stati: quelli possono
+        essere stati corretti a mano, e non e' compito di un ricalcolo
+        rimetterli in discussione."""
+        if hotel.tariffa_singola is None and hotel.tariffa_doppia is None:
+            return 0
+        per_numero = {r['numero']: r for r in _tour_rooming_rooms(hotel.id)}
+        toccate = 0
+        # Le righe di questa notte, ovunque siano finite: una fattura del
+        # 2 settembre contiene anche camere del 1, e viceversa.
+        for r in TourReconRow.query.filter_by(hotel_id=hotel.id).all():
+            if r.stato in ('NON_NEL_ROOMING', 'OK_GRATUITA'):
+                atteso = 0.0
+            else:
+                camera = per_numero.get(r.numero_camera)
+                if camera is None:
+                    continue
+                t = (hotel.tariffa_doppia if len(camera['guests']) >= 2
+                     else hotel.tariffa_singola)
+                if t is None:
+                    continue
+                atteso = float(t)
+            fatturato = float(r.line.importo or 0) if r.line else 0.0
+            r.importo_atteso = atteso
+            r.effetto_euro = round(fatturato - atteso, 2)
+            toccate += 1
+        db.session.commit()
+        return toccate
 
     @app.get('/tour/consuntivi')
     def tour_consuntivi():
@@ -7702,12 +7816,18 @@ Notes: {q.notes or 'N/A'}"""
                 else:
                     nota = None
 
-                effetto = 0.0
+                tariffa, da_contratto = _tariffa_attesa(
+                    notti[d], len(ca['guests']), esiti, tutti_esiti)
+                # Una camera fatturata a zero e' una cortesia concordata:
+                # non e' un ammanco, quindi non ci si aspetta di pagarla.
+                atteso = 0.0 if stato == 'OK_GRATUITA' else tariffa
+                fatturato = float(v['importo']) if v is not None else 0.0
+                effetto = round(fatturato - atteso, 2)
+
                 if stato == 'NON_FATTURATA':
-                    effetto = -(_tariffa_tipica(esiti, len(ca['guests']))
-                                or _tariffa_tipica(tutti_esiti,
-                                                   len(ca['guests'])))
-                    nota = 'camera del rooming senza addebito'
+                    nota = ('camera del rooming senza addebito'
+                            + ('' if da_contratto else
+                               ' (tariffa dedotta dalla fattura)'))
                     punti.append((
                         f"{ca['ospiti']} non fatturata",
                         f"Camera {ca['numero']} ({ca['categoria']}) del "
@@ -7723,20 +7843,33 @@ Notes: {q.notes or 'N/A'}"""
                 elif stato == 'OK_2ND_OCCUPANTE':
                     nota = 'intestata al secondo occupante della camera'
                 elif stato == 'OK_GRATUITA':
-                    nota = 'addebito zero'
+                    nota = 'addebito zero: cortesia concordata'
+                elif effetto and stato.startswith('OK'):
+                    nota = (f"fatturata {fatturato:.2f} contro "
+                            f"{atteso:.2f} di tariffa"
+                            + (' concordata' if da_contratto
+                               else ' dedotta dalla fattura'))
+                    punti.append((
+                        f"{ca['ospiti']}: tariffa diversa dall'attesa",
+                        f"Camera {ca['numero']} ({ca['categoria']}) del {d}: "
+                        f"fatturata {fatturato:.2f}, attesa {atteso:.2f}.",
+                        abs(effetto)))
 
                 db.session.add(TourReconRow(
-                    invoice_id=inv.id,
+                    invoice_id=inv.id, hotel_id=notti[d].id,
                     line_id=righe[id(v)].id if v is not None else None,
                     numero_camera=ca['numero'], room_code=ca['raw_code'],
                     categoria=ca['categoria'], ospiti_rooming=ca['ospiti'],
                     guest_id=ca['guest_ids'][0] if ca['guest_ids'] else None,
-                    stato=stato, effetto_euro=effetto, note=nota))
+                    stato=stato, importo_atteso=atteso,
+                    effetto_euro=effetto, note=nota))
 
             for v in orfane:
                 db.session.add(TourReconRow(
-                    invoice_id=inv.id, line_id=righe[id(v)].id,
-                    stato='NON_NEL_ROOMING', effetto_euro=v['importo'],
+                    invoice_id=inv.id, hotel_id=notti[d].id,
+                    line_id=righe[id(v)].id,
+                    stato='NON_NEL_ROOMING', importo_atteso=0,
+                    effetto_euro=v['importo'],
                     note='fatturata ma non presente nel rooming'))
                 punti.append((
                     f"{v['descrizione']} non e nel rooming",

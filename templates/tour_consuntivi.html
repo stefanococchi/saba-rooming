@@ -120,6 +120,8 @@ input.ed:focus, select.ed:focus {
   outline: none; border-color: var(--primary); background: #fff;
 }
 input.ed.num { text-align: right; font-variant-numeric: tabular-nums; }
+.tariffe { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
+.tariffe input.tar { width: 78px; min-width: 78px; border-color: var(--outline-variant); }
 /* casella vuota: il segnaposto e' la stima di oggi, non un numero comunicato */
 input.ed.stima { border-style: dashed; border-color: var(--outline-variant); }
 input.ed::placeholder { color: var(--on-surface-variant); opacity: .45; font-style: italic; }
@@ -224,7 +226,26 @@ input.ed::placeholder { color: var(--on-surface-variant); opacity: .45; font-sty
       <div class="night">{{ h.night_label }}<small>{{ h.night_date }}</small></div>
       <div>
         <div class="name">{{ h.hotel_name }}{% if h.city %} <span class="rule">· {{ h.city }}</span>{% endif %}</div>
-        <div class="meta">ACTUAL: {{ h.camere_actual }} camere, {{ h.ospiti_actual }} ospiti</div>
+        <div class="meta">
+          ACTUAL: {{ h.camere_actual }} camere ({{ h.singole_actual }} singole,
+          {{ h.doppie_actual }} doppie), {{ h.ospiti_actual }} ospiti
+        </div>
+        <div class="tariffe">
+          <span class="rule">tariffe concordate</span>
+          <input class="ed num tar" type="number" min="0" step="0.01"
+                 value="{{ h.tariffa_singola if h.tariffa_singola is not none else '' }}"
+                 placeholder="singola" title="tariffa camera singola"
+                 data-hotel="{{ h.hotel_id }}" data-campo="tariffa_singola"
+                 onchange="salvaTariffa(this)">
+          <input class="ed num tar" type="number" min="0" step="0.01"
+                 value="{{ h.tariffa_doppia if h.tariffa_doppia is not none else '' }}"
+                 placeholder="doppia" title="tariffa camera doppia"
+                 data-hotel="{{ h.hotel_id }}" data-campo="tariffa_doppia"
+                 onchange="salvaTariffa(this)">
+          <span class="rule" id="atteso-{{ h.hotel_id }}">
+            {% if h.atteso_totale is not none %}atteso {{ '%.2f'|format(h.atteso_totale) }} €{% endif %}
+          </span>
+        </div>
       </div>
       <div class="right">
         {% for f in h.fatture %}
@@ -286,6 +307,33 @@ function avvisa(testo, errore) {
   box.style.display = 'block';
   clearTimeout(box._t);
   box._t = setTimeout(() => { box.style.display = 'none'; }, errore ? 9000 : 2500);
+}
+
+/* ── tariffe concordate per una notte ────────────────────────────── */
+
+async function salvaTariffa(inp) {
+  const hotel = inp.dataset.hotel;
+  const corpo = {};
+  corpo[inp.dataset.campo] = inp.value;
+  let j;
+  try {
+    const r = await fetch(`/api/tour/hotel/${hotel}/tariffe`, {
+      method: 'PUT', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(corpo),
+    });
+    j = await r.json();
+  } catch (e) { avvisa('Salvataggio non riuscito: ' + e, true); return; }
+  if (!j.ok) { avvisa(j.error || 'Salvataggio non riuscito', true); return; }
+
+  const box = document.getElementById(`atteso-${hotel}`);
+  if (box) box.textContent = (j.atteso_totale === null || j.atteso_totale === undefined)
+    ? '' : `atteso ${EUR(j.atteso_totale)}`;
+  avvisa(j.righe_ricalcolate
+    ? `Salvato: ricalcolate ${j.righe_ricalcolate} camere sulle fatture gia caricate`
+    : 'Salvato');
+  // il consuntivo aperto sotto mostra ancora i numeri vecchi
+  const det = document.getElementById(`det-${hotel}`);
+  if (det && det.style.display !== 'none' && det._invId) ridisegna(det._invId, det);
 }
 
 /* ── coperti fatturati, scritti a mano dalla tabella in cima ─────── */
@@ -461,7 +509,7 @@ function rendi(f) {
   let h = '';
 
   h += `<div class="kpis">
-    <div class="kpi"><div class="lbl">Atteso dal rooming</div><div class="val">${EUR(s.atteso_camere)}</div></div>
+    <div class="kpi"><div class="lbl">Atteso ${s.atteso_da_contratto ? 'a tariffa concordata' : '(dedotto dalla fattura)'}</div><div class="val">${EUR(s.atteso_camere)}</div></div>
     <div class="kpi"><div class="lbl">Fatturato camere</div><div class="val">${EUR(s.fatturato_camere)}</div></div>
     <div class="kpi"><div class="lbl">Saldo anomalie</div><div class="val ${segno(s.saldo_anomalie)}">${EUR(s.saldo_anomalie)}</div></div>
     <div class="kpi"><div class="lbl">Totale documento</div><div class="val">${EUR(s.totale_documento)}</div></div>
@@ -549,8 +597,10 @@ function rendi(f) {
   h += `<h3>Camera per camera (${f.camere.length})</h3>`;
   h += `<table><thead><tr><th style="min-width:150px">Stato</th><th class="num">#</th><th>Tipo</th>
         <th>Ospiti da rooming</th><th>Nome in fattura</th><th>Camera</th>
-        <th>Data</th><th class="num">Importo</th>
-        <th class="num" title="+ fatturato di troppo, − non fatturato">Effetto</th>
+        <th>Data</th>
+        <th class="num">Fatturato</th>
+        <th class="num">Atteso<span class="q">tariffa concordata</span></th>
+        <th class="num" title="fatturato meno atteso">Differenza</th>
         <th>Nota</th></tr></thead><tbody>`;
   for (const c of f.camere) {
     h += `<tr>
@@ -562,6 +612,8 @@ function rendi(f) {
       <td>${esc(c.camera_hotel)}</td>
       <td>${esc(c.data_servizio)}</td>
       <td class="num">${c.importo === null ? '' : EUR(c.importo)}</td>
+      <td class="num">${c.importo_atteso === null || c.importo_atteso === undefined
+                        ? '<span class="chip mute">—</span>' : EUR(c.importo_atteso)}</td>
       <td class="num">${inpNum('recon', c.id, 'effetto_euro', c.effetto_euro)}</td>
       <td>${inpTesto('recon', c.id, 'note', c.note)}</td></tr>`;
   }

@@ -289,6 +289,11 @@ class TourHotel(db.Model):
     hotel_name     = db.Column(db.String(200), nullable=False)
     city           = db.Column(db.String(100))
     rooms_blocked  = db.Column(db.Integer, default=0)
+    # Tariffe concordate per questa notte, per occupazione. Senza queste
+    # l'atteso si deduce dalla fattura stessa, e una tariffa sbagliata
+    # sembra giusta perche' e' l'albergo a dire quanto costa.
+    tariffa_singola = db.Column(db.Numeric(10, 2))
+    tariffa_doppia  = db.Column(db.Numeric(10, 2))
 
     categories  = db.relationship('TourRoomCategory', backref='hotel',
                                    cascade='all, delete-orphan', lazy='joined',
@@ -541,6 +546,10 @@ class TourReconRow(db.Model):
     line_id       = db.Column(db.Integer, db.ForeignKey('tour_invoice_lines.id'))  # None = non fatturata
 
     # lato ACTUAL (rooming mandato all'albergo)
+    # A quale notte appartiene la camera. Una fattura puo' coprire piu'
+    # notti e la numerazione riparte da 1 a ogni notte: senza questo, la
+    # camera 3 del 1 settembre e la camera 3 del 2 sono indistinguibili.
+    hotel_id      = db.Column(db.Integer, db.ForeignKey('tour_hotels.id'))
     numero_camera = db.Column(db.Integer)             # progressivo nel rooming
     room_code     = db.Column(db.String(50))
     categoria     = db.Column(db.String(100))
@@ -548,7 +557,8 @@ class TourReconRow(db.Model):
     guest_id      = db.Column(db.Integer, db.ForeignKey('tour_guests.id'))
 
     stato         = db.Column(db.String(30), nullable=False, default='OK')
-    effetto_euro  = db.Column(db.Numeric(12, 2), default=0)   # +: fatturato di troppo, -: non fatturato
+    importo_atteso = db.Column(db.Numeric(12, 2))            # tariffa concordata per questa camera
+    effetto_euro  = db.Column(db.Numeric(12, 2), default=0)   # fatturato - atteso
     note          = db.Column(db.Text)
 
     invoice = db.relationship('TourInvoice', backref=db.backref(
