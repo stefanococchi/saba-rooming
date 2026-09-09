@@ -421,11 +421,42 @@ def _consuntivo_sintesi(inv):
     anomalie = [r for r in inv.recon_rows if r.stato != 'OK']
     aperti = [i for i in inv.issues if i.stato == 'aperto']
 
+    # Quante camere sono state fatturate davvero, e di che tipo. Il tipo lo
+    # dice l'importo applicato, non l'occupazione del rooming: se l'albergo
+    # addebita la tariffa doppia a una camera singola, il conto lo dice qui.
+    id_notti = {r.hotel_id for r in inv.recon_rows if r.hotel_id}
+    tariffe = {h.id: (_f(h.tariffa_singola), _f(h.tariffa_doppia))
+               for h in (TourHotel.query
+                         .filter(TourHotel.id.in_(id_notti)).all()
+                         if id_notti else [])}
+    fatt = {'singole': 0, 'doppie': 0, 'gratuite': 0, 'altro': 0}
+    att = {'singole': 0, 'doppie': 0}
+    for r in inv.recon_rows:
+        occupanti = (r.ospiti_rooming or '').count(' + ') + 1 if r.ospiti_rooming else 0
+        if r.stato != 'NON_NEL_ROOMING' and occupanti:
+            att['doppie' if occupanti >= 2 else 'singole'] += 1
+        if r.line is None:
+            continue
+        importo = _f(r.line.importo)
+        sing, dopp = tariffe.get(r.hotel_id, (0.0, 0.0))
+        if importo == 0:
+            fatt['gratuite'] += 1
+        elif sing and importo == sing:
+            fatt['singole'] += 1
+        elif dopp and importo == dopp:
+            fatt['doppie'] += 1
+        elif occupanti:
+            fatt['doppie' if occupanti >= 2 else 'singole'] += 1
+        else:
+            fatt['altro'] += 1
+
     return {
         'camere_rooming': sum(1 for r in inv.recon_rows
                               if r.stato != 'NON_NEL_ROOMING'),
         'camere_fatturate': len(righe_camera),
         'fatturato_camere': round(fatturato_camere, 2),
+        'fatturate': fatt,
+        'attese': att,
         'atteso_camere': round(atteso_camere, 2),
         'differenza_camere': round(fatturato_camere - atteso_camere, 2),
         'atteso_da_contratto': bool(con_atteso),

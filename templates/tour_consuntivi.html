@@ -122,6 +122,10 @@ input.ed:focus, select.ed:focus {
 input.ed.num { text-align: right; font-variant-numeric: tabular-nums; }
 /* le note sono frasi, non sigle: vanno lette senza doverci cliccare dentro */
 input.ed.nota { min-width: 300px; }
+.riga-camere { background: #fff; border: 1px solid var(--outline-variant);
+               border-radius: var(--radius-sm); padding: 10px 14px;
+               margin: 10px 0 4px; font-size: 13px; }
+.riga-camere .scarto { color: var(--error); font-weight: 600; }
 td:has(> input.ed.nota) { min-width: 320px; }
 /* tabelle larghe: si scorrono, non si tagliano */
 .detail, #incassi { overflow-x: auto; }
@@ -648,6 +652,25 @@ function rendi(f) {
     <div class="kpi"><div class="lbl">Totale documento</div><div class="val">${EUR(s.totale_documento)}</div></div>
     <div class="kpi"><div class="lbl">Netto a pagare</div><div class="val">${EUR(s.netto_a_pagare)}</div></div>
   </div>`;
+  // quante camere ha fatturato davvero l'albergo, e di che tipo
+  const fa = s.fatturate, at = s.attese;
+  const pezzi = [];
+  if (fa.singole) pezzi.push(`<strong>${fa.singole}</strong> a tariffa singola`);
+  if (fa.doppie) pezzi.push(`<strong>${fa.doppie}</strong> a tariffa doppia`);
+  if (fa.gratuite) pezzi.push(`<strong>${fa.gratuite}</strong> a zero`);
+  if (fa.altro) pezzi.push(`<strong>${fa.altro}</strong> a un importo che non è né l'una né l'altra`);
+  const scartoS = fa.singole - at.singole, scartoD = fa.doppie - at.doppie;
+  h += `<p class="riga-camere">
+    <span class="material-icons-round" style="font-size:17px;vertical-align:-3px">hotel</span>
+    Camere fatturate: ${pezzi.length ? pezzi.join(', ') : 'nessuna'}.
+    Dal rooming ne erano attese <strong>${at.singole}</strong> singole e
+    <strong>${at.doppie}</strong> doppie${
+      (scartoS || scartoD)
+        ? ` — <span class="scarto">scarto ${scartoS > 0 ? '+' : ''}${scartoS} singole,
+            ${scartoD > 0 ? '+' : ''}${scartoD} doppie</span>`
+        : ' — <span class="chip ok">tornano</span>'}.
+  </p>`;
+
   h += `<p class="rule">Fattura ${esc(f.numero)}${f.data ? ' del ' + esc(f.data) : ''}
         — ${esc(f.fornitore)}
         ${f.stato_pagamento ? '· <span class="chip mute">' + esc(f.stato_pagamento) + '</span>' : ''}
