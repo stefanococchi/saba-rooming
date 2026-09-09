@@ -3160,8 +3160,16 @@ async function loadLettere(selectId) {
     const j = await r.json();
     if (!j.ok) { list.innerHTML = `<p style="color:var(--error);padding:12px">${j.error}</p>`; return; }
     _lettere = j.lettere;
-    document.getElementById('lettStats').textContent =
-      `${j.totale} lettere · ${j.con_warning} con dati mancanti`;
+    const esclusi = j.esclusi || [];
+    const stats = document.getElementById('lettStats');
+    stats.textContent =
+      `${j.totale} lettere · ${j.con_warning} con dati mancanti`
+      + (esclusi.length ? ` · ${esclusi.length} esclusi perche non partecipano` : '');
+    // chi e' fuori si deve poter vedere: se sparisce in silenzio, il giorno
+    // che uno ci va escluso per sbaglio non se ne accorge nessuno
+    stats.title = esclusi.length
+      ? 'Esclusi: ' + esclusi.map(e => `${e.cognome} ${e.nome}`).join(', ')
+      : '';
     renderLettereList();
     let idx = 0;
     if (selectId) {

@@ -3663,13 +3663,21 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
         davanti: l'ordine alfabetico coincide con quello cronologico."""
         return (partenza or '') > RIENTRO_SENZA_ORARI_DOPO
 
+    def _lt_non_partecipa(g):
+        """Chi non ha nessuna notte in programma non viene, e a chi non viene
+        non si manda una convocazione.
+
+        Non e' un dato da completare: e' una persona fuori dall'evento. Fra
+        i dati mancanti finirebbe nella lista di quelli da sistemare, e prima
+        o poi qualcuno la sistemerebbe convocando chi non deve venire.
+        """
+        return not any(getattr(g, f'presenza_{d}') for d in GIORNI_EVENTO)
+
     def _lt_warnings(g):
         """Dati mancanti da sistemare prima di inviare la lettera."""
         w = []
         if not (g.email or '').strip():
             w.append('email mancante')
-        if not any(getattr(g, f'presenza_{d}') for d in GIORNI_EVENTO):
-            w.append('nessuna presenza indicata')
         if _lt_via_terra(g):
             # Basta l'ora di ritrovo: l'indirizzo della sede lo conoscono gia',
             # e l'arrivo al resort si ricava dalla durata del tragitto.
@@ -3996,6 +4004,7 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
                         f'{EVENTO["luogo"]}, {EVENTO["periodo"]}'),
             'html': _lt_html(g, intro),
             'warnings': _lt_warnings(g),
+            'non_partecipa': _lt_non_partecipa(g),
         }
 
     @app.get('/api/rooming/lettera/<int:gid>')
@@ -4032,10 +4041,17 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
 
         guests = q.order_by(Guest.cognome, Guest.nome).all()
         intro = request.args.get('intro')
+
+        esclusi = [{'id': g.id, 'cognome': g.cognome, 'nome': g.nome,
+                    'motivo': 'nessuna notte in programma: non partecipa'}
+                   for g in guests if _lt_non_partecipa(g)]
+        guests = [g for g in guests if not _lt_non_partecipa(g)]
+
         lettere = [_lt_payload(g, intro) for g in guests]
         return jsonify(ok=True,
                        totale=len(lettere),
                        con_warning=sum(1 for l in lettere if l['warnings']),
+                       esclusi=esclusi,
                        lettere=lettere)
 
 
@@ -4128,6 +4144,7 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
         intro = (request.json or {}).get('intro')
         guests = Guest.query.filter_by(deleted=False).order_by(
             Guest.cognome, Guest.nome).all()
+        guests = [g for g in guests if not _lt_non_partecipa(g)]
         vola = next((g for g in guests if g.pnr_group and not _lt_warnings(g)), None)
         terra = next((g for g in guests if _lt_via_terra(g)), None)
 
@@ -4180,6 +4197,10 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
         inviate, saltate = [], []
         for g in guests:
             nome = f'{g.cognome} {g.nome or ""}'.strip()
+            if _lt_non_partecipa(g):
+                saltate.append({'ospite': nome,
+                                'motivo': 'nessuna notte in programma: non partecipa'})
+                continue
             w = _lt_warnings(g)
             if w:
                 saltate.append({'ospite': nome, 'motivo': ', '.join(w)})
