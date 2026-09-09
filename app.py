@@ -301,11 +301,15 @@ FB_COLONNA_CENA = {date(2026, 9, 2): 'dinner'}
 
 
 def _fb_coperti_attesi(data_servizio, servizio='cena'):
-    """Coperti attesi per un pasto: (netti, lordi, ospiti_netti).
+    """Coperti di un pasto: (netti, lordi, ospiti_netti).
 
-    netti = senza no-show e cancellati, cioe' chi ci si aspetta davvero a
-    tavola; lordi = la lista confermata per intero. La differenza fra i due
-    e' la contestazione tipica con l'albergo, quindi si tengono entrambi.
+    lordi = la lista annunciata all'albergo, per intero. E' il termine di
+    paragone del consuntivo: l'albergo fattura quello che gli e' stato
+    annunciato, e chi poi non si presenta e' un problema nostro.
+
+    netti = senza no-show e cancellati. Serve alle liste che vanno ai
+    ristoranti (quanti coperti apparecchiare), non al confronto con la
+    fattura: non si contesta a un albergo un no-show nostro.
     """
     campo = FB_COLONNA_CENA.get(data_servizio) if servizio == 'cena' else None
     if campo:
@@ -7304,6 +7308,7 @@ Notes: {q.notes or 'N/A'}"""
             'coperti_attesi': f.coperti_attesi,
             'coperti_attesi_lordi': f.coperti_attesi_lordi,
             'coperti_attesi_oggi': _fb_coperti_attesi(f.data_servizio, f.servizio)[0],
+            'coperti_lordi_oggi': _fb_coperti_attesi(f.data_servizio, f.servizio)[1],
             'coperti_fatturati': f.coperti_fatturati,
             'prezzo_unitario': _d(f.prezzo_unitario),
             'importo': _d(f.importo), 'stato': f.stato,
@@ -7616,16 +7621,16 @@ Notes: {q.notes or 'N/A'}"""
             servizio = _servizio_da_descrizione(v['descrizione'])
             netti, lordi, _ = _fb_coperti_attesi(v['data'], servizio)
             nota = None
-            if v['importo'] and netti:
+            if v['importo'] and lordi:
                 nota = (f"importo a corpo: nessuna quantita in fattura. "
-                        f"Diviso per i {netti} coperti attesi fa "
-                        f"{v['importo'] / netti:.2f} a persona, per i {lordi} "
-                        f"della lista intera {v['importo'] / lordi:.2f}.")
+                        f"Diviso per i {lordi} coperti annunciati fa "
+                        f"{v['importo'] / lordi:.2f} a persona.")
                 punti.append((
                     f"{v['descrizione']} del {v['data']}: quanti coperti",
                     f"Fatturato {v['importo']:.2f} euro senza quantita ne "
-                    f"prezzo unitario. Attesi {netti} a tavola, {lordi} "
-                    f"sulla lista confermata.", 0))
+                    f"prezzo unitario. Annunciati {lordi}: farebbe "
+                    f"{v['importo'] / lordi:.2f} a persona. Chiedere il "
+                    f"dettaglio dei coperti.", 0))
             db.session.add(TourFbRecon(
                 invoice_id=inv.id, line_id=righe[id(v)].id,
                 data_servizio=v['data'], servizio=servizio,

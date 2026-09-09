@@ -565,9 +565,15 @@ class TourFbRecon(db.Model):
     ospite (tour_guests.dinner); per ogni altro giorno fanno fede le presenze
     attese in albergo quella notte. E' la stessa regola dell'export cene.
 
-    I coperti attesi si ricalcolano sempre dal rooming di adesso; qui si
-    conserva anche lo snapshot del momento in cui il consuntivo e' stato
-    fatto, perche' il rooming puo' cambiare dopo.
+    Il confronto e' fra i coperti ANNUNCIATI all'albergo (coperti_attesi_lordi)
+    e quelli che l'albergo FATTURA (coperti_fatturati). Chi non si presenta
+    resta dentro gli annunciati: e' un problema nostro, non dell'albergo, e
+    non si contesta in fattura. coperti_attesi (al netto dei no-show) resta
+    come dato di servizio, non entra nel confronto.
+
+    I coperti si ricalcolano sempre dal rooming di adesso; qui si conserva
+    anche lo snapshot del momento in cui il consuntivo e' stato fatto,
+    perche' il rooming puo' cambiare dopo.
     """
     __tablename__ = 'tour_fb_recon'
 
@@ -579,9 +585,9 @@ class TourFbRecon(db.Model):
     servizio      = db.Column(db.String(20), nullable=False)   # pranzo | cena | altro
     descrizione   = db.Column(db.String(200))
 
-    coperti_attesi = db.Column(db.Integer)            # snapshot, esclusi no-show e cancellati
-    coperti_attesi_lordi = db.Column(db.Integer)      # snapshot, lista confermata intera
-    coperti_fatturati = db.Column(db.Integer)         # None = importo a corpo
+    coperti_attesi = db.Column(db.Integer)            # dato di servizio, senza no-show
+    coperti_attesi_lordi = db.Column(db.Integer)      # LORDI: annunciati all'albergo
+    coperti_fatturati = db.Column(db.Integer)         # NETTI: fatturati. None = importo a corpo
     prezzo_unitario = db.Column(db.Numeric(12, 2))
     importo       = db.Column(db.Numeric(12, 2))
 

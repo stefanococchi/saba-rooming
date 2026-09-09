@@ -151,10 +151,8 @@ input.ed.num { text-align: right; font-variant-numeric: tabular-nums; }
       <thead>
         <tr>
           <th>Data</th><th>Riferimento ACTUAL</th>
-          <th class="num">Cena<span class="q">attesi a tavola</span></th>
-          <th class="num">Cena<span class="q">annunciati all'albergo</span></th>
-          <th class="num">Pranzo<span class="q">attesi a tavola</span></th>
-          <th class="num">Pranzo<span class="q">annunciati all'albergo</span></th>
+          <th class="num">Cena · LORDI<span class="q">annunciati all'albergo</span></th>
+          <th class="num">Pranzo · LORDI<span class="q">annunciati all'albergo</span></th>
         </tr>
       </thead>
       <tbody>
@@ -162,24 +160,20 @@ input.ed.num { text-align: right; font-variant-numeric: tabular-nums; }
         <tr>
           <td><strong>{{ g.data }}</strong></td>
           <td class="rule">{{ g.regola }}</td>
-          <td class="num">{{ g.cena_netti }}</td>
           <td class="num">{{ g.cena_lordi }}</td>
-          <td class="num">{{ g.pranzo_netti }}</td>
           <td class="num">{{ g.pranzo_lordi }}</td>
         </tr>
         {% endfor %}
       </tbody>
     </table>
     <div class="pad legend">
-      <strong>Annunciati all'albergo</strong> = la lista confermata per intero.
-      È su quella che l'albergo fattura: ha comprato il cibo e messo il personale
-      su quel numero.
-      <strong>Attesi a tavola</strong> = quanti te ne aspetti davvero, tolti i
-      no-show e chi ha disdetto dopo aver pagato (<code>NO SHOW</code>,
-      <code>PAID-CANCELLED</code>). È la stessa regola delle liste cena mandate
-      ai ristoranti.
-      La differenza fra i due è quasi sempre l'oggetto della discussione:
-      l'albergo fattura la lista, tu vorresti pagare chi si è presentato.
+      <strong>LORDI</strong> = quanti ne avevi annunciati all'albergo, lista
+      intera. È il termine di paragone del consuntivo: l'albergo ha comprato il
+      cibo e messo il personale su quel numero, e su quel numero fattura.
+      I <strong>NETTI</strong> — quanti l'albergo te ne fattura davvero —
+      compaiono nel dettaglio della fattura, quando l'hai caricata.
+      Chi non si è presentato resta dentro i lordi: un no-show è un problema tuo,
+      non dell'albergo, e non è materia da contestare in fattura.
     </div>
   </div>
 
@@ -411,30 +405,40 @@ function rendi(f) {
   if (!f.pasti.length) h += `<p class="empty">Nessuna riga pasti su questa fattura.</p>`;
   else {
     h += `<table><thead><tr><th>Data</th><th>Servizio</th>
-          <th class="num">Attesi<span class="q">a tavola</span></th>
-          <th class="num">Annunciati<span class="q">all'albergo</span></th>
-          <th class="num">Fatturati</th><th class="num">Prezzo</th>
+          <th class="num">LORDI<span class="q">annunciati all'albergo</span></th>
+          <th class="num">NETTI<span class="q">fatturati dall'albergo</span></th>
+          <th class="num">Differenza</th>
+          <th class="num">Prezzo</th>
           <th class="num">Importo</th><th>Stato</th><th>Nota</th></tr></thead><tbody>`;
     for (const p of f.pasti) {
-      const scostato = (p.coperti_attesi_oggi !== null && p.coperti_attesi !== null
-                        && p.coperti_attesi_oggi !== p.coperti_attesi);
+      const lordi = p.coperti_attesi_lordi;
+      const scostato = (p.coperti_lordi_oggi !== null && lordi !== null
+                        && p.coperti_lordi_oggi !== lordi);
+      const d = (p.coperti_fatturati === null || p.coperti_fatturati === undefined
+                 || lordi === null || lordi === undefined)
+        ? null : p.coperti_fatturati - lordi;
       h += `<tr>
         <td>${esc(p.data_servizio) || '—'}</td>
         <td>${esc(p.servizio)}${p.descrizione ? ' · ' + esc(p.descrizione) : ''}</td>
-        <td class="num">${p.coperti_attesi ?? '—'}
+        <td class="num">${lordi ?? '—'}
             ${scostato ? `<br><button class="ghost" onclick="riallinea(${p.id}, this)"
-               title="il rooming e cambiato dopo">oggi ${p.coperti_attesi_oggi} →</button>` : ''}</td>
-        <td class="num">${p.coperti_attesi_lordi ?? '—'}</td>
+               title="il rooming e cambiato dopo">oggi ${p.coperti_lordi_oggi} →</button>` : ''}</td>
         <td class="num">${inpNum('fb', p.id, 'coperti_fatturati', p.coperti_fatturati)}</td>
+        <td class="num">${d === null ? '<span class="chip mute">a corpo</span>'
+                          : (d === 0 ? '<span class="chip ok">0</span>'
+                             : `<span class="chip ${d > 0 ? 'err' : 'warn'}">${d > 0 ? '+' : ''}${d}</span>`)}</td>
         <td class="num">${inpNum('fb', p.id, 'prezzo_unitario', p.prezzo_unitario)}</td>
         <td class="num">${EUR(p.importo)}</td>
         <td>${selStato('fb', p.id, p.stato, STATI_PASTO)}</td>
         <td>${inpTesto('fb', p.id, 'note', p.note)}</td></tr>`;
     }
     h += `</tbody></table>
-      <p class="legend" style="margin-top:8px">Se in fattura non c'è la quantità,
-      <em>Fatturati</em> è vuoto: scrivici quanti coperti dichiara l'albergo, così
-      il confronto con gli attesi diventa un numero invece che un'impressione.</p>`;
+      <p class="legend" style="margin-top:8px">
+      <strong>LORDI</strong>: quanti ne avevi annunciati all'albergo.
+      <strong>NETTI</strong>: quanti te ne fattura. Se in fattura non c'è la
+      quantità la casella è vuota — scrivici il numero che dichiara l'albergo,
+      e la differenza si calcola da sé. Una differenza positiva vuol dire che
+      ti sta fatturando più coperti di quanti gliene avevi annunciati.</p>`;
   }
 
   // Punti aperti
