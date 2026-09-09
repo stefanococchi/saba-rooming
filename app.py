@@ -3623,6 +3623,17 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
         data   = pg.data_andata   if tipo == 'andata' else pg.data_ritorno
         rotta  = (pg.rotta_andata if tipo == 'andata' else pg.rotta_ritorno) or ''
         orario = pg.orario_andata if tipo == 'andata' else pg.orario_ritorno
+
+        # Il gruppo puo' non avere il numero di volo: succede con i low-cost,
+        # dove andata e ritorno sono due prenotazioni diverse e un PNR unico
+        # non esiste. Se l'ospite ce l'ha scritto sulla sua scheda si usa
+        # quello: un dato inserito a mano non va buttato via in silenzio,
+        # e senza la lettera esce priva di volo e di compagnia.
+        volo = (volo or '').strip()
+        if not volo:
+            proprio = g.volo_arrivo if tipo == 'andata' else g.volo_partenza
+            volo = (proprio or '').strip()
+
         if not (volo or rotta.strip()):
             return {}
         partenza, arrivo = _lt_orari(orario)
