@@ -972,6 +972,53 @@ def create_app():
             except Exception:
                 pass
 
+
+        # Le righe di confronto create prima che esistesse hotel_id non
+        # sanno a quale notte appartengono. Senza quello non trovano la
+        # tariffa concordata, e una camera fatturata ma non presente nel
+        # rooming finisce fra gli importi non riconosciuti invece che
+        # fra le doppie. Si ricava dalla data della riga di fattura;
+        # per le camere non fatturate, che una riga non ce l'hanno, dal
+        # rooming della notte.
+        try:
+            orfane = TourReconRow.query.filter(
+                TourReconRow.hotel_id.is_(None)).all()
+            if orfane:
+                notti_per_fattura = {}
+                sistemate = 0
+                for r in orfane:
+                    inv = r.invoice
+                    if inv is None or inv.hotel is None:
+                        continue
+                    if inv.id not in notti_per_fattura:
+                        notti = TourHotel.query.filter_by(
+                            hotel_name=inv.hotel.hotel_name).all()
+                        notti_per_fattura[inv.id] = {
+                            n.night_date: (n, {c['numero']: c['ospiti']
+                                               for c in _tour_rooming_rooms(n.id)})
+                            for n in notti}
+                    notti = notti_per_fattura[inv.id]
+
+                    trovato = None
+                    d = r.line.data_servizio if r.line else None
+                    if d is not None:
+                        # certi alberghi datano la camera al giorno di partenza
+                        trovato = (notti.get(d) or notti.get(d - timedelta(days=1)))
+                    if trovato is None and r.numero_camera and r.ospiti_rooming:
+                        for _, (notte, camere) in notti.items():
+                            if camere.get(r.numero_camera) == r.ospiti_rooming:
+                                trovato = (notte, camere)
+                                break
+                    if trovato is not None:
+                        r.hotel_id = trovato[0].id
+                        sistemate += 1
+                if sistemate:
+                    db.session.commit()
+                    logger.info('Consuntivi: assegnata la notte a %d righe '
+                                'di confronto che non ce l\'avevano', sistemate)
+        except Exception:
+            db.session.rollback()
+
         # Migrate Italian statuses to English (one-time)
         _status_map = {
             'da_valutare': 'pending_review',
