@@ -55,6 +55,9 @@ th, td { padding: 8px 11px; text-align: left; border-bottom: 1px solid var(--out
          vertical-align: top; }
 th { font-weight: 600; color: var(--on-surface-variant); font-size: 12px;
      text-transform: uppercase; letter-spacing: .3px; background: #fbf7f2; }
+/* seconda riga dell'intestazione: dice quale dei due conteggi e' */
+th .q { display: block; font-weight: 400; text-transform: none;
+        letter-spacing: 0; font-size: 11px; opacity: .8; margin-top: 2px; }
 td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 tr:last-child td { border-bottom: none; }
 .chip { display: inline-block; padding: 2px 9px; border-radius: 999px;
@@ -148,8 +151,10 @@ input.ed.num { text-align: right; font-variant-numeric: tabular-nums; }
       <thead>
         <tr>
           <th>Data</th><th>Riferimento ACTUAL</th>
-          <th class="num">Cena netti</th><th class="num">Cena lordi</th>
-          <th class="num">Pranzo netti</th><th class="num">Pranzo lordi</th>
+          <th class="num">Cena<span class="q">attesi a tavola</span></th>
+          <th class="num">Cena<span class="q">annunciati all'albergo</span></th>
+          <th class="num">Pranzo<span class="q">attesi a tavola</span></th>
+          <th class="num">Pranzo<span class="q">annunciati all'albergo</span></th>
         </tr>
       </thead>
       <tbody>
@@ -166,12 +171,15 @@ input.ed.num { text-align: right; font-variant-numeric: tabular-nums; }
       </tbody>
     </table>
     <div class="pad legend">
-      <strong>Netti</strong> = senza no-show e cancellati (<code>NO SHOW</code>,
-      <code>PAID-CANCELLED</code>): chi ci si aspetta davvero a tavola, stessa
-      regola delle liste cena mandate ai ristoranti.
-      <strong>Lordi</strong> = la lista confermata per intero.
-      La differenza fra i due è quasi sempre l'oggetto della contestazione:
-      l'albergo fattura la lista, tu paghi chi si è presentato.
+      <strong>Annunciati all'albergo</strong> = la lista confermata per intero.
+      È su quella che l'albergo fattura: ha comprato il cibo e messo il personale
+      su quel numero.
+      <strong>Attesi a tavola</strong> = quanti te ne aspetti davvero, tolti i
+      no-show e chi ha disdetto dopo aver pagato (<code>NO SHOW</code>,
+      <code>PAID-CANCELLED</code>). È la stessa regola delle liste cena mandate
+      ai ristoranti.
+      La differenza fra i due è quasi sempre l'oggetto della discussione:
+      l'albergo fattura la lista, tu vorresti pagare chi si è presentato.
     </div>
   </div>
 
@@ -403,7 +411,8 @@ function rendi(f) {
   if (!f.pasti.length) h += `<p class="empty">Nessuna riga pasti su questa fattura.</p>`;
   else {
     h += `<table><thead><tr><th>Data</th><th>Servizio</th>
-          <th class="num">Attesi netti</th><th class="num">Attesi lordi</th>
+          <th class="num">Attesi<span class="q">a tavola</span></th>
+          <th class="num">Annunciati<span class="q">all'albergo</span></th>
           <th class="num">Fatturati</th><th class="num">Prezzo</th>
           <th class="num">Importo</th><th>Stato</th><th>Nota</th></tr></thead><tbody>`;
     for (const p of f.pasti) {
