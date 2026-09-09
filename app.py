@@ -4,7 +4,9 @@ import json
 import unicodedata
 import urllib.parse
 from datetime import datetime, date, timedelta
+import io
 from io import BytesIO
+from collections import defaultdict
 from functools import wraps
 
 import requests as http_requests
@@ -28,7 +30,7 @@ from models import (db, User, AuditLog, Todo, Guest, RoomingClientToken, RoomCon
                      TourHotelToken, TourHotelAccessLog,
                      TourClientToken, TourGuestDocument,
                      TourInvoice, TourInvoiceLine, TourReconRow,
-                     TourFbRecon, TourInvoiceIssue)
+                     TourFbRecon, TourInvoiceIssue, TourPayment)
 
 
 def normalize_flight(s):
@@ -661,6 +663,113 @@ def _servizio_da_descrizione(desc):
     if any(k in su for k in ('BUFFET', 'DINNER', 'CENA', 'GALA')):
         return 'cena'
     return 'altro'
+
+
+# ── Tour: incassi dai partecipanti ───────────────────────────────────
+
+# Gli export di Stripe cambiano intestazione da un anno all'altro e da un
+# filtro all'altro: si cerca la prima colonna che c'e', invece di dare per
+# scontato un tracciato che poi non arriva.
+COLONNE_PAGAMENTO = {
+    'transazione': ('id', 'Charge ID', 'PaymentIntent ID'),
+    'data': ('Created date (UTC)', 'Created (UTC)', 'Created'),
+    'lordo': ('Amount', 'Converted Amount'),
+    'rimborsato': ('Amount Refunded', 'Converted Amount Refunded'),
+    'commissione': ('Fee',),
+    'valuta': ('Currency', 'Converted Currency'),
+    'stato': ('Status',),
+    'email_pagante': ('Customer Email', 'Email'),
+    'nome_carta': ('Card Name', 'Customer Description', 'Description',
+                   'Cardholder Name'),
+    'paese_carta': ('Card Issue Country', 'Card Country'),
+}
+
+# Sotto questa soglia non e' una quota ma una verifica della carta.
+SOGLIA_VERIFICA = 1.0
+
+
+def _numero_it(s):
+    """Un importo come lo scrive Stripe in italiano: 1.234,56."""
+    s = (s or '').strip().replace('.', '').replace(',', '.')
+    try:
+        return float(s)
+    except ValueError:
+        return 0.0
+
+
+def _prima_colonna(riga, nomi):
+    for n in nomi:
+        if riga.get(n) not in (None, ''):
+            return riga[n]
+    return None
+
+
+def _leggi_pagamenti_csv(dati):
+    """Le righe di un export Stripe, normalizzate.
+
+    Scarta le verifiche carta da pochi centesimi e i pagamenti non riusciti:
+    non sono incassi, e tenerli dentro gonfia il totale.
+    """
+    import csv as _csv
+    testo = dati.decode('utf-8-sig', errors='replace')
+    lettore = _csv.DictReader(io.StringIO(testo))
+
+    pagamenti, scartate = [], defaultdict(int)
+    for riga in lettore:
+        valori = {campo: _prima_colonna(riga, nomi)
+                  for campo, nomi in COLONNE_PAGAMENTO.items()}
+        lordo = _numero_it(valori['lordo'])
+        stato = (valori['stato'] or '').strip()
+
+        if stato and stato.lower() not in ('paid', 'succeeded', 'available'):
+            scartate[stato] += 1
+            continue
+        if lordo < SOGLIA_VERIFICA:
+            scartate['verifica carta'] += 1
+            continue
+
+        data = None
+        for formato in ('%Y-%m-%d %H:%M:%S', '%Y-%m-%d %H:%M', '%Y-%m-%d'):
+            try:
+                data = datetime.strptime((valori['data'] or '').strip(), formato)
+                break
+            except ValueError:
+                continue
+
+        pagamenti.append({
+            'transazione': (valori['transazione'] or '').strip() or None,
+            'data': data,
+            'lordo': lordo,
+            'rimborsato': _numero_it(valori['rimborsato']),
+            'commissione': _numero_it(valori['commissione']),
+            'valuta': (valori['valuta'] or 'eur').strip().lower(),
+            'stato': stato or 'Paid',
+            'email_pagante': (valori['email_pagante'] or '').strip().lower() or None,
+            'nome_carta': (valori['nome_carta'] or '').strip() or None,
+            'paese_carta': (valori['paese_carta'] or '').strip()[:5] or None,
+        })
+    return pagamenti, dict(scartate)
+
+
+def _abbina_pagamento(p, ospiti, per_email):
+    """A chi appartiene un incasso: (ospite, come). None se non si capisce.
+
+    Prima l'email, che e' un dato esatto. Poi il nome sulla carta, perche'
+    capita spesso che paghi un collega o il cliente: in quel caso l'email
+    non e' quella del partecipante, ma il nome sulla carta si'.
+    """
+    if p.get('email_pagante') and p['email_pagante'] in per_email:
+        return per_email[p['email_pagante']], 'email'
+    nome = p.get('nome_carta')
+    if nome:
+        migliore, punteggio = None, 0.0
+        for g in ospiti:
+            pt = _punteggio_nome(nome, [g])
+            if pt > punteggio:
+                migliore, punteggio = g, pt
+        if migliore is not None and punteggio >= SOGLIA_IPOTETICO:
+            return migliore, 'carta'
+    return None, None
 
 
 def create_app():
@@ -7935,6 +8044,170 @@ Notes: {q.notes or 'N/A'}"""
         return jsonify(ok=True, invoice_id=inv.id, numero=inv.numero,
                        voci_lette=len(voci), camere_confrontate=n_camere,
                        punti_aperti=len(punti))
+
+    # ── TOUR: incassi dai partecipanti ────────────────────────────────
+
+    def _ospiti_attivi():
+        return TourGuest.query.filter_by(deleted=False).all()
+
+    def _quadro_incassi():
+        """Chi ha pagato senza venire, chi e' venuto senza pagare.
+
+        Sono le due domande che un consuntivo deve saper rispondere. La
+        terza - chi ha pagato ed e' venuto - non si elenca: e' la norma.
+        """
+        ospiti = _ospiti_attivi()
+        in_rooming = {r[0] for r in db.session.query(
+            TourRoomAssignment.guest_id).distinct().all()}
+        pagamenti = TourPayment.query.order_by(TourPayment.data).all()
+        pagati = {p.guest_id for p in pagamenti if p.guest_id}
+
+        def _p(p):
+            return {
+                'id': p.id, 'fonte': p.fonte, 'transazione': p.transazione,
+                'data': p.data.isoformat(sep=' ', timespec='minutes') if p.data else None,
+                'lordo': _d(p.lordo), 'rimborsato': _d(p.rimborsato),
+                'commissione': _d(p.commissione), 'netto': round(p.netto, 2),
+                'stato': p.stato, 'email_pagante': p.email_pagante,
+                'nome_carta': p.nome_carta, 'paese_carta': p.paese_carta,
+                'guest_id': p.guest_id, 'abbinato_da': p.abbinato_da,
+                'ospite': (f'{p.guest.cognome} {p.guest.nome}'.strip().upper()
+                           if p.guest else None),
+                'in_rooming': bool(p.guest_id and p.guest_id in in_rooming),
+                'payment': p.guest.payment if p.guest else None,
+                'note': p.note,
+            }
+
+        righe = [_p(p) for p in pagamenti]
+        return {
+            'pagamenti': righe,
+            'totali': {
+                'quote': len(righe),
+                'lordo': round(sum(r['lordo'] or 0 for r in righe), 2),
+                'commissioni': round(sum(r['commissione'] or 0 for r in righe), 2),
+                'rimborsato': round(sum(r['rimborsato'] or 0 for r in righe), 2),
+                'netto': round(sum(r['netto'] for r in righe), 2),
+            },
+            # ha pagato ma in albergo non c'e': o e' venuto solo a cena,
+            # o ha disdetto e i soldi sono ancora qui
+            'pagato_senza_venire': [r for r in righe if not r['in_rooming']],
+            # e' in albergo ma nessun incasso risulta a suo nome
+            'venuto_senza_pagare': [{
+                'guest_id': g.id,
+                'ospite': f'{g.cognome} {g.nome}'.strip().upper(),
+                'email': g.email,
+                'payment': g.payment,
+            } for g in sorted(ospiti, key=lambda x: (x.cognome or '').upper())
+                if g.id in in_rooming and g.id not in pagati],
+        }
+
+    @app.get('/api/tour/incassi')
+    def tour_incassi_json():
+        return jsonify(ok=True, **_quadro_incassi())
+
+    @app.post('/api/tour/incassi/carica')
+    def tour_incassi_carica():
+        """Carica un export Stripe. Riconoscere due volte lo stesso incasso
+        sarebbe peggio che non averlo: le righe gia' viste si aggiornano,
+        non si duplicano."""
+        f = request.files.get('file')
+        if not f or not f.filename:
+            return jsonify(ok=False, error='Manca il file degli incassi'), 400
+        try:
+            pagamenti, scartate = _leggi_pagamenti_csv(f.read())
+        except Exception as e:                              # noqa: BLE001
+            return jsonify(ok=False, error=f'CSV illeggibile: {e}'), 400
+        if not pagamenti:
+            return jsonify(ok=False, error=(
+                'Nessun incasso riconosciuto nel file. '
+                f'Righe scartate: {scartate or "nessuna"}')), 422
+
+        ospiti = _ospiti_attivi()
+        per_email = {g.email.strip().lower(): g for g in ospiti
+                     if g.email and g.email.strip()}
+
+        nuovi = aggiornati = agganciati = 0
+        senza_ospite = []
+        for p in pagamenti:
+            esistente = (TourPayment.query
+                         .filter_by(transazione=p['transazione']).first()
+                         if p['transazione'] else None)
+            riga = esistente or TourPayment(fonte='stripe')
+            if esistente is None:
+                db.session.add(riga)
+                nuovi += 1
+            else:
+                aggiornati += 1
+            for campo in ('transazione', 'data', 'lordo', 'rimborsato',
+                          'commissione', 'valuta', 'stato', 'email_pagante',
+                          'nome_carta', 'paese_carta'):
+                setattr(riga, campo, p[campo])
+
+            # Un aggancio corretto a mano non si tocca: e' stato messo li'
+            # da qualcuno che ne sapeva piu' dell'algoritmo.
+            if riga.abbinato_da != 'manuale':
+                ospite, come = _abbina_pagamento(p, ospiti, per_email)
+                riga.guest_id = ospite.id if ospite else None
+                riga.abbinato_da = come
+            if riga.guest_id:
+                agganciati += 1
+            else:
+                senza_ospite.append(p.get('nome_carta') or p.get('email_pagante')
+                                    or p.get('transazione'))
+
+        db.session.commit()
+        return jsonify(ok=True, nuovi=nuovi, aggiornati=aggiornati,
+                       agganciati=agganciati, senza_ospite=senza_ospite,
+                       scartate=scartate)
+
+    @app.put('/api/tour/incasso/<int:pid>')
+    def tour_incasso_update(pid):
+        p = TourPayment.query.get_or_404(pid)
+        dati = request.get_json(silent=True) or {}
+        if 'guest_id' in dati:
+            gid = dati['guest_id']
+            if gid in ('', None):
+                p.guest_id, p.abbinato_da = None, None
+            else:
+                g = TourGuest.query.get(gid)
+                if g is None:
+                    return jsonify(ok=False, error='Ospite inesistente'), 400
+                p.guest_id, p.abbinato_da = g.id, 'manuale'
+        if 'fonte' in dati:
+            if dati['fonte'] not in TourPayment.FONTI:
+                return jsonify(ok=False, error='Fonte non valida'), 400
+            p.fonte = dati['fonte']
+        if 'note' in dati:
+            p.note = (dati['note'] or '').strip() or None
+        db.session.commit()
+        return jsonify(ok=True, ospite=(f'{p.guest.cognome} {p.guest.nome}'
+                                        .strip().upper() if p.guest else None))
+
+    @app.post('/api/tour/incasso')
+    def tour_incasso_create():
+        """Un incasso che non passa da Stripe: bonifico, contanti.
+
+        Senza questo, chi ha pagato in un altro modo resta per sempre nella
+        lista di chi non ha pagato.
+        """
+        dati = request.get_json(silent=True) or {}
+        fonte = dati.get('fonte', 'bonifico')
+        if fonte not in TourPayment.FONTI:
+            return jsonify(ok=False, error='Fonte non valida'), 400
+        try:
+            lordo = float(str(dati.get('lordo', '')).replace(',', '.'))
+        except (TypeError, ValueError):
+            return jsonify(ok=False, error="L'importo deve essere un numero"), 400
+        g = TourGuest.query.get(dati.get('guest_id')) if dati.get('guest_id') else None
+        if g is None:
+            return jsonify(ok=False, error='Indica a chi si riferisce'), 400
+        p = TourPayment(fonte=fonte, lordo=lordo,
+                        commissione=dati.get('commissione') or 0,
+                        stato='Paid', guest_id=g.id, abbinato_da='manuale',
+                        data=datetime.utcnow(), note=dati.get('note'))
+        db.session.add(p)
+        db.session.commit()
+        return jsonify(ok=True, id=p.id, netto=round(p.netto, 2))
 
     # ── TOUR: upload documents ────────────────────────────────────────
 

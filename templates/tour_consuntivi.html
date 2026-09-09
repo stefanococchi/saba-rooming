@@ -268,9 +268,24 @@ input.ed::placeholder { color: var(--on-surface-variant); opacity: .45; font-sty
     {% endfor %}
   </div>
 
+  <!-- ── Incassi ──────────────────────────────────────────────────── -->
+  <div class="card">
+    <h2>Incassi dai partecipanti
+      <span class="note">chi ha pagato senza venire, chi è venuto senza pagare</span>
+      <span style="margin-left:auto; display:flex; gap:8px">
+        <button class="ghost" onclick="document.getElementById('fileIncassi').click()">
+          + carica export Stripe</button>
+        <a class="plain" href="/api/tour/incassi" target="_blank">JSON</a>
+      </span>
+    </h2>
+    <div id="incassi"><p class="empty pad">Carico…</p></div>
+  </div>
+
 </div>
 
 <input type="file" id="fileFattura" accept="application/pdf,.pdf" style="display:none">
+<input type="file" id="fileIncassi" accept=".csv,text/csv" style="display:none"
+       onchange="this.files[0] && caricaIncassi(this.files[0])">
 <div id="stato-globale"></div>
 
 <script>
@@ -308,6 +323,94 @@ function avvisa(testo, errore) {
   clearTimeout(box._t);
   box._t = setTimeout(() => { box.style.display = 'none'; }, errore ? 9000 : 2500);
 }
+
+/* ── incassi ─────────────────────────────────────────────────────── */
+
+async function caricaIncassi(file) {
+  avvisa(`Leggo ${file.name}…`);
+  const fd = new FormData();
+  fd.append('file', file);
+  let j;
+  try {
+    const r = await fetch('/api/tour/incassi/carica', {method: 'POST', body: fd});
+    j = await r.json();
+  } catch (e) { avvisa('Caricamento non riuscito: ' + e, true); return; }
+  if (!j.ok) { avvisa(j.error || 'Caricamento non riuscito', true); return; }
+  avvisa(`${j.nuovi} nuovi, ${j.aggiornati} aggiornati, ${j.agganciati} agganciati`
+         + (j.senza_ospite.length ? `, ${j.senza_ospite.length} senza ospite` : ''));
+  document.getElementById('fileIncassi').value = '';
+  disegnaIncassi();
+}
+
+async function disegnaIncassi() {
+  const box = document.getElementById('incassi');
+  const r = await fetch('/api/tour/incassi');
+  const j = await r.json();
+  if (!j.ok) { box.innerHTML = `<p class="empty pad">Errore: ${esc(j.error)}</p>`; return; }
+  const t = j.totali;
+  if (!t.quote) {
+    box.innerHTML = `<p class="empty pad">Nessun incasso caricato.
+      Scarica da Stripe l'export dei pagamenti e caricalo qui: servono le
+      colonne <code>Amount</code>, <code>Fee</code>, <code>Customer Email</code>
+      e possibilmente <code>Card Name</code>, che aggancia chi ha pagato per
+      qualcun altro.</p>`;
+    return;
+  }
+
+  let h = `<div class="kpis" style="padding:0 20px">
+    <div class="kpi"><div class="lbl">Quote incassate</div><div class="val">${t.quote}</div></div>
+    <div class="kpi"><div class="lbl">Lordo</div><div class="val">${EUR(t.lordo)}</div></div>
+    <div class="kpi"><div class="lbl">Commissioni</div><div class="val neg">${EUR(t.commissioni)}</div></div>
+    <div class="kpi"><div class="lbl">Netto incassato</div><div class="val">${EUR(t.netto)}</div></div>
+  </div>`;
+
+  h += `<h3 style="padding:0 20px">Hanno pagato ma non sono nel rooming (${j.pagato_senza_venire.length})</h3>`;
+  if (!j.pagato_senza_venire.length) h += `<p class="empty pad">Nessuno.</p>`;
+  else {
+    h += `<table><thead><tr><th>Chi</th><th>Nome sulla carta</th>
+          <th>Email che ha pagato</th><th class="num">Netto</th>
+          <th>Stato quota</th><th>Nota</th></tr></thead><tbody>`;
+    for (const p of j.pagato_senza_venire) {
+      h += `<tr>
+        <td>${p.ospite ? '<strong>' + esc(p.ospite) + '</strong>'
+                       : '<span class="chip err">non agganciato</span>'}</td>
+        <td>${esc(p.nome_carta)}</td>
+        <td class="rule">${esc(p.email_pagante)}</td>
+        <td class="num">${EUR(p.netto)}</td>
+        <td>${p.payment ? '<span class="chip mute">' + esc(p.payment) + '</span>' : ''}</td>
+        <td>${inpTesto('incasso', p.id, 'note', p.note)}</td></tr>`;
+    }
+    h += `</tbody></table>
+      <p class="legend pad">Chi è venuto solo a cena senza dormire è normale che
+      stia qui. Chi risulta <code>PAID-CANCELLED</code> no: ha disdetto e i
+      soldi sono ancora nostri.</p>`;
+  }
+
+  h += `<h3 style="padding:0 20px">Sono nel rooming ma nessun incasso a loro nome (${j.venuto_senza_pagare.length})</h3>`;
+  if (!j.venuto_senza_pagare.length) h += `<p class="empty pad">Nessuno.</p>`;
+  else {
+    h += `<table><thead><tr><th>Chi</th><th>Email in anagrafica</th>
+          <th>Stato quota</th></tr></thead><tbody>`;
+    for (const g of j.venuto_senza_pagare) {
+      const sospetto = ['PAID'].includes(g.payment);
+      h += `<tr>
+        <td>${sospetto ? '<strong>' + esc(g.ospite) + '</strong>' : esc(g.ospite)}</td>
+        <td class="rule">${g.email ? esc(g.email)
+                                   : '<span class="chip warn">senza email</span>'}</td>
+        <td><span class="chip ${sospetto ? 'err' : 'mute'}">${esc(g.payment) || '—'}</span></td>
+        </tr>`;
+    }
+    h += `</tbody></table>
+      <p class="legend pad">Chi è <code>NO NEED</code> non deve pagare, e chi è
+      <code>NO SHOW</code> non è venuto: giusto che siano qui. Da guardare sono
+      quelli marcati <code>PAID</code>, in rosso: risultano pagati ma l'incasso
+      non si vede. Se hanno pagato per bonifico, registralo — altrimenti
+      resteranno in questa lista per sempre.</p>`;
+  }
+  box.innerHTML = h;
+}
+
+document.addEventListener('DOMContentLoaded', disegnaIncassi);
 
 /* ── tariffe concordate per una notte ────────────────────────────── */
 
@@ -432,6 +535,7 @@ async function salva(el) {
     recon: `/api/tour/recon-row/${id}`,
     fb: `/api/tour/fb-recon/${id}`,
     issue: `/api/tour/consuntivo-issue/${id}`,
+    incasso: `/api/tour/incasso/${id}`,
   }[tipo];
   try {
     const r = await fetch(url, {

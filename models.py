@@ -639,3 +639,49 @@ class TourInvoiceIssue(db.Model):
     invoice = db.relationship('TourInvoice', backref=db.backref(
                 'issues', cascade='all, delete-orphan', lazy='select',
                 order_by='TourInvoiceIssue.numero'))
+
+
+class TourPayment(db.Model):
+    """Un incasso da un partecipante.
+
+    Nasce da Stripe ma non solo: chi paga per bonifico o in contanti deve
+    poter stare nello stesso posto, altrimenti quei soldi restano fuori dal
+    conto e sembrano un ammanco per sempre.
+
+    L'aggancio all'ospite passa dall'email, e quando non basta dal nome
+    sulla carta: capita spesso che paghi un collega o il cliente, e allora
+    l'email non e' quella del partecipante.
+    """
+    __tablename__ = 'tour_payments'
+
+    FONTI = ('stripe', 'bonifico', 'contanti', 'altro')
+
+    id            = db.Column(db.Integer, primary_key=True)
+    fonte         = db.Column(db.String(20), nullable=False, default='stripe')
+    transazione   = db.Column(db.String(80), unique=True)   # ch_... di Stripe
+    data          = db.Column(db.DateTime)
+
+    lordo         = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    rimborsato    = db.Column(db.Numeric(12, 2), default=0)
+    # La commissione va tenuta per riga: va da 3,40 a 7,08 secondo la carta,
+    # e un netto ricavato da una media non torna con nessun estratto conto.
+    commissione   = db.Column(db.Numeric(12, 2), default=0)
+    valuta        = db.Column(db.String(10), default='eur')
+    stato         = db.Column(db.String(20))
+
+    email_pagante = db.Column(db.String(200))
+    nome_carta    = db.Column(db.String(200))
+    paese_carta   = db.Column(db.String(5))
+
+    guest_id      = db.Column(db.Integer, db.ForeignKey('tour_guests.id'))
+    abbinato_da   = db.Column(db.String(20))    # email | carta | manuale
+    note          = db.Column(db.Text)
+    created_at    = db.Column(db.DateTime, default=datetime.utcnow)
+
+    guest = db.relationship('TourGuest', backref='pagamenti')
+
+    @property
+    def netto(self):
+        """Quello che e' arrivato davvero in banca."""
+        return (float(self.lordo or 0) - float(self.rimborsato or 0)
+                - float(self.commissione or 0))
