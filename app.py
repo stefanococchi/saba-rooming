@@ -3493,8 +3493,12 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
               '90010 Pollina (PA)', 'nei pressi di Cefalù')
 
     # Misure del bagaglio a mano da cappelliera: finche' e' vuoto la frase
-    # non le nomina.
-    BAGAGLIO_MISURE = ''
+    # non le nomina. In aereo vale la misura che sta dentro tutte le
+    # compagnie del gruppo (ITA 55x35x25 e 8 kg, Ryanair con Priority
+    # 55x40x20): la raccomandazione IATA. In pullman la cappelliera e' piu'
+    # larga, si concede la misura easyJet.
+    BAGAGLIO_MISURE = '55 × 35 × 20 cm, peso massimo 8 kg'
+    BAGAGLIO_MISURE_PULLMAN = '56 × 45 × 25 cm, peso massimo 15 kg'
 
     # Minuti di anticipo dei ritrovi, sul volo salvo dove detto altrimenti.
     RITROVO_AEROPORTO_MIN = 90     # ritrovo in aeroporto all'andata
@@ -3779,11 +3783,11 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
             ('Esigenze alimentari', _lt_esc(_lt_dieta(g))),
         ]))
 
-    def _lt_bagaglio():
+    def _lt_bagaglio(pullman=False):
+        misure = BAGAGLIO_MISURE_PULLMAN if pullman else BAGAGLIO_MISURE
         t = ('Puoi portare a bordo un bagaglio a mano da cappelliera '
              '(trolley o borsa)')
-        t += (f' — misure massime {_lt_esc(BAGAGLIO_MISURE)}.'
-              if BAGAGLIO_MISURE else '.')
+        t += (f' — misure massime {_lt_esc(misure)}.' if misure else '.')
         return _lt_p(t)
 
     def _lt_sez_pullman(g):
@@ -3831,7 +3835,7 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
         if PULLMAN_CATANIA['durata']:
             corpo += _lt_p('La durata indicativa del tragitto dal punto di ritrovo '
                            'al resort è di ' + _lt_esc(PULLMAN_CATANIA['durata']) + '.')
-        corpo += _lt_bagaglio()
+        corpo += _lt_bagaglio(pullman=True)
         return _lt_sezione('Partenza in pullman da Catania', corpo)
 
     def _lt_sez_andata(g):
