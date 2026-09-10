@@ -360,29 +360,40 @@ def _clean_cat_name(name):
     return name
 
 
-def _tour_persone_fattura(hotel_id):
-    """Le persone di un hotel-notte, incrociando la comunicazione finale
-    (tour_room_baselines) con la fattura analizzata (tour_recon_rows).
+def _tour_quadratura_fattura(hotel_id):
+    """La quadratura di un hotel-notte fra la comunicazione finale
+    (tour_room_baselines) e la fattura analizzata (tour_recon_rows),
+    spiegata con i nomi.
 
-    Torna None se la fattura non e' stata analizzata: senza fattura non
-    c'e' niente da incrociare. Altrimenti tre liste di (nome, no_show):
-    'entrambe' (in comunicazione finale e in fattura), 'solo_fattura',
-    'solo_comunicazione'. Totali per hotel, non per categoria: la city
-    tax e il conto si fanno sull'albergo intero.
+    Torna None se la fattura non e' stata analizzata. Altrimenti i totali
+    (camere e persone comunicate, persone in fattura) e le liste che
+    spiegano la differenza:
+      sostituzioni   uno comunicato e' uscito e un altro della stessa
+                     categoria e' entrato: la fattura e' giusta
+      non_fatturate  camere del rooming che l'albergo non ha messo in
+                     fattura: se hanno dormito, ha fatturato meno
+      non_venuti     comunicati, non nel rooming, non fatturati
+      solo_fattura   in fattura senza essere stati comunicati, e senza
+                     una sostituzione che li spieghi
+      orfane         righe di fattura senza una camera nel rooming: il
+                     posto dove si nascondono i no show addebitati
+    Ogni nome porta lo stato di pagamento del nostro DB (NO SHOW,
+    PAID-CANCELLED...), che spesso e' la spiegazione.
 
-    Una persona in fattura e' un occupante di una camera fatturata (dallo
-    snapshot ospiti_rooming), o il nome scritto sulla riga di fattura se
-    la camera nel rooming non c'e'. no_show e' True se l'albergo ha
-    scritto NO SHOW sulla riga: e' una camera pagata per una persona che
-    non e' venuta, e va vista. L'abbinamento con la comunicazione finale
-    e' sui nomi, con la stessa tolleranza usata per le fatture
-    (_punteggio_nome): inversioni, accenti, nomi troncati.
+    Le persone in fattura sono gli occupanti delle camere fatturate, o
+    una a riga per le righe orfane con un nome: una persona e' una
+    persona anche se la tariffa applicata e' quella doppia. L'abbinamento
+    con la comunicazione e' sui nomi, con la tolleranza delle fatture.
     """
     import re as _re_pf
     rows = TourReconRow.query.filter_by(hotel_id=hotel_id).all()
     if not rows:
         return None
+    base_re = _re_pf.compile(r'-[A-Z]*\d+$')
     no_show_re = _re_pf.compile(r'\bNO[\s-]*SHOW\b', _re_pf.I)
+
+    def _base(code):
+        return base_re.sub('', (code or '').strip().upper())
 
     def _somiglianza(a, b):
         ta, tb = _token_nome(a), _token_nome(b)
@@ -391,52 +402,106 @@ def _tour_persone_fattura(hotel_id):
         comuni = sum(1 for t in ta if any(_parole_uguali(t, u) for u in tb))
         return comuni / max(len(ta), len(tb))
 
-    # (nome, no_show) di chi sta in fattura
-    in_fattura = []
+    def _abbina(nomi_a, nomi_b, stessa_categoria=False):
+        """Coppie (i, j) greedy sulla somiglianza dei nomi; con
+        stessa_categoria si abbinano invece per categoria uguale."""
+        coppie = []
+        for i, (na, ca) in enumerate(nomi_a):
+            for j, (nb, cb) in enumerate(nomi_b):
+                if stessa_categoria:
+                    if ca == cb:
+                        coppie.append((1.0, i, j))
+                else:
+                    sc = _somiglianza(na, nb)
+                    if sc >= 0.5:
+                        coppie.append((sc, i, j))
+        coppie.sort(key=lambda x: (-x[0], x[1], x[2]))
+        usati_a, usati_b, abb = set(), set(), []
+        for sc, i, j in coppie:
+            if i in usati_a or j in usati_b:
+                continue
+            usati_a.add(i)
+            usati_b.add(j)
+            abb.append((i, j))
+        return abb
+
+    # Lo stato di pagamento del nostro DB, per nome: e' spesso la
+    # spiegazione (NO SHOW, PAID-CANCELLED).
+    stato = {}
+    for g in TourGuest.query.all():
+        stato[f'{g.cognome} {g.nome}'.strip().upper()] = (g.payment or '').strip().upper()
+
+    # (nome, categoria) di chi sta in fattura; le orfane a parte
+    in_fattura, orfane, non_fatturate, no_show_hotel_righe = [], [], [], []
     for r in rows:
         if r.line_id is None:
+            non_fatturate.append({'nomi': r.ospiti_rooming or '', 'code': _base(r.room_code),
+                                  'persone': (r.ospiti_rooming.count(' + ') + 1) if r.ospiti_rooming else 0})
             continue
-        testo_riga = ' '.join(filter(None, [
-            r.line.nome_in_fattura if r.line is not None else '',
-            r.line.descrizione if r.line is not None else '']))
-        no_show = bool(no_show_re.search(testo_riga))
+        testo = ' '.join(filter(None, [r.line.nome_in_fattura, r.line.descrizione])) if r.line else ''
+        no_show_hotel = bool(no_show_re.search(testo))
         if r.ospiti_rooming:
             for nome in r.ospiti_rooming.split(' + '):
-                in_fattura.append((nome.strip(), no_show))
-        elif r.line is not None:
-            nome = r.line.nome_in_fattura or r.line.descrizione or ''
-            nome = no_show_re.sub('', nome).strip(' -:,').strip().upper()
-            in_fattura.append((nome, no_show))
+                in_fattura.append((nome.strip(), _base(r.room_code), no_show_hotel))
+        else:
+            nome = no_show_re.sub('', (r.line.nome_in_fattura or r.line.descrizione or '') if r.line else '')
+            nome = nome.strip(' -:,').strip().upper()
+            in_fattura.append((nome, '', no_show_hotel))
+            orfane.append({'nome': nome, 'importo': float(r.line.importo or 0) if r.line else 0.0,
+                           'camera_hotel': (r.line.camera_hotel or '') if r.line else '',
+                           'no_show_hotel': no_show_hotel})
+        if no_show_hotel:
+            no_show_hotel_righe.append({'nome': (r.ospiti_rooming or nome), 'code': _base(r.room_code),
+                                        'importo': float(r.line.importo or 0) if r.line else 0.0})
 
-    comunicati = [f'{b.cognome} {b.nome or ""}'.strip().upper()
-                  for b in TourRoomBaseline.query.filter_by(hotel_id=hotel_id).all()]
+    baselines = TourRoomBaseline.query.filter_by(hotel_id=hotel_id).all()
+    comunicati = [(f'{b.cognome} {b.nome or ""}'.strip().upper(), _base(b.room_code))
+                  for b in baselines]
+    camere_comunicate = len({(b.room_code, b.room_label or b.id) for b in baselines})
 
-    # Greedy sulla somiglianza: prima le coppie che combaciano meglio, cosi'
-    # un cognome comune non ruba l'abbinamento a chi combacia di piu'.
-    coppie = []
-    for i, (nf, _) in enumerate(in_fattura):
-        for j, nc in enumerate(comunicati):
-            sc = _somiglianza(nf, nc)
-            if sc >= 0.5:
-                coppie.append((sc, i, j))
-    coppie.sort(key=lambda x: (-x[0], x[1], x[2]))
-    usati_f, usati_c = set(), set()
-    for sc, i, j in coppie:
-        if i in usati_f or j in usati_c:
-            continue
-        usati_f.add(i)
-        usati_c.add(j)
+    # 1. chi e' in entrambe
+    abb = _abbina([(n, c) for n, c, _ in in_fattura], comunicati)
+    usati_f = {i for i, _ in abb}
+    usati_c = {j for _, j in abb}
+    solo_f = [(i, in_fattura[i]) for i in range(len(in_fattura)) if i not in usati_f]
+    solo_c = [(j, comunicati[j]) for j in range(len(comunicati)) if j not in usati_c]
 
-    out = {'entrambe': [], 'solo_fattura': [], 'solo_comunicazione': []}
-    for i, (nome, no_show) in enumerate(in_fattura):
-        out['entrambe' if i in usati_f else 'solo_fattura'].append((nome, no_show))
-    for j, nome in enumerate(comunicati):
-        if j not in usati_c:
-            out['solo_comunicazione'].append((nome, False))
-    for k in out:
-        out[k].sort()
-    out['no_show'] = sum(1 for nome, ns in in_fattura if ns)
-    return out
+    # 2. i comunicati che stanno in una camera non fatturata: spiegati da quella
+    def _in_non_fatturate(nome):
+        return any(_somiglianza(nome, n) >= 0.5 for nf in non_fatturate for n in nf['nomi'].split(' + ') if n)
+    for nf in non_fatturate:
+        nf['comunicata'] = any(_somiglianza(n, nome) >= 0.5 for n in nf['nomi'].split(' + ') if n for nome, _ in comunicati)
+    solo_c = [(j, x) for j, x in solo_c if not _in_non_fatturate(x[0])]
+
+    # 3. sostituzioni: un comunicato uscito e uno in fattura entrato, stessa categoria
+    abb2 = _abbina([x for _, x in solo_c], [(n, c) for _, (n, c, _) in solo_f], stessa_categoria=True)
+    sostituzioni = [(solo_c[a][1][0], solo_f[b][1][0], solo_c[a][1][1]) for a, b in abb2]
+    resto_c = [x for k, (_, x) in enumerate(solo_c) if k not in {a for a, _ in abb2}]
+    resto_f = [x for k, (_, x) in enumerate(solo_f)
+               if k not in {b for _, b in abb2} and x[1] != '']
+
+    def _voce(nome, code, no_show_hotel=False):
+        return {'nome': nome, 'code': code, 'stato': stato.get(nome, ''),
+                'no_show_hotel': no_show_hotel}
+    for o in orfane:
+        o['stato'] = stato.get(o['nome'], '')
+    for nf in non_fatturate:
+        nf['stati'] = [stato.get(n.strip(), '') for n in nf['nomi'].split(' + ') if n]
+
+    return {
+        'comunicazione': {'camere': camere_comunicate, 'persone': len(comunicati)},
+        'fattura': {'persone': sum(1 for n, _, _ in in_fattura if n)},
+        'entrambe': len(abb),
+        'sostituzioni': [{'uscito': u, 'entrato': e, 'code': c,
+                          'stato_uscito': stato.get(u, ''), 'stato_entrato': stato.get(e, '')}
+                         for u, e, c in sorted(sostituzioni)],
+        'non_fatturate': sorted(non_fatturate, key=lambda x: x['nomi']),
+        'non_venuti': [_voce(n, c) for n, c in sorted(resto_c)],
+        'solo_fattura': [_voce(n, c, ns) for n, c, ns in sorted(resto_f)],
+        'orfane': sorted(orfane, key=lambda x: x['nome']),
+        'no_show_hotel': [dict(x, stato=stato.get(x['nome'], ''))
+                          for x in sorted(no_show_hotel_righe, key=lambda x: x['nome'])],
+    }
 
 
 def _tour_rooming_rooms(hotel_id):
@@ -6712,6 +6777,10 @@ Notes: {q.notes or 'N/A'}"""
             if r.line_id is None:
                 continue
             occupanti = (r.ospiti_rooming.count(' + ') + 1) if r.ospiti_rooming else 0
+            # Una riga orfana con un nome e' una persona, anche se la tariffa
+            # e' quella doppia: la city tax si paga sulle teste, non sulla
+            # tariffa. Senza nome non si sa: incerta.
+            ha_nome = bool(r.line is not None and (r.line.nome_in_fattura or r.line.descrizione))
             importo = float(r.line.importo or 0) if r.line is not None else 0.0
             sing, dopp = tariffe.get(r.hotel_id, (0.0, 0.0))
             if sing and importo == sing:
@@ -6720,10 +6789,12 @@ Notes: {q.notes or 'N/A'}"""
                 tipo = 'doppie'
             elif occupanti:
                 tipo = 'doppie' if occupanti >= 2 else 'singole'
+            elif ha_nome:
+                tipo = 'singole'
             else:
                 tipo = 'incerte'
             f['camere'] += 1
-            f['persone'] += {'singole': 1, 'doppie': 2, 'incerte': 0}[tipo]
+            f['persone'] += occupanti or (1 if ha_nome else 0)
             f[tipo] += 1
             # Le camere per categoria servono alla colonna accanto a opzione,
             # comunicazione finale e attese: si confrontano a colpo d'occhio.
@@ -6733,10 +6804,10 @@ Notes: {q.notes or 'N/A'}"""
             else:
                 f['non_nel_rooming'] += 1
 
-        # Le persone per categoria, incrociando comunicazione finale e
-        # fattura: solo per gli hotel con la fattura analizzata.
-        hotel_persone = {h.id: _tour_persone_fattura(h.id)
-                         for h in hotels if h.id in hotel_fattura}
+        # La quadratura con i nomi, comunicazione finale contro fattura:
+        # solo per gli hotel con la fattura analizzata.
+        hotel_quadratura = {h.id: _tour_quadratura_fattura(h.id)
+                            for h in hotels if h.id in hotel_fattura}
 
         # Build per-hotel summary: rooms_used, people
         hotel_summary = {}
@@ -6803,7 +6874,7 @@ Notes: {q.notes or 'N/A'}"""
         return render_template('tour.html', guests=guests, hotels=hotels,
                                hotel_occupancy=hotel_occupancy,
                                hotel_fattura=hotel_fattura,
-                               hotel_persone=hotel_persone,
+                               hotel_quadratura=hotel_quadratura,
                                hotel_summary=hotel_summary,
                                night_data=night_data,
                                stages=stages,

@@ -654,34 +654,67 @@ tr.cancelled td { opacity: .45; }
       {% if nights.update({h.night_label: (nights.get(h.night_label) or []) + [h]}) %}{% endif %}
     {% endfor %}
 
-    {# Elenco nomi di un gruppo; chi ha NO SHOW scritto in fattura lo porta
-       addosso, in rosso. #}
-    {% macro nomi(lista) -%}
-      {%- for nome, no_show in lista -%}
-        {{ nome }}{% if no_show %} <span style="background:#c62828;color:#fff;font-size:9px;font-weight:700;padding:1px 4px;border-radius:3px;vertical-align:middle">NO SHOW</span>{% endif %}{% if not loop.last %}, {% endif %}
-      {%- endfor -%}
+    {# Etichetta accanto a un nome: lo stato di pagamento del nostro DB
+       quando spiega qualcosa (NO SHOW, cancellato), e il NO SHOW scritto
+       dall'albergo in fattura. #}
+    {% macro badge(stato, no_show_hotel=false) -%}
+      {%- if stato == 'NO SHOW' %} <span style="background:#c62828;color:#fff;font-size:9px;font-weight:700;padding:1px 4px;border-radius:3px;vertical-align:middle">NO SHOW</span>{% endif -%}
+      {%- if stato == 'PAID-CANCELLED' %} <span style="background:#9e9e9e;color:#fff;font-size:9px;font-weight:700;padding:1px 4px;border-radius:3px;vertical-align:middle">CANCELLATO</span>{% endif -%}
+      {%- if no_show_hotel %} <span style="background:#c62828;color:#fff;font-size:9px;font-weight:700;padding:1px 4px;border-radius:3px;vertical-align:middle">NO SHOW IN FATTURA</span>{% endif -%}
     {%- endmacro %}
 
-    {# Il blocco fattura di un hotel: totali camere/persone con singole e
-       doppie, e le persone in tre gruppi (in comunicazione finale e in
-       fattura, solo in fattura, solo in comunicazione finale). Solo per gli
-       hotel con la fattura analizzata. #}
+    {# La quadratura di un hotel: tabellina comunicazione finale / in
+       fattura / differenza, e sotto le righe con i nomi che spiegano la
+       differenza. Solo per gli hotel con la fattura analizzata. #}
     {% macro blocco_fattura(hid) %}
       {% set f = hotel_fattura.get(hid) %}
-      {% set p = hotel_persone.get(hid) %}
-      {% if f %}
+      {% set q = hotel_quadratura.get(hid) %}
+      {% if f and q %}
+      {% set d_cam = f.camere - q.comunicazione.camere %}
+      {% set d_per = q.fattura.persone - q.comunicazione.persone %}
       <div style="margin:0 20px 12px; padding:10px 14px; background:#f5f7fa; border-radius:8px; font-size:12px; line-height:1.6">
-        <div style="font-weight:600; color:var(--on-surface); margin-bottom:4px">
-          <span class="material-icons-round" style="font-size:15px; vertical-align:middle; margin-right:4px">receipt_long</span>
-          In fattura: {{ f.camere }} camere ({{ f.singole }} singole + {{ f.doppie }} doppie{% if f.incerte %} + {{ f.incerte }} incerte{% endif %}), {{ f.persone }} persone
-          {% if f.non_nel_rooming %}<span style="font-weight:400; color:#e65100"> · {{ f.non_nel_rooming }} camere fatturate ma non nel rooming</span>{% endif %}
-          {% if p and p.no_show %}<span style="font-weight:600; color:#c62828"> · {{ p.no_show }} NO SHOW addebitati</span>{% endif %}
+        <div style="display:flex; gap:24px; flex-wrap:wrap; align-items:flex-start">
+          <table style="border-collapse:collapse; font-size:12px; white-space:nowrap">
+            <tr style="color:var(--on-surface-variant)"><th style="text-align:left; padding:2px 12px 2px 0; font-weight:600"></th><th style="text-align:right; padding:2px 10px">Camere</th><th style="text-align:right; padding:2px 10px">Persone</th></tr>
+            <tr><td style="padding:2px 12px 2px 0">Comunicazione finale 25.8</td><td style="text-align:right; padding:2px 10px">{{ q.comunicazione.camere }}</td><td style="text-align:right; padding:2px 10px">{{ q.comunicazione.persone }}</td></tr>
+            <tr><td style="padding:2px 12px 2px 0">In fattura</td><td style="text-align:right; padding:2px 10px"><strong>{{ f.camere }}</strong> <span style="color:var(--on-surface-variant)">({{ f.singole }} S + {{ f.doppie }} D{% if f.incerte %} + {{ f.incerte }} ?{% endif %})</span></td><td style="text-align:right; padding:2px 10px"><strong>{{ q.fattura.persone }}</strong></td></tr>
+            <tr style="border-top:1px solid #d0d7de"><td style="padding:2px 12px 2px 0">Differenza</td><td style="text-align:right; padding:2px 10px; font-weight:700; color:{% if d_cam == 0 %}var(--success){% elif d_cam < 0 %}#1565c0{% else %}#c62828{% endif %}">{{ '%+d' % d_cam if d_cam else '0' }}</td><td style="text-align:right; padding:2px 10px; font-weight:700; color:{% if d_per == 0 %}var(--success){% elif d_per < 0 %}#1565c0{% else %}#c62828{% endif %}">{{ '%+d' % d_per if d_per else '0' }}</td></tr>
+          </table>
+          <div style="flex:1; min-width:280px">
+            {% if q.sostituzioni %}
+              <div><span style="color:var(--success); font-weight:600">Sostituzioni ({{ q.sostituzioni|length }}), stessa categoria, fattura giusta:</span>
+                {% for x in q.sostituzioni %}{{ x.uscito }}{{ badge(x.stato_uscito) }} → {{ x.entrato }}{{ badge(x.stato_entrato) }} <span style="color:var(--on-surface-variant)">({{ x.code }})</span>{% if not loop.last %}; {% endif %}{% endfor %}
+              </div>
+            {% endif %}
+            {% if q.non_fatturate %}
+              <div><span style="color:#1565c0; font-weight:600">Camere del rooming non fatturate ({{ q.non_fatturate|length }}):</span>
+                {% for x in q.non_fatturate %}{% for n in x.nomi.split(' + ') %}{{ n }}{{ badge(x.stati[loop.index0]) }}{% if not loop.last %} + {% endif %}{% endfor %} <span style="color:var(--on-surface-variant)">({{ x.code }}{% if x.persone > 1 %}, doppia{% endif %}{% if not x.comunicata %}, non comunicata{% endif %})</span>{% if not loop.last %}; {% endif %}{% endfor %}
+                <span style="color:var(--on-surface-variant)">— se hanno dormito, l'albergo ha fatturato meno</span>
+              </div>
+            {% endif %}
+            {% if q.non_venuti %}
+              <div><span style="color:#1565c0; font-weight:600">Comunicati, non nel rooming, non fatturati ({{ q.non_venuti|length }}):</span>
+                {% for x in q.non_venuti %}{{ x.nome }}{{ badge(x.stato) }} <span style="color:var(--on-surface-variant)">({{ x.code }})</span>{% if not loop.last %}; {% endif %}{% endfor %}
+              </div>
+            {% endif %}
+            {% if q.solo_fattura %}
+              <div><span style="color:#e65100; font-weight:600">In fattura senza essere stati comunicati ({{ q.solo_fattura|length }}):</span>
+                {% for x in q.solo_fattura %}{{ x.nome }}{{ badge(x.stato, x.no_show_hotel) }} <span style="color:var(--on-surface-variant)">({{ x.code }})</span>{% if not loop.last %}; {% endif %}{% endfor %}
+              </div>
+            {% endif %}
+            {% if q.orfane %}
+              <div><span style="color:#e65100; font-weight:600">Fatturate ma non nel rooming ({{ q.orfane|length }}):</span>
+                {% for x in q.orfane %}{{ x.nome }}{{ badge(x.stato, x.no_show_hotel) }} <span style="color:var(--on-surface-variant)">({{ '%.2f' % x.importo }} €{% if x.camera_hotel %}, camera {{ x.camera_hotel }}{% endif %})</span>{% if not loop.last %}; {% endif %}{% endfor %}
+                <span style="color:var(--on-surface-variant)">— da controllare con l'albergo</span>
+              </div>
+            {% endif %}
+            {% if q.no_show_hotel %}
+              <div><span style="color:#c62828; font-weight:600">NO SHOW addebitati dall'albergo ({{ q.no_show_hotel|length }}):</span>
+                {% for x in q.no_show_hotel %}{{ x.nome }}{{ badge(x.stato) }} <span style="color:var(--on-surface-variant)">({{ '%.2f' % x.importo }} €{% if x.code %}, {{ x.code }}{% endif %})</span>{% if not loop.last %}; {% endif %}{% endfor %}
+              </div>
+            {% endif %}
+          </div>
         </div>
-        {% if p %}
-          {% if p.entrambe %}<div><span style="color:var(--success);font-weight:600">In comunicazione finale e in fattura ({{ p.entrambe|length }}):</span> {{ nomi(p.entrambe) }}</div>{% endif %}
-          {% if p.solo_fattura %}<div><span style="color:#e65100;font-weight:600">Solo in fattura ({{ p.solo_fattura|length }}):</span> {{ nomi(p.solo_fattura) }}</div>{% endif %}
-          {% if p.solo_comunicazione %}<div><span style="color:#1565c0;font-weight:600">Solo in comunicazione finale ({{ p.solo_comunicazione|length }}):</span> {{ nomi(p.solo_comunicazione) }}</div>{% endif %}
-        {% endif %}
       </div>
       {% endif %}
     {% endmacro %}
