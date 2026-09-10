@@ -654,30 +654,35 @@ tr.cancelled td { opacity: .45; }
       {% if nights.update({h.night_label: (nights.get(h.night_label) or []) + [h]}) %}{% endif %}
     {% endfor %}
 
-    {# Le persone di una categoria in tre gruppi: in comunicazione finale e in
-       fattura, solo in fattura, solo in comunicazione finale. Vuota se la
-       fattura dell'hotel non e' stata analizzata. #}
-    {# Camere e persone in fattura: '83 cam · 91 pers' e sotto la
-       suddivisione singole / doppie (e incerte, se ce ne sono). #}
-    {% macro fattura_num(f) %}
-      {%- if f -%}
-        <strong>{{ f.camere }}</strong> cam · <strong>{{ f.persone }}</strong> pers
-        <div style="font-size:10px; font-weight:400; color:var(--on-surface-variant)">{{ f.singole }} S + {{ f.doppie }} D{% if f.incerte %} + {{ f.incerte }} ?{% endif %}</div>
-      {%- endif -%}
-    {% endmacro %}
+    {# Elenco nomi di un gruppo; chi ha NO SHOW scritto in fattura lo porta
+       addosso, in rosso. #}
+    {% macro nomi(lista) -%}
+      {%- for nome, no_show in lista -%}
+        {{ nome }}{% if no_show %} <span style="background:#c62828;color:#fff;font-size:9px;font-weight:700;padding:1px 4px;border-radius:3px;vertical-align:middle">NO SHOW</span>{% endif %}{% if not loop.last %}, {% endif %}
+      {%- endfor -%}
+    {%- endmacro %}
 
-    {% macro persone_cella(hid, code) %}
-      {% set p = (hotel_persone.get(hid) or {}).get(code) %}
-      {% if p %}
-        {% if p.entrambe %}
-          <div><span style="color:var(--success);font-weight:600">In entrambe ({{ p.entrambe|length }}):</span> {{ p.entrambe|join(', ') }}</div>
+    {# Il blocco fattura di un hotel: totali camere/persone con singole e
+       doppie, e le persone in tre gruppi (in comunicazione finale e in
+       fattura, solo in fattura, solo in comunicazione finale). Solo per gli
+       hotel con la fattura analizzata. #}
+    {% macro blocco_fattura(hid) %}
+      {% set f = hotel_fattura.get(hid) %}
+      {% set p = hotel_persone.get(hid) %}
+      {% if f %}
+      <div style="margin:0 20px 12px; padding:10px 14px; background:#f5f7fa; border-radius:8px; font-size:12px; line-height:1.6">
+        <div style="font-weight:600; color:var(--on-surface); margin-bottom:4px">
+          <span class="material-icons-round" style="font-size:15px; vertical-align:middle; margin-right:4px">receipt_long</span>
+          In fattura: {{ f.camere }} camere ({{ f.singole }} singole + {{ f.doppie }} doppie{% if f.incerte %} + {{ f.incerte }} incerte{% endif %}), {{ f.persone }} persone
+          {% if f.non_nel_rooming %}<span style="font-weight:400; color:#e65100"> · {{ f.non_nel_rooming }} camere fatturate ma non nel rooming</span>{% endif %}
+          {% if p and p.no_show %}<span style="font-weight:600; color:#c62828"> · {{ p.no_show }} NO SHOW addebitati</span>{% endif %}
+        </div>
+        {% if p %}
+          {% if p.entrambe %}<div><span style="color:var(--success);font-weight:600">In comunicazione finale e in fattura ({{ p.entrambe|length }}):</span> {{ nomi(p.entrambe) }}</div>{% endif %}
+          {% if p.solo_fattura %}<div><span style="color:#e65100;font-weight:600">Solo in fattura ({{ p.solo_fattura|length }}):</span> {{ nomi(p.solo_fattura) }}</div>{% endif %}
+          {% if p.solo_comunicazione %}<div><span style="color:#1565c0;font-weight:600">Solo in comunicazione finale ({{ p.solo_comunicazione|length }}):</span> {{ nomi(p.solo_comunicazione) }}</div>{% endif %}
         {% endif %}
-        {% if p.solo_fattura %}
-          <div><span style="color:#e65100;font-weight:600">Solo in fattura ({{ p.solo_fattura|length }}):</span> {{ p.solo_fattura|join(', ') }}</div>
-        {% endif %}
-        {% if p.solo_comunicazione %}
-          <div><span style="color:#1565c0;font-weight:600">Solo in comunicazione finale ({{ p.solo_comunicazione|length }}):</span> {{ p.solo_comunicazione|join(', ') }}</div>
-        {% endif %}
+      </div>
       {% endif %}
     {% endmacro %}
 
@@ -769,6 +774,7 @@ tr.cancelled td { opacity: .45; }
         {% endif %}
         #}
       </div>
+      {{ blocco_fattura(h.id) }}
       <div style="padding: 12px 20px" class="table-wrap">
         {% if h.categories %}
         <table class="nights-table">
@@ -778,8 +784,6 @@ tr.cancelled td { opacity: .45; }
             <col class="col-num">
             <col class="col-num">
             <col class="col-num">
-            <col class="col-num">
-            <col class="col-guests">
           </colgroup>
           <thead>
             <tr>
@@ -789,9 +793,11 @@ tr.cancelled td { opacity: .45; }
               <th style="text-align:center">Comunicazione finale 25.8</th>
               <th style="text-align:center">Attese al gg di partenza evento</th>
               {# <th style="text-align:center" title="Final Request - Actual">Delta</th> #}
-              <th style="text-align:center" title="Camere fatturate per questa categoria, dall'analisi delle fatture">In fattura</th>
-              {# <th>Guests</th> #}
-              <th title="Persone: in comunicazione finale e in fattura, solo in fattura, solo in comunicazione finale">Persone (comunicazione finale / fattura)</th>
+              {# In fattura e persone: per hotel, nel blocco sopra la tabella, non per categoria.
+              <th style="text-align:center">In fattura</th>
+              <th>Persone (comunicazione finale / fattura)</th>
+              <th>Guests</th>
+              #}
             </tr>
           </thead>
           <tbody>
@@ -805,30 +811,15 @@ tr.cancelled td { opacity: .45; }
               <td style="text-align:center">{{ c.rooms_requested or '—' }}</td>
               <td style="text-align:center; font-weight:600">{{ cat_occ.room_count }}</td>
               {# <td style="text-align:center; font-weight:600; color:{% if delta > 0 %}#c62828{% elif delta == 0 %}var(--success){% else %}#1565c0{% endif %}">{% if c.rooms_requested %}{{ delta }}{% else %}—{% endif %}</td> #}
-              <td style="text-align:center">{% if h.id in hotel_fattura %}{{ fattura_num(hotel_fattura[h.id].per_codice.get(c.code)) }}{% endif %}</td>
-              {# Guests (ospiti del rooming per categoria): tolta, al suo posto l'incrocio comunicazione finale / fattura.
+              {# Guests (ospiti del rooming per categoria): tolta, l'incrocio con la fattura sta nel blocco per hotel.
               <td style="font-size:11px; white-space:normal; overflow:hidden; text-overflow:ellipsis">
                 {% for g, rc in cat_occ.get('guests', []) %}
                   {{ g.cognome }} {{ g.nome }} <span style="color:var(--primary);font-weight:500">({{ rc }})</span>{% if not loop.last %}, {% endif %}
                 {% endfor %}
               </td>
               #}
-              <td style="font-size:11px; white-space:normal">{{ persone_cella(h.id, c.code) }}</td>
             </tr>
           {% endfor %}
-          {# Righe di fattura senza una camera nel rooming: stanno nel totale
-             "in fattura" dell'hotel ma non appartengono a nessuna categoria. #}
-          {% if h.id in hotel_fattura and hotel_fattura[h.id].per_codice.get('') %}
-            <tr style="background: #fff8e1">
-              <td style="font-style:italic; color: var(--on-surface-variant)">Fatturate ma non nel rooming</td>
-              <td>—</td>
-              <td style="text-align:center">—</td>
-              <td style="text-align:center">—</td>
-              <td style="text-align:center">—</td>
-              <td style="text-align:center; color:#e65100">{{ fattura_num(hotel_fattura[h.id].per_codice['']) }}</td>
-              <td style="font-size:11px; white-space:normal">{{ persone_cella(h.id, '') }}</td>
-            </tr>
-          {% endif %}
           <!-- Codes not in categories (unmatched assignments) -->
           {% for code, data in occ.items() %}
             {% set known_codes = h.categories | map(attribute='code') | list %}
@@ -839,7 +830,6 @@ tr.cancelled td { opacity: .45; }
               <td style="text-align:center">-</td>
               <td style="text-align:center">-</td>
               <td style="text-align:center; font-weight:600">{{ data.room_count }}</td>
-              <td style="text-align:center">{% if h.id in hotel_fattura %}{{ fattura_num(hotel_fattura[h.id].per_codice.get(code)) }}{% endif %}</td>
               {# Guests: tolta, vedi sopra.
               <td style="font-size:11px; white-space:normal; overflow:hidden; text-overflow:ellipsis">
                 {% for g, rc in data.guests %}
@@ -847,7 +837,6 @@ tr.cancelled td { opacity: .45; }
                 {% endfor %}
               </td>
               #}
-              <td style="font-size:11px; white-space:normal">{{ persone_cella(h.id, code) }}</td>
             </tr>
             {% endif %}
           {% endfor %}
@@ -863,8 +852,6 @@ tr.cancelled td { opacity: .45; }
             <col class="col-num">
             <col class="col-num">
             <col class="col-num">
-            <col class="col-num">
-            <col class="col-guests">
           </colgroup>
           <thead>
             <tr>
@@ -874,9 +861,11 @@ tr.cancelled td { opacity: .45; }
               <th style="text-align:center">Comunicazione finale 25.8</th>
               <th style="text-align:center">Attese al gg di partenza evento</th>
               {# <th style="text-align:center" title="Final Request - Actual">Delta</th> #}
-              <th style="text-align:center" title="Camere fatturate per questa categoria, dall'analisi delle fatture">In fattura</th>
-              {# <th>Guests</th> #}
-              <th title="Persone: in comunicazione finale e in fattura, solo in fattura, solo in comunicazione finale">Persone (comunicazione finale / fattura)</th>
+              {# In fattura e persone: per hotel, nel blocco sopra la tabella, non per categoria.
+              <th style="text-align:center">In fattura</th>
+              <th>Persone (comunicazione finale / fattura)</th>
+              <th>Guests</th>
+              #}
             </tr>
           </thead>
           <tbody>
@@ -888,7 +877,6 @@ tr.cancelled td { opacity: .45; }
               <td style="text-align:center">—</td>
               <td style="text-align:center; font-weight:600">{{ data.room_count }}</td>
               {# <td style="text-align:center;color:#888">—</td> #}
-              <td style="text-align:center">{% if h.id in hotel_fattura %}{{ fattura_num(hotel_fattura[h.id].per_codice.get(code)) }}{% endif %}</td>
               {# Guests: tolta, vedi sopra.
               <td style="font-size:11px; white-space:normal; overflow:hidden; text-overflow:ellipsis">
                 {% for g, rc in data.guests %}
@@ -896,7 +884,6 @@ tr.cancelled td { opacity: .45; }
                 {% endfor %}
               </td>
               #}
-              <td style="font-size:11px; white-space:normal">{{ persone_cella(h.id, code) }}</td>
             </tr>
           {% endfor %}
           </tbody>
