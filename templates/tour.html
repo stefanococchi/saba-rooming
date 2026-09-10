@@ -639,6 +639,8 @@ tr.cancelled td { opacity: .45; }
 
   <!-- ══ NIGHTS TAB ══ -->
   <div id="tab-nights" class="tab-panel">
+    {# Delta Report (xls): non serve piu' dopo la comunicazione finale del 25.8.
+       Lasciato commentato, la route /api/tour/baseline-delta/export esiste ancora.
     {% if not client_view %}
     <div style="margin-bottom:16px">
       <a href="/api/tour/baseline-delta/export" style="display:inline-flex;align-items:center;gap:6px;padding:8px 16px;background:#1565c0;color:#fff;border-radius:8px;font-size:13px;font-weight:600;text-decoration:none">
@@ -646,6 +648,7 @@ tr.cancelled td { opacity: .45; }
       </a>
     </div>
     {% endif %}
+    #}
     {% set nights = {} %}
     {% for h in hotels %}
       {% if nights.update({h.night_label: (nights.get(h.night_label) or []) + [h]}) %}{% endif %}
@@ -659,7 +662,9 @@ tr.cancelled td { opacity: .45; }
     </h3>
 
     {% set night_hotels = nights[night_label] %}
-    {% set ns_night = namespace(total_blocked=0, total_rooms_used=0, total_people=0) %}
+    {# Comunicazione finale 25.8 = camere richieste all'albergo per categoria (rooms_requested):
+       quelle che si pagano. Attese = camere assegnate nel rooming di oggi. #}
+    {% set ns_night = namespace(total_blocked=0, total_final=0, has_final=false, total_rooms_used=0, total_people=0) %}
     {% for h in night_hotels %}
       {% set occ = hotel_occupancy.get(h.id, {}) %}
       {% set ns_h = namespace(rooms=0, people=0) %}
@@ -667,17 +672,26 @@ tr.cancelled td { opacity: .45; }
         {% set ns_h.rooms = ns_h.rooms + data.room_count %}
         {% set ns_h.people = ns_h.people + data.people %}
       {% endfor %}
+      {% for c in h.categories %}
+        {% if c.rooms_requested %}
+          {% set ns_night.total_final = ns_night.total_final + c.rooms_requested %}
+          {% set ns_night.has_final = true %}
+        {% endif %}
+      {% endfor %}
       {% set ns_night.total_blocked = ns_night.total_blocked + h.rooms_blocked %}
       {% set ns_night.total_rooms_used = ns_night.total_rooms_used + ns_h.rooms %}
       {% set ns_night.total_people = ns_night.total_people + ns_h.people %}
     {% endfor %}
 
     <!-- Night summary bar -->
-    <div style="display:flex; gap:16px; margin-bottom:10px; font-size:13px; color: var(--on-surface-variant)">
-      <span>Blocked: <strong style="color:var(--on-surface)">{{ ns_night.total_blocked }}</strong></span>
-      <span>Rooms used: <strong style="color:var(--on-surface)">{{ ns_night.total_rooms_used }}</strong></span>
-      <span>Remaining: <strong style="color:{% if ns_night.total_blocked - ns_night.total_rooms_used <= 3 %}var(--error){% else %}var(--success){% endif %}">{{ ns_night.total_blocked - ns_night.total_rooms_used }}</strong></span>
-      <span>People: <strong style="color:var(--on-surface)">{{ ns_night.total_people }}</strong></span>
+    <div style="display:flex; gap:16px; flex-wrap:wrap; margin-bottom:10px; font-size:13px; color: var(--on-surface-variant)">
+      <span title="Opzione originale bloccata con gli alberghi">Opzione originale: <strong style="color:var(--on-surface)">{{ ns_night.total_blocked }}</strong></span>
+      <span title="Camere richieste agli alberghi con la comunicazione finale del 25.8: quelle in fattura">Comunicazione finale 25.8: <strong style="color:var(--on-surface)">{% if ns_night.has_final %}{{ ns_night.total_final }}{% else %}—{% endif %}</strong></span>
+      <span title="Camere assegnate nel rooming al giorno di partenza dell'evento">Attese al gg di partenza evento: <strong style="color:var(--primary)">{{ ns_night.total_rooms_used }}</strong></span>
+      {# Delta vs comunicazione finale: tolto, non serve piu'.
+      <span>Delta vs final: <strong>{{ ns_night.total_final - ns_night.total_rooms_used }}</strong></span>
+      #}
+      <span title="Ospiti con una camera nel rooming: non e' un dato di fattura (le camere si fatturano a tariffa singola/doppia), e' la base della stima coperti dei pasti">Persone attese: <strong style="color:var(--on-surface)">{{ ns_night.total_people }}</strong></span>
     </div>
 
     {% for h in night_hotels %}
@@ -693,10 +707,10 @@ tr.cancelled td { opacity: .45; }
         <span class="material-icons-round">hotel</span>
         {{ h.hotel_name }} — {{ h.city }}
         <span style="font-size:12px; color: var(--on-surface-variant); margin-left:auto">
-          {{ h.rooms_blocked }} original |
-          <strong style="color:var(--primary)">{{ ns_htot.rooms }}</strong> actual |
-          <strong style="color:{% if h.rooms_blocked - ns_htot.rooms > 0 %}#c62828{% else %}var(--success){% endif %}">{{ h.rooms_blocked - ns_htot.rooms }}</strong> delta |
-          {{ ns_htot.people }} people
+          {{ h.rooms_blocked }} opzione originale |
+          <strong style="color:var(--primary)">{{ ns_htot.rooms }}</strong> attese |
+          {# delta tolto: {{ h.rooms_blocked - ns_htot.rooms }} #}
+          {{ ns_htot.people }} persone
         </span>
         {% if not client_view %}
         <button class="btn-docs" style="margin-left:12px; font-size:12px; border:none; cursor:pointer"
@@ -707,12 +721,14 @@ tr.cancelled td { opacity: .45; }
         <a href="/api/tour/export/hotel/{{ h.id }}" class="btn-xlsx" style="margin-left:4px; font-size:12px">
           <span class="material-icons-round" style="font-size:16px">download</span> XLSX
         </a>
+        {# Delta per hotel: tolto, non serve piu'. showBaselineDelta() resta nel JS.
         {% if not client_view %}
         <button style="margin-left:4px;padding:4px 12px;background:#1565c0;color:#fff;border:none;border-radius:6px;font-size:12px;cursor:pointer;font-family:inherit"
                 onclick="showBaselineDelta({{ h.id }})">
           <span class="material-icons-round" style="font-size:16px;vertical-align:middle">compare_arrows</span> Delta
         </button>
         {% endif %}
+        #}
       </div>
       <div style="padding: 12px 20px" class="table-wrap">
         {% if h.categories %}
@@ -730,11 +746,11 @@ tr.cancelled td { opacity: .45; }
             <tr>
               <th>Category</th>
               <th>Code</th>
-              <th style="text-align:center">Original Option</th>
-              <th style="text-align:center">Final Request</th>
-              <th style="text-align:center">Actual</th>
-              <th style="text-align:center" title="Final Request - Actual">Delta</th>
-              <th style="text-align:center">People</th>
+              <th style="text-align:center">Opzione originale</th>
+              <th style="text-align:center">Comunicazione finale 25.8</th>
+              <th style="text-align:center">Attese al gg di partenza evento</th>
+              {# <th style="text-align:center" title="Final Request - Actual">Delta</th> #}
+              <th style="text-align:center">Persone</th>
               <th>Guests</th>
             </tr>
           </thead>
@@ -748,7 +764,7 @@ tr.cancelled td { opacity: .45; }
               <td style="text-align:center;color:#888">{{ c.rooms_available }}</td>
               <td style="text-align:center">{{ c.rooms_requested or '—' }}</td>
               <td style="text-align:center; font-weight:600">{{ cat_occ.room_count }}</td>
-              <td style="text-align:center; font-weight:600; color:{% if delta > 0 %}#c62828{% elif delta == 0 %}var(--success){% else %}#1565c0{% endif %}">{% if c.rooms_requested %}{{ delta }}{% else %}—{% endif %}</td>
+              {# <td style="text-align:center; font-weight:600; color:{% if delta > 0 %}#c62828{% elif delta == 0 %}var(--success){% else %}#1565c0{% endif %}">{% if c.rooms_requested %}{{ delta }}{% else %}—{% endif %}</td> #}
               <td style="text-align:center">{{ cat_occ.people }}</td>
               <td style="font-size:11px; white-space:normal; overflow:hidden; text-overflow:ellipsis">
                 {% for g, rc in cat_occ.get('guests', []) %}
@@ -765,8 +781,8 @@ tr.cancelled td { opacity: .45; }
               <td style="font-style:italic; color: var(--on-surface-variant)">Uncategorized</td>
               <td><span class="badge-room" style="background:#fff3e0; color:#e65100">{{ code }}</span></td>
               <td style="text-align:center">-</td>
-              <td style="text-align:center; font-weight:600">{{ data.room_count }}</td>
               <td style="text-align:center">-</td>
+              <td style="text-align:center; font-weight:600">{{ data.room_count }}</td>
               <td style="text-align:center">{{ data.people }}</td>
               <td style="font-size:11px; white-space:normal; overflow:hidden; text-overflow:ellipsis">
                 {% for g, rc in data.guests %}
@@ -795,11 +811,11 @@ tr.cancelled td { opacity: .45; }
             <tr>
               <th>Category</th>
               <th>Code</th>
-              <th style="text-align:center">Original Option</th>
-              <th style="text-align:center">Final Request</th>
-              <th style="text-align:center">Actual</th>
-              <th style="text-align:center" title="Final Request - Actual">Delta</th>
-              <th style="text-align:center">People</th>
+              <th style="text-align:center">Opzione originale</th>
+              <th style="text-align:center">Comunicazione finale 25.8</th>
+              <th style="text-align:center">Attese al gg di partenza evento</th>
+              {# <th style="text-align:center" title="Final Request - Actual">Delta</th> #}
+              <th style="text-align:center">Persone</th>
               <th>Guests</th>
             </tr>
           </thead>
@@ -811,7 +827,7 @@ tr.cancelled td { opacity: .45; }
               <td style="text-align:center;color:#888">—</td>
               <td style="text-align:center">—</td>
               <td style="text-align:center; font-weight:600">{{ data.room_count }}</td>
-              <td style="text-align:center;color:#888">—</td>
+              {# <td style="text-align:center;color:#888">—</td> #}
               <td style="text-align:center">{{ data.people }}</td>
               <td style="font-size:11px; white-space:normal; overflow:hidden; text-overflow:ellipsis">
                 {% for g, rc in data.guests %}
