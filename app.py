@@ -3498,7 +3498,7 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
     # 55x40x20): la raccomandazione IATA. In pullman la cappelliera e' piu'
     # larga, si concede la misura easyJet.
     BAGAGLIO_MISURE = '55 × 35 × 20 cm, peso massimo 8 kg'
-    BAGAGLIO_MISURE_PULLMAN = '56 × 45 × 25 cm, peso massimo 15 kg'
+    BAGAGLIO_MISURE_PULLMAN = '56 × 45 × 25 cm, peso 15 kg'
 
     # Minuti di anticipo dei ritrovi, sul volo salvo dove detto altrimenti.
     RITROVO_AEROPORTO_MIN = 90     # ritrovo in aeroporto all'andata
@@ -3787,7 +3787,10 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
         misure = BAGAGLIO_MISURE_PULLMAN if pullman else BAGAGLIO_MISURE
         t = ('Puoi portare a bordo un bagaglio a mano da cappelliera '
              '(trolley o borsa)')
-        t += (f' — misure massime {_lt_esc(misure)}.' if misure else '.')
+        # In aereo il limite e' della compagnia e al gate lo misurano; in
+        # pullman e' un'indicazione di buon senso, non una regola.
+        aggettivo = 'indicative' if pullman else 'massime'
+        t += (f' — misure {aggettivo} {_lt_esc(misure)}.' if misure else '.')
         return _lt_p(t)
 
     def _lt_sez_pullman(g):
