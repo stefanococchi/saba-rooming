@@ -360,6 +360,87 @@ def _clean_cat_name(name):
     return name
 
 
+def _tour_persone_fattura(hotel_id, normalizza=None):
+    """Le persone di un hotel-notte, incrociando la comunicazione finale
+    (tour_room_baselines) con la fattura analizzata (tour_recon_rows).
+
+    Torna None se la fattura non e' stata analizzata: senza fattura non
+    c'e' niente da incrociare. Altrimenti un dict per codice categoria,
+    piu' la chiave '' per le righe di fattura senza camera nel rooming,
+    ognuno con tre liste di nomi: 'entrambe', 'solo_fattura',
+    'solo_comunicazione'.
+
+    Una persona in fattura e' un occupante di una camera fatturata (dallo
+    snapshot ospiti_rooming), o il nome scritto sulla riga di fattura se
+    la camera nel rooming non c'e'. L'abbinamento con la comunicazione
+    finale e' sui nomi, con la stessa tolleranza usata per le fatture
+    (_punteggio_nome): inversioni, accenti, nomi troncati.
+    """
+    import re as _re_pf
+    rows = TourReconRow.query.filter_by(hotel_id=hotel_id).all()
+    if not rows:
+        return None
+    base_re = _re_pf.compile(r'-[A-Z]*\d+$')
+    normalizza = normalizza or {}
+
+    def _base(code):
+        c = (code or '').strip()
+        c = normalizza.get(c, normalizza.get(c.upper(), c))
+        return base_re.sub('', c.upper())
+
+    def _somiglianza(a, b):
+        ta, tb = _token_nome(a), _token_nome(b)
+        if not ta or not tb:
+            return 0.0
+        comuni = sum(1 for t in ta if any(_parole_uguali(t, u) for u in tb))
+        return comuni / max(len(ta), len(tb))
+
+    # (nome, codice) di chi sta in fattura
+    in_fattura = []
+    for r in rows:
+        if r.line_id is None:
+            continue
+        if r.ospiti_rooming:
+            for nome in r.ospiti_rooming.split(' + '):
+                in_fattura.append((nome.strip(), _base(r.room_code)))
+        elif r.line is not None:
+            nome = r.line.nome_in_fattura or r.line.descrizione or ''
+            in_fattura.append((nome.strip(), ''))
+
+    comunicati = [(f'{b.cognome} {b.nome or ""}'.strip().upper(), _base(b.room_code))
+                  for b in TourRoomBaseline.query.filter_by(hotel_id=hotel_id).all()]
+
+    # Greedy sulla somiglianza: prima le coppie che combaciano meglio, cosi'
+    # un cognome comune non ruba l'abbinamento a chi combacia di piu'.
+    coppie = []
+    for i, (nf, _) in enumerate(in_fattura):
+        for j, (nc, _) in enumerate(comunicati):
+            sc = _somiglianza(nf, nc)
+            if sc >= 0.5:
+                coppie.append((sc, i, j))
+    coppie.sort(key=lambda x: (-x[0], x[1], x[2]))
+    usati_f, usati_c = set(), set()
+    for sc, i, j in coppie:
+        if i in usati_f or j in usati_c:
+            continue
+        usati_f.add(i)
+        usati_c.add(j)
+
+    out = {}
+    def _slot(code):
+        return out.setdefault(code, {'entrambe': [], 'solo_fattura': [],
+                                     'solo_comunicazione': []})
+    for i, (nome, code) in enumerate(in_fattura):
+        _slot(code)['entrambe' if i in usati_f else 'solo_fattura'].append(nome)
+    for j, (nome, code) in enumerate(comunicati):
+        if j not in usati_c:
+            _slot(code)['solo_comunicazione'].append(nome)
+    for d in out.values():
+        for k in d:
+            d[k].sort()
+    return out
+
+
 def _tour_rooming_rooms(hotel_id):
     """Le camere dell'ACTUAL: il rooming effettivamente mandato all'albergo.
 
@@ -6629,6 +6710,11 @@ Notes: {q.notes or 'N/A'}"""
             else:
                 f['non_nel_rooming'] += 1
 
+        # Le persone per categoria, incrociando comunicazione finale e
+        # fattura: solo per gli hotel con la fattura analizzata.
+        hotel_persone = {h.id: _tour_persone_fattura(h.id, _ROOM_NORMALIZE)
+                         for h in hotels if h.id in hotel_fattura}
+
         # Build per-hotel summary: rooms_used, people
         hotel_summary = {}
         for h in hotels:
@@ -6694,6 +6780,7 @@ Notes: {q.notes or 'N/A'}"""
         return render_template('tour.html', guests=guests, hotels=hotels,
                                hotel_occupancy=hotel_occupancy,
                                hotel_fattura=hotel_fattura,
+                               hotel_persone=hotel_persone,
                                hotel_summary=hotel_summary,
                                night_data=night_data,
                                stages=stages,

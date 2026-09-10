@@ -654,6 +654,24 @@ tr.cancelled td { opacity: .45; }
       {% if nights.update({h.night_label: (nights.get(h.night_label) or []) + [h]}) %}{% endif %}
     {% endfor %}
 
+    {# Le persone di una categoria in tre gruppi: in comunicazione finale e in
+       fattura, solo in fattura, solo in comunicazione finale. Vuota se la
+       fattura dell'hotel non e' stata analizzata. #}
+    {% macro persone_cella(hid, code) %}
+      {% set p = (hotel_persone.get(hid) or {}).get(code) %}
+      {% if p %}
+        {% if p.entrambe %}
+          <div><span style="color:var(--success);font-weight:600">In entrambe ({{ p.entrambe|length }}):</span> {{ p.entrambe|join(', ') }}</div>
+        {% endif %}
+        {% if p.solo_fattura %}
+          <div><span style="color:#e65100;font-weight:600">Solo in fattura ({{ p.solo_fattura|length }}):</span> {{ p.solo_fattura|join(', ') }}</div>
+        {% endif %}
+        {% if p.solo_comunicazione %}
+          <div><span style="color:#1565c0;font-weight:600">Solo in comunicazione finale ({{ p.solo_comunicazione|length }}):</span> {{ p.solo_comunicazione|join(', ') }}</div>
+        {% endif %}
+      {% endif %}
+    {% endmacro %}
+
     {% for night_label in ['1Sep','2Sep','3Sep','4Sep','5Sep'] %}
     {% if nights.get(night_label) %}
     <h3 style="margin: 20px 0 10px; color: var(--primary); font-size: 18px">
@@ -759,7 +777,8 @@ tr.cancelled td { opacity: .45; }
               <th style="text-align:center">Attese al gg di partenza evento</th>
               {# <th style="text-align:center" title="Final Request - Actual">Delta</th> #}
               <th style="text-align:center" title="Camere fatturate per questa categoria, dall'analisi delle fatture">In fattura</th>
-              <th>Guests</th>
+              {# <th>Guests</th> #}
+              <th title="Persone: in comunicazione finale e in fattura, solo in fattura, solo in comunicazione finale">Persone (comunicazione finale / fattura)</th>
             </tr>
           </thead>
           <tbody>
@@ -774,11 +793,14 @@ tr.cancelled td { opacity: .45; }
               <td style="text-align:center; font-weight:600">{{ cat_occ.room_count }}</td>
               {# <td style="text-align:center; font-weight:600; color:{% if delta > 0 %}#c62828{% elif delta == 0 %}var(--success){% else %}#1565c0{% endif %}">{% if c.rooms_requested %}{{ delta }}{% else %}—{% endif %}</td> #}
               <td style="text-align:center">{% if h.id in hotel_fattura %}{{ hotel_fattura[h.id].per_codice.get(c.code, 0) }}{% endif %}</td>
+              {# Guests (ospiti del rooming per categoria): tolta, al suo posto l'incrocio comunicazione finale / fattura.
               <td style="font-size:11px; white-space:normal; overflow:hidden; text-overflow:ellipsis">
                 {% for g, rc in cat_occ.get('guests', []) %}
                   {{ g.cognome }} {{ g.nome }} <span style="color:var(--primary);font-weight:500">({{ rc }})</span>{% if not loop.last %}, {% endif %}
                 {% endfor %}
               </td>
+              #}
+              <td style="font-size:11px; white-space:normal">{{ persone_cella(h.id, c.code) }}</td>
             </tr>
           {% endfor %}
           {# Righe di fattura senza una camera nel rooming: stanno nel totale
@@ -791,7 +813,7 @@ tr.cancelled td { opacity: .45; }
               <td style="text-align:center">—</td>
               <td style="text-align:center">—</td>
               <td style="text-align:center; font-weight:600; color:#e65100">{{ hotel_fattura[h.id].non_nel_rooming }}</td>
-              <td style="font-size:11px; color: var(--on-surface-variant)">vedi il consuntivo dell'hotel</td>
+              <td style="font-size:11px; white-space:normal">{{ persone_cella(h.id, '') }}</td>
             </tr>
           {% endif %}
           <!-- Codes not in categories (unmatched assignments) -->
@@ -805,11 +827,14 @@ tr.cancelled td { opacity: .45; }
               <td style="text-align:center">-</td>
               <td style="text-align:center; font-weight:600">{{ data.room_count }}</td>
               <td style="text-align:center">{% if h.id in hotel_fattura %}{{ hotel_fattura[h.id].per_codice.get(code, 0) }}{% endif %}</td>
+              {# Guests: tolta, vedi sopra.
               <td style="font-size:11px; white-space:normal; overflow:hidden; text-overflow:ellipsis">
                 {% for g, rc in data.guests %}
                   {{ g.cognome }} {{ g.nome }} <span style="color:var(--primary);font-weight:500">({{ rc }})</span>{% if not loop.last %}, {% endif %}
                 {% endfor %}
               </td>
+              #}
+              <td style="font-size:11px; white-space:normal">{{ persone_cella(h.id, code) }}</td>
             </tr>
             {% endif %}
           {% endfor %}
@@ -837,7 +862,8 @@ tr.cancelled td { opacity: .45; }
               <th style="text-align:center">Attese al gg di partenza evento</th>
               {# <th style="text-align:center" title="Final Request - Actual">Delta</th> #}
               <th style="text-align:center" title="Camere fatturate per questa categoria, dall'analisi delle fatture">In fattura</th>
-              <th>Guests</th>
+              {# <th>Guests</th> #}
+              <th title="Persone: in comunicazione finale e in fattura, solo in fattura, solo in comunicazione finale">Persone (comunicazione finale / fattura)</th>
             </tr>
           </thead>
           <tbody>
@@ -850,11 +876,14 @@ tr.cancelled td { opacity: .45; }
               <td style="text-align:center; font-weight:600">{{ data.room_count }}</td>
               {# <td style="text-align:center;color:#888">—</td> #}
               <td style="text-align:center">{% if h.id in hotel_fattura %}{{ hotel_fattura[h.id].per_codice.get(code, 0) }}{% endif %}</td>
+              {# Guests: tolta, vedi sopra.
               <td style="font-size:11px; white-space:normal; overflow:hidden; text-overflow:ellipsis">
                 {% for g, rc in data.guests %}
                   {{ g.cognome }} {{ g.nome }} <span style="color:var(--primary);font-weight:500">({{ rc }})</span>{% if not loop.last %}, {% endif %}
                 {% endfor %}
               </td>
+              #}
+              <td style="font-size:11px; white-space:normal">{{ persone_cella(h.id, code) }}</td>
             </tr>
           {% endfor %}
           </tbody>
