@@ -6697,18 +6697,40 @@ Notes: {q.notes or 'N/A'}"""
         # ma non nel rooming non hanno un codice e restano fuori dalle
         # categorie, dentro il totale. Hotel senza analisi: nessuna voce,
         # e la colonna resta vuota.
-        hotel_fattura = {}  # hotel.id → {'totale': n, 'per_codice': {base: n}, 'non_nel_rooming': n}
+        # Ogni camera fatturata e' singola (1 camera, 1 persona) o doppia
+        # (1 camera, 2 persone): la city tax si paga a persona e la doppia
+        # costa di piu'. Il tipo lo dice la tariffa applicata, se e' una di
+        # quelle concordate; altrimenti gli occupanti nel rooming. Una riga
+        # senza occupanti e con un importo che non e' nessuna tariffa e'
+        # una camera di cui non si sa quante persone contiene: conta fra le
+        # camere, non fra le persone, e viene detta 'incerte'.
+        def _conteggio():
+            return {'camere': 0, 'persone': 0, 'singole': 0, 'doppie': 0, 'incerte': 0}
+        hotel_fattura = {}  # hotel.id → conteggio + 'per_codice': {base: conteggio}
+        tariffe = {h.id: (float(h.tariffa_singola or 0), float(h.tariffa_doppia or 0))
+                   for h in hotels}
         for r in TourReconRow.query.filter(TourReconRow.hotel_id.isnot(None)).all():
-            f = hotel_fattura.setdefault(r.hotel_id, {'totale': 0, 'per_codice': {},
-                                                      'non_nel_rooming': 0})
+            f = hotel_fattura.setdefault(r.hotel_id, dict(_conteggio(), per_codice={}))
             if r.line_id is None:
                 continue
-            f['totale'] += 1
-            if r.room_code:
-                base = suffix_re.sub('', r.room_code)
-                f['per_codice'][base] = f['per_codice'].get(base, 0) + 1
+            occupanti = (r.ospiti_rooming.count(' + ') + 1) if r.ospiti_rooming else 0
+            importo = float(r.line.importo or 0) if r.line is not None else 0.0
+            sing, dopp = tariffe.get(r.hotel_id, (0.0, 0.0))
+            if sing and importo == sing:
+                tipo = 'singole'
+            elif dopp and importo == dopp:
+                tipo = 'doppie'
+            elif occupanti:
+                tipo = 'doppie' if occupanti >= 2 else 'singole'
             else:
-                f['non_nel_rooming'] += 1
+                tipo = 'incerte'
+            persone = {'singole': 1, 'doppie': 2, 'incerte': 0}[tipo]
+            # le righe senza camera nel rooming stanno sotto la chiave ''
+            base = suffix_re.sub('', r.room_code) if r.room_code else ''
+            for c in (f, f['per_codice'].setdefault(base, _conteggio())):
+                c['camere'] += 1
+                c['persone'] += persone
+                c[tipo] += 1
 
         # Le persone per categoria, incrociando comunicazione finale e
         # fattura: solo per gli hotel con la fattura analizzata.
