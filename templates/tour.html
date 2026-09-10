@@ -784,6 +784,7 @@ tr.cancelled td { opacity: .45; }
             <col class="col-num">
             <col class="col-num">
             <col class="col-num">
+            <col class="col-num">
           </colgroup>
           <thead>
             <tr>
@@ -793,8 +794,8 @@ tr.cancelled td { opacity: .45; }
               <th style="text-align:center">Comunicazione finale 25.8</th>
               <th style="text-align:center">Attese al gg di partenza evento</th>
               {# <th style="text-align:center" title="Final Request - Actual">Delta</th> #}
-              {# In fattura e persone: per hotel, nel blocco sopra la tabella, non per categoria.
-              <th style="text-align:center">In fattura</th>
+              <th style="text-align:center" title="Camere fatturate per questa categoria, dall'analisi delle fatture. Vuoto se la fattura non e' stata analizzata">In fattura</th>
+              {# Persone e Guests: per hotel, nel blocco sopra la tabella, non per categoria.
               <th>Persone (comunicazione finale / fattura)</th>
               <th>Guests</th>
               #}
@@ -811,6 +812,7 @@ tr.cancelled td { opacity: .45; }
               <td style="text-align:center">{{ c.rooms_requested or '—' }}</td>
               <td style="text-align:center; font-weight:600">{{ cat_occ.room_count }}</td>
               {# <td style="text-align:center; font-weight:600; color:{% if delta > 0 %}#c62828{% elif delta == 0 %}var(--success){% else %}#1565c0{% endif %}">{% if c.rooms_requested %}{{ delta }}{% else %}—{% endif %}</td> #}
+              <td style="text-align:center">{% if h.id in hotel_fattura %}{{ hotel_fattura[h.id].per_codice.get(c.code, 0) }}{% endif %}</td>
               {# Guests (ospiti del rooming per categoria): tolta, l'incrocio con la fattura sta nel blocco per hotel.
               <td style="font-size:11px; white-space:normal; overflow:hidden; text-overflow:ellipsis">
                 {% for g, rc in cat_occ.get('guests', []) %}
@@ -820,6 +822,19 @@ tr.cancelled td { opacity: .45; }
               #}
             </tr>
           {% endfor %}
+          {# Righe di fattura senza una camera nel rooming: stanno nel totale
+             dell'hotel ma in nessuna categoria. Senza questa riga la colonna
+             non torna col totale del blocco sopra. #}
+          {% if h.id in hotel_fattura and hotel_fattura[h.id].non_nel_rooming %}
+            <tr style="background: #fff8e1">
+              <td style="font-style:italic; color: var(--on-surface-variant)">Fatturate ma non nel rooming</td>
+              <td>—</td>
+              <td style="text-align:center">—</td>
+              <td style="text-align:center">—</td>
+              <td style="text-align:center">—</td>
+              <td style="text-align:center; font-weight:600; color:#e65100">{{ hotel_fattura[h.id].non_nel_rooming }}</td>
+            </tr>
+          {% endif %}
           <!-- Codes not in categories (unmatched assignments) -->
           {% for code, data in occ.items() %}
             {% set known_codes = h.categories | map(attribute='code') | list %}
@@ -830,6 +845,7 @@ tr.cancelled td { opacity: .45; }
               <td style="text-align:center">-</td>
               <td style="text-align:center">-</td>
               <td style="text-align:center; font-weight:600">{{ data.room_count }}</td>
+              <td style="text-align:center">{% if h.id in hotel_fattura %}{{ hotel_fattura[h.id].per_codice.get(code, 0) }}{% endif %}</td>
               {# Guests: tolta, vedi sopra.
               <td style="font-size:11px; white-space:normal; overflow:hidden; text-overflow:ellipsis">
                 {% for g, rc in data.guests %}
@@ -852,6 +868,7 @@ tr.cancelled td { opacity: .45; }
             <col class="col-num">
             <col class="col-num">
             <col class="col-num">
+            <col class="col-num">
           </colgroup>
           <thead>
             <tr>
@@ -861,8 +878,8 @@ tr.cancelled td { opacity: .45; }
               <th style="text-align:center">Comunicazione finale 25.8</th>
               <th style="text-align:center">Attese al gg di partenza evento</th>
               {# <th style="text-align:center" title="Final Request - Actual">Delta</th> #}
-              {# In fattura e persone: per hotel, nel blocco sopra la tabella, non per categoria.
-              <th style="text-align:center">In fattura</th>
+              <th style="text-align:center" title="Camere fatturate per questa categoria, dall'analisi delle fatture. Vuoto se la fattura non e' stata analizzata">In fattura</th>
+              {# Persone e Guests: per hotel, nel blocco sopra la tabella, non per categoria.
               <th>Persone (comunicazione finale / fattura)</th>
               <th>Guests</th>
               #}
@@ -877,6 +894,7 @@ tr.cancelled td { opacity: .45; }
               <td style="text-align:center">—</td>
               <td style="text-align:center; font-weight:600">{{ data.room_count }}</td>
               {# <td style="text-align:center;color:#888">—</td> #}
+              <td style="text-align:center">{% if h.id in hotel_fattura %}{{ hotel_fattura[h.id].per_codice.get(code, 0) }}{% endif %}</td>
               {# Guests: tolta, vedi sopra.
               <td style="font-size:11px; white-space:normal; overflow:hidden; text-overflow:ellipsis">
                 {% for g, rc in data.guests %}

@@ -6704,11 +6704,11 @@ Notes: {q.notes or 'N/A'}"""
         # camere, non fra le persone, e viene detta 'incerte'.
         def _conteggio():
             return {'camere': 0, 'persone': 0, 'singole': 0, 'doppie': 0, 'incerte': 0}
-        hotel_fattura = {}  # hotel.id → conteggio + 'non_nel_rooming'
+        hotel_fattura = {}  # hotel.id → conteggio + 'non_nel_rooming' + 'per_codice' (camere per categoria)
         tariffe = {h.id: (float(h.tariffa_singola or 0), float(h.tariffa_doppia or 0))
                    for h in hotels}
         for r in TourReconRow.query.filter(TourReconRow.hotel_id.isnot(None)).all():
-            f = hotel_fattura.setdefault(r.hotel_id, dict(_conteggio(), non_nel_rooming=0))
+            f = hotel_fattura.setdefault(r.hotel_id, dict(_conteggio(), non_nel_rooming=0, per_codice={}))
             if r.line_id is None:
                 continue
             occupanti = (r.ospiti_rooming.count(' + ') + 1) if r.ospiti_rooming else 0
@@ -6725,7 +6725,12 @@ Notes: {q.notes or 'N/A'}"""
             f['camere'] += 1
             f['persone'] += {'singole': 1, 'doppie': 2, 'incerte': 0}[tipo]
             f[tipo] += 1
-            if not r.room_code:
+            # Le camere per categoria servono alla colonna accanto a opzione,
+            # comunicazione finale e attese: si confrontano a colpo d'occhio.
+            if r.room_code:
+                base = suffix_re.sub('', r.room_code)
+                f['per_codice'][base] = f['per_codice'].get(base, 0) + 1
+            else:
                 f['non_nel_rooming'] += 1
 
         # Le persone per categoria, incrociando comunicazione finale e
