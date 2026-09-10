@@ -6610,6 +6610,25 @@ Notes: {q.notes or 'N/A'}"""
                 del occ[code]['single_count']
             hotel_occupancy[h.id] = occ
 
+        # Camere in fattura, dall'analisi delle fatture (tour_recon_rows):
+        # una riga con line_id e' una camera che l'albergo ha fatturato.
+        # Per categoria si va dal room_code della riga; le righe fatturate
+        # ma non nel rooming non hanno un codice e restano fuori dalle
+        # categorie, dentro il totale. Hotel senza analisi: nessuna voce,
+        # e la colonna resta vuota.
+        hotel_fattura = {}  # hotel.id → {'totale': n, 'per_codice': {base: n}, 'non_nel_rooming': n}
+        for r in TourReconRow.query.filter(TourReconRow.hotel_id.isnot(None)).all():
+            f = hotel_fattura.setdefault(r.hotel_id, {'totale': 0, 'per_codice': {},
+                                                      'non_nel_rooming': 0})
+            if r.line_id is None:
+                continue
+            f['totale'] += 1
+            if r.room_code:
+                base = suffix_re.sub('', r.room_code)
+                f['per_codice'][base] = f['per_codice'].get(base, 0) + 1
+            else:
+                f['non_nel_rooming'] += 1
+
         # Build per-hotel summary: rooms_used, people
         hotel_summary = {}
         for h in hotels:
@@ -6674,6 +6693,7 @@ Notes: {q.notes or 'N/A'}"""
 
         return render_template('tour.html', guests=guests, hotels=hotels,
                                hotel_occupancy=hotel_occupancy,
+                               hotel_fattura=hotel_fattura,
                                hotel_summary=hotel_summary,
                                night_data=night_data,
                                stages=stages,
