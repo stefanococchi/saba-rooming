@@ -8051,6 +8051,20 @@ Notes: {q.notes or 'N/A'}"""
         inv = TourInvoice.query.get_or_404(inv_id)
         return jsonify(ok=True, fattura=_invoice_json(inv, completo=True))
 
+    @app.put('/api/tour/consuntivo/<int:inv_id>')
+    def tour_consuntivo_update(inv_id):
+        """Il riscontro con l'evento: quello che i colleghi hanno visto in
+        albergo e cosa ne esce dal confronto con la fattura. E' testo libero
+        sulla fattura, perche' e' un ragionamento, non un elenco di righe."""
+        inv = TourInvoice.query.get_or_404(inv_id)
+        data = request.get_json(silent=True) or {}
+        if 'note' in data:
+            inv.note = (data['note'] or '').strip() or None
+        if 'stato_pagamento' in data:
+            inv.stato_pagamento = (data['stato_pagamento'] or '').strip() or None
+        db.session.commit()
+        return jsonify(ok=True)
+
     @app.get('/api/tour/consuntivo/<int:inv_id>/pdf')
     def tour_consuntivo_pdf(inv_id):
         inv = TourInvoice.query.get_or_404(inv_id)

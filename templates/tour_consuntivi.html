@@ -122,6 +122,10 @@ input.ed:focus, select.ed:focus {
 input.ed.num { text-align: right; font-variant-numeric: tabular-nums; }
 /* le note sono frasi, non sigle: vanno lette senza doverci cliccare dentro */
 input.ed.nota { min-width: 300px; }
+/* il riscontro e' un testo: si legge tutto, senza scorrere dentro una casella */
+textarea.ed.riscontro { width: 100%; min-height: 160px; field-sizing: content;
+                        resize: vertical; font-family: inherit; font-size: 13px; line-height: 1.5; white-space: pre-wrap;
+                        padding: 10px 12px; margin: 4px 0 10px; box-sizing: border-box; }
 .riga-camere { background: #fff; border: 1px solid var(--outline-variant);
                border-radius: var(--radius-sm); padding: 10px 14px;
                margin: 10px 0 4px; font-size: 13px; }
@@ -567,6 +571,7 @@ async function salva(el) {
     fb: `/api/tour/fb-recon/${id}`,
     issue: `/api/tour/consuntivo-issue/${id}`,
     incasso: `/api/tour/incasso/${id}`,
+    fattura: `/api/tour/consuntivo/${id}`,
   }[tipo];
   try {
     const r = await fetch(url, {
@@ -676,6 +681,14 @@ function rendi(f) {
         ${f.stato_pagamento ? '· <span class="chip mute">' + esc(f.stato_pagamento) + '</span>' : ''}
         ${f.ha_pdf ? `· <a class="plain" href="/api/tour/consuntivo/${f.id}/pdf" target="_blank">PDF</a>` : ''}
         · <a class="plain" href="/api/tour/consuntivo/${f.id}" target="_blank">JSON</a></p>`;
+
+  // Riscontro con l'evento: le osservazioni dei colleghi e cosa ne esce
+  // dal confronto con la fattura. Testo libero, si salva da solo.
+  h += `<h3>Riscontro con l'evento
+        <span class="note">cosa hanno visto i colleghi in albergo, e cosa ne esce dal confronto con la fattura</span></h3>`;
+  h += `<textarea class="ed riscontro" data-t="fattura" data-id="${f.id}" data-k="note"
+          placeholder="Ancora nessun riscontro: incolla qui le osservazioni ricevute dall'evento e la verifica."
+          onchange="salva(this)">${esc(f.note || '')}</textarea>`;
 
   // Pasti
   h += `<h3>Pasti</h3>`;
