@@ -3511,12 +3511,16 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
 
     # Trasferimento in pullman per chi parte da Catania. I campi vuoti fanno
     # sparire la riga corrispondente: meglio un buco che un orario inventato.
+    # Da Catania si parte in due gruppi, e ognuno ha il suo pullman alla sede:
+    # chi arriva l'8 (due notti) e chi arriva il 9 (una notte sola, si parte
+    # alle cinque del mattino). La chiave e' il primo giorno di presenza.
     PULLMAN_CATANIA = {
-        'indirizzo': '',      # via e civico della sede di Catania
-        'ritrovo': '09:00',
-        'partenza': '',       # es. '09:15'
-        'arrivo': '',         # arrivo previsto al resort, es. '12:00'
+        'indirizzo': 'Stradale Primosole Strada 18, n. 38 – 95121 Catania',
         'durata': 'circa 3 ore',
+        'partenze': {
+            8: {'ritrovo': '09:00', 'partenza': '', 'arrivo': ''},
+            9: {'ritrovo': '05:00', 'partenza': '', 'arrivo': ''},
+        },
     }
 
     # A Linate c'e' il banco con le nostre assistenti; negli altri aeroporti
@@ -3668,6 +3672,19 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
         """True se l'ospite non vola: sede da cui si arriva in auto o pullman."""
         return (g.sede_lavoro or '').strip().upper() in SEDI_SENZA_VOLO
 
+    def _lt_giorno_arrivo(g):
+        """Il primo giorno di presenza: e' il giorno in cui si sale sul pullman.
+        None per chi non ha notti in programma."""
+        for d in GIORNI_EVENTO:
+            if getattr(g, f'presenza_{d}'):
+                return d
+        return None
+
+    def _lt_pullman_di(g):
+        """Gli orari del pullman del gruppo dell'ospite; None se per il suo
+        giorno di arrivo non c'e' un pullman previsto."""
+        return PULLMAN_CATANIA['partenze'].get(_lt_giorno_arrivo(g))
+
     def _lt_rientro_tardi(partenza):
         """True se il volo parte tanto tardi che la partenza dal resort cade nel
         pomeriggio, ancora da programmare. Confronto fra 'HH:MM' con lo zero
@@ -3690,10 +3707,15 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
         if not (g.email or '').strip():
             w.append('email mancante')
         if _lt_via_terra(g):
-            # Basta l'ora di ritrovo: l'indirizzo della sede lo conoscono gia',
-            # e l'arrivo al resort si ricava dalla durata del tragitto.
-            if not PULLMAN_CATANIA['ritrovo']:
-                w.append('orario di ritrovo del pullman da Catania da definire')
+            # Basta l'ora di ritrovo: l'arrivo al resort si ricava dalla
+            # durata del tragitto. Ma il pullman deve esserci per il giorno
+            # in cui l'ospite arriva.
+            c = _lt_pullman_di(g)
+            giorno = _lt_giorno_arrivo(g)
+            if c is None:
+                w.append(f'nessun pullman da Catania previsto per il {giorno} ottobre')
+            elif not c['ritrovo']:
+                w.append(f'orario di ritrovo del pullman da Catania del {giorno} ottobre da definire')
         elif not g.pnr_group:
             if not (g.volo_arrivo or '').strip():
                 w.append('volo andata mancante')
@@ -3766,34 +3788,49 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
 
     def _lt_sez_pullman(g):
         """Trasferimento in pullman: sostituisce le sezioni di volo per chi
-        parte da Catania."""
-        c = PULLMAN_CATANIA
+        parte da Catania. Il pullman e' quello del giorno in cui l'ospite
+        arriva: chi viene solo il 9 non deve leggere l'orario dell'8."""
+        c = _lt_pullman_di(g) or {'ritrovo': '', 'partenza': '', 'arrivo': ''}
+        giorno = _lt_giorno_arrivo(g)
+        data = f'{giorno} ottobre {EVENTO["anno"]}' if giorno else ''
         punto = 'Sede di Catania'
-        if c['indirizzo']:
-            punto += ' – ' + c['indirizzo']
+        if PULLMAN_CATANIA['indirizzo']:
+            punto += ' – ' + PULLMAN_CATANIA['indirizzo']
+        # Alle cinque 'ore 05:00' da solo si puo' leggere male: si dice che
+        # e' mattina.
+        ritrovo = c['ritrovo']
+        if ritrovo and ritrovo < '07:00':
+            ritrovo += ' del mattino'
         corpo = _lt_righe([
+            ('Data',                            _lt_esc(data)),
             ('Punto di ritrovo',                _lt_esc(punto)),
-            ('Orario di ritrovo',               _lt_esc(c['ritrovo'])),
+            ('Orario di ritrovo',               _lt_esc(ritrovo)),
             ('Orario di partenza del pullman',  _lt_esc(c['partenza'])),
             (f'Arrivo previsto al {RESORT[0]}', _lt_esc(c['arrivo'])),
         ])
+        # 'l'8 ottobre', 'il 9 ottobre': l'articolo segue il numero.
+        quando = (f" l'{data}" if giorno in (8, 11) else f' il {data}') if data else ''
         if c['ritrovo'] and not c['partenza']:
             # Senza l'ora di partenza in tabella, il margine va detto a parole:
             # 'puntuale alle 09:00' da solo non dice quanto si puo' sforare.
-            corpo += _lt_p('Ti chiediamo di presentarti al punto di ritrovo '
-                           'puntuale alle ore <b>' + _lt_esc(c['ritrovo']) +
+            corpo += _lt_p('Un pullman privato ti attenderà presso la sede di '
+                           'Catania' + (' ' + _lt_esc(quando) if quando else '') + '. Ti chiediamo di '
+                           'presentarti al punto di ritrovo puntuale alle ore <b>'
+                           + _lt_esc(ritrovo) +
                            '</b>: il pullman partirà pochi minuti dopo.')
         elif c['ritrovo']:
-            corpo += _lt_p('Ti chiediamo di presentarti al punto di ritrovo '
-                           'puntuale alle ore <b>' + _lt_esc(c['ritrovo']) + '</b>.')
+            corpo += _lt_p('Un pullman privato ti attenderà presso la sede di '
+                           'Catania' + (' ' + _lt_esc(quando) if quando else '') + '. Ti chiediamo di '
+                           'presentarti al punto di ritrovo puntuale alle ore <b>'
+                           + _lt_esc(ritrovo) + '</b>.')
         else:
             corpo += _lt_p('Ti chiediamo di presentarti al punto di ritrovo almeno '
                            '<b>10 minuti prima</b> della partenza.')
         corpo += _lt_p('Il pullman privato riservato effettuerà il trasferimento '
                        'fino al ' + _lt_esc(RESORT[0]) + '.')
-        if c['durata']:
+        if PULLMAN_CATANIA['durata']:
             corpo += _lt_p('La durata indicativa del tragitto dal punto di ritrovo '
-                           'al resort è di ' + _lt_esc(c['durata']) + '.')
+                           'al resort è di ' + _lt_esc(PULLMAN_CATANIA['durata']) + '.')
         corpo += _lt_bagaglio()
         return _lt_sezione('Partenza in pullman da Catania', corpo)
 
