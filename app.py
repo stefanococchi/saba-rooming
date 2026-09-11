@@ -1028,6 +1028,10 @@ def create_app():
             if 'data_nascita' not in guest_cols:
                 conn.execute(text("ALTER TABLE guests ADD COLUMN data_nascita VARCHAR(20)"))
                 conn.commit()
+            if 'rientro_con_catania' not in guest_cols:
+                conn.execute(text("ALTER TABLE guests ADD COLUMN rientro_con_catania "
+                                  "BOOLEAN DEFAULT FALSE"))
+                conn.commit()
             # Tour room categories: add sort_order if missing
             trc_tables = [t['name'] for t in inspect(db.engine).get_table_names()] if False else []
             try:
@@ -2218,7 +2222,7 @@ Rispondi SOLO con JSON valido (no markdown, no commenti):
     )
     GUEST_BOOL_FIELDS = (
         'presenza_8', 'presenza_9', 'presenza_10', 'presenza_11',
-        'parcheggio_linate', 'parcheggio_hotel',
+        'parcheggio_linate', 'parcheggio_hotel', 'rientro_con_catania',
     )
 
     @app.post('/api/guest')
@@ -3594,10 +3598,12 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
             ['Cognome', 'Nome', 'Sede Lavoro',
              'Aeroporto Partenza', 'Volo Andata',
              'Aeroporto Arrivo', 'Volo Ritorno',
+             'Rientro in pullman a Catania',
              'Pickup Bus Andata', 'Pickup Bus Ritorno'],
             lambda g: [g.cognome, g.nome, g.sede_lavoro,
                        g.aeroporto_partenza, g.volo_arrivo,
                        g.aeroporto_arrivo, g.volo_partenza,
+                       'SI' if g.rientro_con_catania else '',
                        g.pickup_bus_andata, g.pickup_bus_ritorno],
             fill=header_fill2)
 
@@ -3831,6 +3837,15 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
         """True se l'ospite non vola: sede da cui si arriva in auto o pullman."""
         return (g.sede_lavoro or '').strip().upper() in SEDI_SENZA_VOLO
 
+    def _lt_rientro_a_catania(g):
+        """True se il rientro e' il pullman verso Catania invece di un volo.
+
+        Vale per i catanesi, che in pullman ci vanno e ci tornano, ma anche
+        per chi arriva in aereo e al ritorno si aggrega a loro: il volo di
+        ritorno non e' stato comprato, quindi la lettera non deve prometterlo.
+        """
+        return _lt_via_terra(g) or bool(g.rientro_con_catania)
+
     def _lt_giorno_arrivo(g):
         """Il primo giorno di presenza: e' il giorno in cui si sale sul pullman.
         None per chi non ha notti in programma."""
@@ -3878,7 +3893,7 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
         elif not g.pnr_group:
             if not (g.volo_arrivo or '').strip():
                 w.append('volo andata mancante')
-            if not (g.volo_partenza or '').strip():
+            if not (g.volo_partenza or '').strip() and not _lt_rientro_a_catania(g):
                 w.append('volo ritorno mancante')
         return w
 
@@ -4121,10 +4136,11 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
         if EVENTO['contatto_email']:
             contatti += '<br>' + _lt_esc(EVENTO['contatto_email'])
 
-        # Chi parte da Catania sale sul pullman, gli altri volano.
-        viaggio = (_lt_sez_pullman(g) + _lt_sez_rientro_pullman(g)
-                   if _lt_via_terra(g)
-                   else _lt_sez_andata(g) + _lt_sez_ritorno(g))
+        # Andata e ritorno si decidono separatamente: c'e' chi vola all'andata
+        # e torna col pullman dei catanesi, e la sua lettera e' meta' e meta'.
+        viaggio = (_lt_sez_pullman(g) if _lt_via_terra(g) else _lt_sez_andata(g))
+        viaggio += (_lt_sez_rientro_pullman(g) if _lt_rientro_a_catania(g)
+                    else _lt_sez_ritorno(g))
 
         sezioni = (
             _lt_sez_soggiorno(g)

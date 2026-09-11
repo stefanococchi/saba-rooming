@@ -118,6 +118,9 @@ class Guest(db.Model):
     pickup_bus_ritorno    = db.Column(db.String(100))
     parcheggio_linate     = db.Column(db.Boolean, default=False)
     parcheggio_hotel      = db.Column(db.Boolean, default=False)
+    # Vola all'andata ma torna col pullman dei catanesi: il volo di ritorno
+    # non esiste, e la lettera al posto suo racconta il rientro via terra.
+    rientro_con_catania   = db.Column(db.Boolean, default=False)
     divide_stanza_con     = db.Column(db.String(200))
     restrizioni_alimentari = db.Column(db.String(300))
     tipo_camera           = db.Column(db.String(100))
