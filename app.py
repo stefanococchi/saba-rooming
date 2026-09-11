@@ -4222,6 +4222,45 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
             'non_partecipa': _lt_non_partecipa(g),
         }
 
+    @app.get('/api/rooming/pullman/<int:giorno>')
+    def rooming_pullman(giorno):
+        """Chi sale sul pullman da Catania di un certo giorno, con i totali.
+
+        La lista si ricava dagli stessi dati della lettera - sede senza volo e
+        primo giorno di presenza - cosi' l'elenco al punto di ritrovo e quello
+        che la gente ha letto nella convocazione non possono divergere.
+        """
+        if giorno not in PULLMAN_CATANIA['partenze']:
+            return jsonify(ok=False, error=f'Nessun pullman da Catania previsto '
+                                          f'per il {giorno} ottobre'), 404
+        c = PULLMAN_CATANIA['partenze'][giorno]
+        passeggeri = []
+        for g in (Guest.query.filter_by(deleted=False)
+                  .order_by(Guest.cognome, Guest.nome).all()):
+            if not _lt_via_terra(g) or _lt_giorno_arrivo(g) != giorno:
+                continue
+            notti = [d for d in GIORNI_EVENTO if getattr(g, f'presenza_{d}')]
+            passeggeri.append({
+                'id': g.id,
+                'cognome': g.cognome,
+                'nome': g.nome or '',
+                'email': (g.email or '').strip(),
+                'telefono': (g.telefono or '').strip(),
+                'camera': (g.camera_assegnata or '').strip(),
+                'notti': notti,
+            })
+        return jsonify(
+            ok=True,
+            giorno=giorno,
+            indirizzo=PULLMAN_CATANIA['indirizzo'],
+            durata=PULLMAN_CATANIA['durata'],
+            ritrovo=c['ritrovo'], partenza=c['partenza'], arrivo=c['arrivo'],
+            totale=len(passeggeri),
+            senza_email=sum(1 for p in passeggeri if not p['email']),
+            senza_telefono=sum(1 for p in passeggeri if not p['telefono']),
+            passeggeri=passeggeri,
+        )
+
     @app.get('/api/rooming/lettera/<int:gid>')
     def rooming_lettera(gid):
         """Lettera di convocazione di un singolo ospite.
