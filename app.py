@@ -3661,13 +3661,13 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
     # sparire la riga corrispondente: meglio un buco che un orario inventato.
     # Da Catania si parte in due gruppi, e ognuno ha il suo pullman alla sede:
     # chi arriva l'8 (due notti) e chi arriva il 9 (una notte sola, si parte
-    # alle cinque del mattino). La chiave e' il primo giorno di presenza.
+    # nel pomeriggio). La chiave e' il primo giorno di presenza.
     PULLMAN_CATANIA = {
         'indirizzo': 'Stradale Primosole Strada 18, n. 38 – 95121 Catania',
         'durata': 'circa 3 ore',
         'partenze': {
             8: {'ritrovo': '09:00', 'partenza': '', 'arrivo': ''},
-            9: {'ritrovo': '05:00', 'partenza': '', 'arrivo': ''},
+            9: {'ritrovo': '16:25', 'partenza': '16:30', 'arrivo': ''},
         },
     }
 
@@ -3758,6 +3758,16 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
             return ''
         tot = (int(m.group(1)) * 60 + int(m.group(2)) - minuti) % (24 * 60)
         return '%02d:%02d' % divmod(tot, 60)
+
+    def _lt_minuti_fra(inizio, fine):
+        """Minuti fra due 'HH:MM' dello stesso giorno; None se non si leggono
+        o se non sono in ordine."""
+        import re
+        def m(o):
+            x = re.match(r'^(\d{1,2}):(\d{2})$', (o or '').strip())
+            return int(x.group(1)) * 60 + int(x.group(2)) if x else None
+        a, b = m(inizio), m(fine)
+        return b - a if a is not None and b is not None and b > a else None
 
     def _lt_compagnia(volo):
         """'AZ1765' → 'ITA Airways'. Prefisso sconosciuto → ''."""
@@ -3970,10 +3980,16 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
                            + _lt_esc(ritrovo) +
                            '</b>: il pullman partirà pochi minuti dopo.')
         elif c['ritrovo']:
+            # Con l'ora di partenza in tabella il ritrovo da solo non basta:
+            # si dice anche quanto manca alla partenza, cosi' si capisce
+            # perche' l'orario e' quello e quanto poco si puo' sforare.
+            margine = _lt_minuti_fra(c['ritrovo'], c['partenza'])
+            anticipo = (f', almeno <b>{margine} minuti prima</b> della partenza'
+                        if margine else '')
             corpo += _lt_p('Un pullman privato ti attenderà presso la sede di '
                            'Catania' + (' ' + _lt_esc(quando) if quando else '') + '. Ti chiediamo di '
                            'presentarti al punto di ritrovo puntuale alle ore <b>'
-                           + _lt_esc(ritrovo) + '</b>.')
+                           + _lt_esc(ritrovo) + '</b>' + anticipo + '.')
         else:
             corpo += _lt_p('Ti chiediamo di presentarti al punto di ritrovo almeno '
                            '<b>10 minuti prima</b> della partenza.')
