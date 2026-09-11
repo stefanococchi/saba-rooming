@@ -3717,6 +3717,7 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
         'CIA': 'Roma Ciampino', 'VCE': 'Venezia', 'BLQ': 'Bologna',
         'TRN': 'Torino', 'NAP': 'Napoli', 'BRI': 'Bari', 'GOA': 'Genova',
         'FLR': 'Firenze', 'VRN': 'Verona', 'TRS': 'Trieste', 'CAG': 'Cagliari',
+        'CDG': 'Parigi Charles de Gaulle',
     }
 
     def _lt_esc(v):
