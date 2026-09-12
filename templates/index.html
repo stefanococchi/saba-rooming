@@ -3240,6 +3240,8 @@ async function inviaLettere() {
   }
   mostraEsitoInvio(out);
   caricaLettConfig();
+  await caricaInvii();
+  renderLettereList();
 }
 
 function toggleLettIntro() {
@@ -3247,6 +3249,32 @@ function toggleLettIntro() {
   const chiuso = box.style.display === 'none';
   box.style.display = chiuso ? 'block' : 'none';
   if (chiuso) document.getElementById('lettIntro').focus();
+}
+
+// Chi l'ha gia' ricevuta e chi no: il registro esiste da sempre a database,
+// ma nessuna schermata lo leggeva. Finche' l'invio andava a buon fine bastava
+// il riepilogo di fine corsa; il giorno che si e' interrotto a meta' non
+// c'era piu' modo di sapere dove fosse arrivato.
+let _invii = {};
+
+async function caricaInvii() {
+  try {
+    const r = await fetch('/api/rooming/lettere/invii');
+    const j = await r.json();
+    _invii = {};
+    // il registro arriva dal piu' recente: il primo che si incontra per un
+    // ospite e' l'ultimo tentativo, ed e' quello che conta
+    (j.invii || []).forEach(function (v) {
+      if (!(v.guest_id in _invii)) _invii[v.guest_id] = v;
+    });
+  } catch (e) { _invii = {}; }
+}
+
+function oraInvio(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return d.toLocaleString('it-IT', {day: '2-digit', month: '2-digit',
+                                    hour: '2-digit', minute: '2-digit'});
 }
 
 async function loadLettere(selectId) {
@@ -3264,10 +3292,17 @@ async function loadLettere(selectId) {
     const j = await r.json();
     if (!j.ok) { list.innerHTML = `<p style="color:var(--error);padding:12px">${j.error}</p>`; return; }
     _lettere = j.lettere;
+    await caricaInvii();
     const esclusi = j.esclusi || [];
+    const inviate = _lettere.filter(l => (_invii[l.id] || {}).esito === 'inviata').length;
+    const errori  = _lettere.filter(l => (_invii[l.id] || {}).esito === 'errore').length;
+    const daFare  = _lettere.filter(l => !l.warnings.length
+                                      && (_invii[l.id] || {}).esito !== 'inviata').length;
     const stats = document.getElementById('lettStats');
     stats.textContent =
-      `${j.totale} lettere · ${j.con_warning} con dati mancanti`
+      `${j.totale} lettere · ${inviate} inviate · ${daFare} da inviare`
+      + (errori ? ` · ${errori} in errore` : '')
+      + (j.con_warning ? ` · ${j.con_warning} con dati mancanti` : '')
       + (esclusi.length ? ` · ${esclusi.length} esclusi perche non partecipano` : '');
     // chi e' fuori si deve poter vedere: se sparisce in silenzio, il giorno
     // che uno ci va escluso per sbaglio non se ne accorge nessuno
@@ -3303,7 +3338,22 @@ function renderLettereList() {
       <div style="font-size:11px;color:#888;margin-top:1px">${l.email || 'email mancante'}</div>
       ${l.warnings.length ? `<div style="font-size:11px;color:#c62828;margin-top:3px;display:flex;align-items:center;gap:3px">
         <span class="material-icons-round" style="font-size:13px">warning_amber</span>${l.warnings.join(', ')}</div>` : ''}
+      ${statoInvio(l)}
     </div>`).join('');
+}
+
+function statoInvio(l) {
+  const v = _invii[l.id];
+  if (!v) {
+    return l.warnings.length ? ''
+      : '<div style="font-size:11px;color:#8d6e63;margin-top:3px">· da inviare</div>';
+  }
+  if (v.esito === 'inviata') {
+    return '<div style="font-size:11px;color:#2e7d32;margin-top:3px">✓ inviata '
+         + oraInvio(v.inviata_at) + '</div>';
+  }
+  return '<div style="font-size:11px;color:#c62828;margin-top:3px">✕ '
+       + (v.errore || 'errore') + '</div>';
 }
 
 function selectLettera(i) {
