@@ -3803,7 +3803,13 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
             proprio = g.volo_arrivo if tipo == 'andata' else g.volo_partenza
             volo = (proprio or '').strip()
 
-        if not (volo or rotta.strip()):
+        # Senza numero di volo non c'e' volo, e non basta che il PNR abbia
+        # una rotta e degli orari: quelli sono la forma di un volo, non un
+        # volo. Stampandoli la lettera prometteva un aereo che nessuno ha
+        # comprato - e siccome le righe vuote spariscono, usciva una sezione
+        # senza compagnia e senza numero, con un pullman e un'ora di ritrovo
+        # in lobby: l'unica parte falsa era anche l'unica che si eseguiva.
+        if not volo:
             return {}
         partenza, arrivo = _lt_orari(orario)
         rotta = rotta.strip().upper()
@@ -3843,8 +3849,18 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
         Vale per i catanesi, che in pullman ci vanno e ci tornano, ma anche
         per chi arriva in aereo e al ritorno si aggrega a loro: il volo di
         ritorno non e' stato comprato, quindi la lettera non deve prometterlo.
+
+        E vale da se' per chi vola all'andata e un volo di ritorno non ce
+        l'ha: a casa ci torna comunque, e l'unico rientro via terra previsto
+        e' il pullman. Cancellare il volo di ritorno e' gia' il modo in cui
+        lo si dice - la spunta lo mette nero su bianco, ma non deve essere
+        lei a decidere se la lettera racconta il vero. Chi non ha nemmeno
+        l'andata non ha un pullman: ha dei dati mancanti, e quelli restano
+        fra gli avvisi.
         """
-        return _lt_via_terra(g) or bool(g.rientro_con_catania)
+        if _lt_via_terra(g) or bool(g.rientro_con_catania):
+            return True
+        return bool(_lt_tratta(g, 'andata')) and not _lt_tratta(g, 'ritorno')
 
     def _lt_giorno_arrivo(g):
         """Il primo giorno di presenza: e' il giorno in cui si sale sul pullman.
@@ -3893,7 +3909,11 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
         elif not g.pnr_group:
             if not (g.volo_arrivo or '').strip():
                 w.append('volo andata mancante')
-            if not (g.volo_partenza or '').strip() and not _lt_rientro_a_catania(g):
+            # Qui la domanda e' un'altra: non "la lettera sa cosa dire" ma
+            # "questo volo lo abbiamo comprato". Il rientro dedotto dal volo
+            # che manca risponderebbe di si' a se stesso e l'avviso non
+            # comparirebbe mai piu': lo si chiede solo a chi l'ha dichiarato.
+            if not (g.volo_partenza or '').strip() and not g.rientro_con_catania:
                 w.append('volo ritorno mancante')
         return w
 
