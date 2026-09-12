@@ -3906,15 +3906,25 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
                 w.append(f'nessun pullman da Catania previsto per il {giorno} ottobre')
             elif not c['ritrovo']:
                 w.append(f'orario di ritrovo del pullman da Catania del {giorno} ottobre da definire')
-        elif not g.pnr_group:
-            if not (g.volo_arrivo or '').strip():
-                w.append('volo andata mancante')
-            # Qui la domanda e' un'altra: non "la lettera sa cosa dire" ma
-            # "questo volo lo abbiamo comprato". Il rientro dedotto dal volo
-            # che manca risponderebbe di si' a se stesso e l'avviso non
-            # comparirebbe mai piu': lo si chiede solo a chi l'ha dichiarato.
-            if not (g.volo_partenza or '').strip() and not g.rientro_con_catania:
-                w.append('volo ritorno mancante')
+        else:
+            # Un volo si racconta con la data e gli orari: senza, la lettera
+            # stampa due codici e non dice a che ora presentarsi. L'avviso
+            # guardava solo chi il PNR non ce l'aveva, e un PNR con i campi
+            # vuoti passava liscio - la lettera usciva monca e nessuno lo
+            # sapeva. Ora la domanda si fa alla tratta, non alla scheda.
+            for tipo in ('andata', 'ritorno'):
+                # Il rientro dichiarato via terra non ha un volo da comprare.
+                # Quello dedotto dal volo che manca invece si': se ce lo
+                # chiedessimo, risponderebbe di si' a se stesso e l'avviso
+                # non comparirebbe mai piu'. Lo si salta solo a chi l'ha
+                # dichiarato, e la spunta e' anche il modo di spegnerlo.
+                if tipo == 'ritorno' and g.rientro_con_catania:
+                    continue
+                t = _lt_tratta(g, tipo)
+                if not t:
+                    w.append(f'volo {tipo} mancante')
+                elif 'libero' in t or not t['data'] or not t['partenza']:
+                    w.append(f'orari del volo di {tipo} mancanti')
         return w
 
     # ── Mattoni HTML: tabelle e stili inline, niente CSS esterno ────────────
