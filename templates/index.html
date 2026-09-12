@@ -2520,11 +2520,13 @@ async function deleteAll() {
 }
 
 // ── Inline Edit ──────────────────────────────────────────────────────────
-const BOOL_FIELDS = ['presenza_8','presenza_9','presenza_10','presenza_11','parcheggio_linate','parcheggio_hotel'];
-
+// Quali celle sono booleane lo dice la tabella stessa: la classe bool-cell la
+// mette il template sulle colonne con la spunta. Una lista di nomi scritta qui
+// sotto invecchia in silenzio - una colonna nuova si vede, non si tocca, e
+// nessuno capisce perche'.
 document.querySelectorAll('td.editable').forEach(td => {
   const field = td.dataset.field;
-  const isBool = BOOL_FIELDS.includes(field);
+  const isBool = td.classList.contains('bool-cell');
 
   if (isBool) {
     // Click singolo per toggle booleano
