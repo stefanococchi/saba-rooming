@@ -3726,6 +3726,14 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
         'CDG': 'Parigi Charles de Gaulle',
     }
 
+    # Voli veri che nessun PNR di gruppo conosce, perche' sono biglietti
+    # singoli comprati fuori dal blocco. Sulla scheda dell'ospite c'e' solo
+    # il codice, e senza questi orari la sua lettera stampa "Volo: AF1009"
+    # e nient'altro: non la data, non a che ora presentarsi in aeroporto.
+    VOLI_NOTI = {
+        'AF1009': {'data': '10OCT', 'rotta': 'PMOCDG', 'orario': '1645-1925'},
+    }
+
     def _lt_esc(v):
         """Escape HTML del valore; stringa vuota se assente."""
         from html import escape
@@ -3780,14 +3788,66 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
         """'AZ1765' → 'ITA Airways'. Prefisso sconosciuto → ''."""
         return COMPAGNIE.get((volo or '').strip().upper()[:2], '')
 
+    def _lt_tratta_da(volo, data, rotta, orario, pnr):
+        """Il dizionario che la lettera sa leggere, da rotta e orari grezzi."""
+        partenza, arrivo = _lt_orari(orario)
+        rotta = (rotta or '').strip().upper()
+        orig, dest = (rotta[:3], rotta[3:]) if len(rotta) == 6 else ('', '')
+        return {
+            'volo': (volo or '').strip(),
+            'compagnia': _lt_compagnia(volo),
+            'data': _lt_data(data),
+            'da': AEROPORTI.get(orig, orig),
+            'a': AEROPORTI.get(dest, dest),
+            'da_iata': orig,
+            'a_iata': dest,
+            'partenza': partenza,
+            'arrivo': arrivo,
+            'pnr': pnr,
+        }
+
+    def _lt_orari_del_volo(numero):
+        """Data, rotta e orari di un volo scritto a mano sulla scheda.
+
+        Due sorgenti, nessuna delle due e' un'ipotesi: gli orari che ci ha
+        dato l'agenzia (VOLI_NOTI) e i PNR di gruppo che montano lo stesso
+        volo - stesso numero, stesso giorno, e allora stessi orari. Se i PNR
+        non sono d'accordo fra loro non si sceglie: meglio il solo codice
+        che un orario preso a caso.
+        """
+        numero = (numero or '').strip().upper()
+        if not numero:
+            return None
+        if numero in VOLI_NOTI:
+            return VOLI_NOTI[numero]
+        trovati = set()
+        for pg in PnrGroup.query.all():
+            for volo, data, rotta, orario in (
+                    (pg.volo_andata,  pg.data_andata,  pg.rotta_andata,  pg.orario_andata),
+                    (pg.volo_ritorno, pg.data_ritorno, pg.rotta_ritorno, pg.orario_ritorno)):
+                if (volo or '').strip().upper() == numero:
+                    trovati.add(((data or '').strip(), (rotta or '').strip(),
+                                 (orario or '').strip()))
+        if len(trovati) != 1:
+            return None
+        data, rotta, orario = trovati.pop()
+        return {'data': data, 'rotta': rotta, 'orario': orario}
+
     def _lt_tratta(g, tipo):
         """Dati del volo di andata o ritorno, dal PNR di gruppo se assegnato.
-        Se l'ospite ha solo il volo scritto a mano torna {'libero': '…'}."""
+        Se l'ospite ha solo il volo scritto a mano si completa con gli orari
+        che conosciamo; se non li conosciamo torna {'libero': '…'}."""
         pg = g.pnr_group
         if not pg:
             libero = g.volo_arrivo if tipo == 'andata' else g.volo_partenza
             libero = (libero or '').strip()
-            return {'libero': libero} if libero else {}
+            if not libero:
+                return {}
+            noto = _lt_orari_del_volo(libero)
+            if not noto:
+                return {'libero': libero}
+            return _lt_tratta_da(libero, noto['data'], noto['rotta'],
+                                 noto['orario'], '')
         volo   = pg.volo_andata   if tipo == 'andata' else pg.volo_ritorno
         data   = pg.data_andata   if tipo == 'andata' else pg.data_ritorno
         rotta  = (pg.rotta_andata if tipo == 'andata' else pg.rotta_ritorno) or ''
@@ -3811,21 +3871,7 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
         # in lobby: l'unica parte falsa era anche l'unica che si eseguiva.
         if not volo:
             return {}
-        partenza, arrivo = _lt_orari(orario)
-        rotta = rotta.strip().upper()
-        orig, dest = (rotta[:3], rotta[3:]) if len(rotta) == 6 else ('', '')
-        return {
-            'volo': (volo or '').strip(),
-            'compagnia': _lt_compagnia(volo),
-            'data': _lt_data(data),
-            'da': AEROPORTI.get(orig, orig),
-            'a': AEROPORTI.get(dest, dest),
-            'da_iata': orig,
-            'a_iata': dest,
-            'partenza': partenza,
-            'arrivo': arrivo,
-            'pnr': pg.pnr_code,
-        }
+        return _lt_tratta_da(volo, data, rotta, orario, pg.pnr_code)
 
     def _lt_presenze(g):
         """'8, 9 e 10 ottobre 2026 (3 notti)' dai flag presenza_8..10."""
