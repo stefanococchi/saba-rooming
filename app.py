@@ -3540,82 +3540,6 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
                   summary=f'Reset assegnazioni camere notte {notte}')
         return jsonify(ok=True)
 
-    # ── EXPORT XLSX ──────────────────────────────────────────────────────────
-
-    @app.get('/api/export')
-    def export_xlsx():
-        from openpyxl import Workbook
-        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
-
-        guests = Guest.query.filter_by(deleted=False).order_by(Guest.cognome, Guest.nome).all()
-        wb = Workbook()
-
-        header_font = Font(bold=True, color='FFFFFF', size=11)
-        header_fill = PatternFill('solid', fgColor='795548')
-        header_fill2 = PatternFill('solid', fgColor='6D4C41')
-        thin_border = Border(
-            left=Side(style='thin'), right=Side(style='thin'),
-            top=Side(style='thin'), bottom=Side(style='thin'),
-        )
-
-        def write_sheet(ws, headers, row_fn, fill=header_fill):
-            for c, h in enumerate(headers, 1):
-                cell = ws.cell(row=1, column=c, value=h)
-                cell.font = header_font
-                cell.fill = fill
-                cell.alignment = Alignment(horizontal='center')
-                cell.border = thin_border
-            for r, g in enumerate(guests, 2):
-                for c, v in enumerate(row_fn(g), 1):
-                    cell = ws.cell(row=r, column=c, value=v if v is not None else '')
-                    cell.border = thin_border
-            for col in ws.columns:
-                max_len = max(len(str(cell.value or '')) for cell in col)
-                ws.column_dimensions[col[0].column_letter].width = min(max_len + 4, 40)
-
-        def bool_label(v):
-            return 'Sì' if v else 'No'
-
-        # ── Sheet 1: Anagrafica completa ──────────────────────────────────────
-        ws = wb.active
-        ws.title = 'Anagrafica'
-        write_sheet(ws,
-            ['Cognome', 'Nome', 'Data Nascita', 'Email', 'Telefono', 'Sede Lavoro',
-             '8 Ott', '9 Ott', '10 Ott', '11 Ott',
-             'Tipo Camera', 'Divide stanza con',
-             'Parcheggio Linate', 'Parcheggio Hotel',
-             'Restrizioni Alimentari', 'Note Form', 'Note'],
-            lambda g: [g.cognome, g.nome, g.data_nascita, g.email, g.telefono, g.sede_lavoro,
-                       bool_label(g.presenza_8), bool_label(g.presenza_9),
-                       bool_label(g.presenza_10), bool_label(g.presenza_11),
-                       g.tipo_camera, g.divide_stanza_con,
-                       bool_label(g.parcheggio_linate), bool_label(g.parcheggio_hotel),
-                       g.restrizioni_alimentari, g.note_form, g.note])
-
-        # ── Sheet 2: Voli e Trasporti ─────────────────────────────────────────
-        ws2 = wb.create_sheet('Voli e Trasporti')
-        write_sheet(ws2,
-            ['Cognome', 'Nome', 'Sede Lavoro',
-             'Aeroporto Partenza', 'Volo Andata',
-             'Aeroporto Arrivo', 'Volo Ritorno',
-             'Rientro in pullman a Catania',
-             'Pickup Bus Andata', 'Pickup Bus Ritorno'],
-            lambda g: [g.cognome, g.nome, g.sede_lavoro,
-                       g.aeroporto_partenza, g.volo_arrivo,
-                       g.aeroporto_arrivo, g.volo_partenza,
-                       'SI' if g.rientro_con_catania else '',
-                       g.pickup_bus_andata, g.pickup_bus_ritorno],
-            fill=header_fill2)
-
-        buf = BytesIO()
-        wb.save(buf)
-        buf.seek(0)
-
-        today = datetime.now().strftime('%Y-%m-%d')
-        return send_file(buf, as_attachment=True,
-                         download_name=f'rooming_flight_{today}.xlsx',
-                         mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-
     # ── LETTERE DI CONVOCAZIONE (HTML pronto per invio via MS Graph) ────────
 
     EVENTO = {
@@ -4636,6 +4560,137 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
                            'inviata_at': (r.inviata_at.isoformat()
                                           if r.inviata_at else None),
                        } for r in righe])
+
+    # ── EXPORT XLSX ──────────────────────────────────────────────────────────
+
+    def _export_tratta(g, tipo):
+        """Volo e orari di una tratta come li legge la lettera: stesso PNR,
+        stessi ripieghi, e le caselle vuote dove un orario non lo sappiamo."""
+        vuota = {'volo': '', 'compagnia': '', 'data': '',
+                 'partenza': '', 'arrivo': ''}
+        t = _lt_tratta(g, tipo)
+        if not t:
+            return vuota
+        # Numero scritto a mano di cui non conosciamo gli orari: il volo c'e',
+        # il resto no.
+        if 'libero' in t:
+            return dict(vuota, volo=t['libero'])
+        return t
+
+    def _export_viaggio(g):
+        """Le colonne di viaggio del foglio, lette con gli occhi della lettera.
+
+        Ritrovo in aeroporto, pullman e lobby non si ricalcolano qui: escono
+        dalle stesse funzioni che scrivono la convocazione. Se il foglio
+        facesse i conti per conto suo, prima o poi direbbe un'ora e la lettera
+        un'altra - e chi si presenta al ritrovo ha in mano la lettera.
+
+        Dove la lettera non promette un orario la casella resta vuota: un buco
+        si vede, un orario inventato no.
+        """
+        a = _export_tratta(g, 'andata')
+        r = _export_tratta(g, 'ritorno')
+
+        # Chi parte da Catania sale sul pullman alla sede e in aeroporto non ci
+        # va: il suo ritrovo e' quello del pullman del giorno in cui arriva.
+        via_terra = _lt_via_terra(g)
+        bus = (_lt_pullman_di(g) or {}) if via_terra else {}
+        ritrovo_aer = ('' if via_terra
+                       else _lt_ora_meno(a['partenza'], RITROVO_AEROPORTO_MIN))
+
+        # Il pullman per l'aeroporto parte dal resort e la lobby si conta da
+        # lui. Chi rientra col pullman dei catanesi non ha ancora un orario, e
+        # nemmeno chi vola cosi' tardi da lasciare il resort nel pomeriggio.
+        if _lt_rientro_a_catania(g) or _lt_rientro_tardi(r['partenza']):
+            pullman_resort = ''
+        else:
+            pullman_resort = _lt_ora_meno(r['partenza'], PARTENZA_PULLMAN_MIN)
+        lobby = _lt_ora_meno(pullman_resort, ANTICIPO_LOBBY_MIN)
+
+        return [g.aeroporto_partenza,
+                a['volo'], a['compagnia'], a['data'], a['partenza'], a['arrivo'],
+                ritrovo_aer, bus.get('ritrovo', ''), bus.get('partenza', ''),
+                g.aeroporto_arrivo,
+                r['volo'], r['compagnia'], r['data'], r['partenza'], r['arrivo'],
+                lobby, pullman_resort]
+
+    @app.get('/api/export')
+    def export_xlsx():
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+
+        guests = Guest.query.filter_by(deleted=False).order_by(Guest.cognome, Guest.nome).all()
+        wb = Workbook()
+
+        header_font = Font(bold=True, color='FFFFFF', size=11)
+        header_fill = PatternFill('solid', fgColor='795548')
+        header_fill2 = PatternFill('solid', fgColor='6D4C41')
+        thin_border = Border(
+            left=Side(style='thin'), right=Side(style='thin'),
+            top=Side(style='thin'), bottom=Side(style='thin'),
+        )
+
+        def write_sheet(ws, headers, row_fn, fill=header_fill):
+            for c, h in enumerate(headers, 1):
+                cell = ws.cell(row=1, column=c, value=h)
+                cell.font = header_font
+                cell.fill = fill
+                cell.alignment = Alignment(horizontal='center')
+                cell.border = thin_border
+            for r, g in enumerate(guests, 2):
+                for c, v in enumerate(row_fn(g), 1):
+                    cell = ws.cell(row=r, column=c, value=v if v is not None else '')
+                    cell.border = thin_border
+            for col in ws.columns:
+                max_len = max(len(str(cell.value or '')) for cell in col)
+                ws.column_dimensions[col[0].column_letter].width = min(max_len + 4, 40)
+
+        def bool_label(v):
+            return 'Sì' if v else 'No'
+
+        # ── Sheet 1: Anagrafica completa ──────────────────────────────────────
+        ws = wb.active
+        ws.title = 'Anagrafica'
+        write_sheet(ws,
+            ['Cognome', 'Nome', 'Data Nascita', 'Email', 'Telefono', 'Sede Lavoro',
+             '8 Ott', '9 Ott', '10 Ott', '11 Ott',
+             'Tipo Camera', 'Divide stanza con',
+             'Parcheggio Linate', 'Parcheggio Hotel',
+             'Restrizioni Alimentari', 'Note Form', 'Note'],
+            lambda g: [g.cognome, g.nome, g.data_nascita, g.email, g.telefono, g.sede_lavoro,
+                       bool_label(g.presenza_8), bool_label(g.presenza_9),
+                       bool_label(g.presenza_10), bool_label(g.presenza_11),
+                       g.tipo_camera, g.divide_stanza_con,
+                       bool_label(g.parcheggio_linate), bool_label(g.parcheggio_hotel),
+                       g.restrizioni_alimentari, g.note_form, g.note])
+
+        # ── Sheet 2: Voli e Trasporti ─────────────────────────────────────────
+        ws2 = wb.create_sheet('Voli e Trasporti')
+        write_sheet(ws2,
+            ['Cognome', 'Nome', 'Sede Lavoro',
+             'Aeroporto Partenza', 'Volo Andata', 'Compagnia Andata',
+             'Data Andata', 'Partenza Andata', 'Arrivo Andata',
+             'Ritrovo in Aeroporto',
+             'Ritrovo Pullman Catania', 'Partenza Pullman Catania',
+             'Aeroporto Arrivo', 'Volo Ritorno', 'Compagnia Ritorno',
+             'Data Ritorno', 'Partenza Ritorno', 'Arrivo Ritorno',
+             'Ritrovo Lobby Resort', 'Partenza Pullman dal Resort',
+             'Rientro in pullman a Catania',
+             'Pickup Bus Andata', 'Pickup Bus Ritorno'],
+            lambda g: [g.cognome, g.nome, g.sede_lavoro]
+                      + _export_viaggio(g)
+                      + ['SI' if g.rientro_con_catania else '',
+                         g.pickup_bus_andata, g.pickup_bus_ritorno],
+            fill=header_fill2)
+
+        buf = BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+
+        today = datetime.now().strftime('%Y-%m-%d')
+        return send_file(buf, as_attachment=True,
+                         download_name=f'rooming_flight_{today}.xlsx',
+                         mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
 
     # ── EXPORT STANZE / VOLI / CAMERE ────────────────────────────────────────
 
