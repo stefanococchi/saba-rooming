@@ -3556,6 +3556,10 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
     # partenze. Il campo presenza_11 resta a DB ma fuori dalle lettere.
     GIORNI_EVENTO = (8, 9, 10)
 
+    # Il mese dell'evento. La lettera scrive 'ottobre' a parole, ma il foglio
+    # XLSX vuole date vere, da ordinare e filtrare: qui c'e' il numero.
+    MESE_EVENTO = 10
+
     # Chi ha sede a Catania raggiunge l'evento via terra (auto o pullman):
     # per loro il volo non manca, non esiste proprio.
     SEDI_SENZA_VOLO = ('CATANIA',)
@@ -4577,6 +4581,29 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
             return dict(vuota, volo=t['libero'])
         return t
 
+    # I mesi di MESI_IT letti al contrario: 'ottobre' -> 10.
+    MESI_NUM_IT = {nome: n for n, nome in enumerate(MESI_IT.values(), 1)}
+
+    def _export_data_andata(g, tratta):
+        """Il giorno della partenza come data vera: nel foglio si ordina e si
+        filtra, '8 ottobre 2026' no.
+
+        La data si rilegge da quella che la lettera ha gia' scelto, invece di
+        tornare al PNR a rifare la scelta: se un giorno la lettera cambiasse
+        idea, il foglio la seguirebbe.
+
+        Chi viaggia in pullman una data di volo non ce l'ha, e chi vola puo'
+        avere un volo senza data: in tutti e due i casi vale il primo giorno
+        di presenza, che e' il giorno in cui parte comunque. Resta vuota solo
+        a chi all'evento non viene.
+        """
+        m = re.match(r'^(\d{1,2})\s+([a-z]+)\s+(\d{4})$',
+                     (tratta['data'] or '').strip().lower())
+        if m and m.group(2) in MESI_NUM_IT:
+            return date(int(m.group(3)), MESI_NUM_IT[m.group(2)], int(m.group(1)))
+        giorno = _lt_giorno_arrivo(g)
+        return date(int(EVENTO['anno']), MESE_EVENTO, giorno) if giorno else ''
+
     def _export_viaggio(g):
         """Le colonne di viaggio del foglio, lette con gli occhi della lettera.
 
@@ -4598,9 +4625,10 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
         ritrovo_aer = ('' if via_terra
                        else _lt_ora_meno(a['partenza'], RITROVO_AEROPORTO_MIN))
 
-        # Il pullman per l'aeroporto parte dal resort e la lobby si conta da
-        # lui. Chi rientra col pullman dei catanesi non ha ancora un orario, e
-        # nemmeno chi vola cosi' tardi da lasciare il resort nel pomeriggio.
+        # La lobby si conta dal pullman per l'aeroporto, che in colonna non
+        # c'e' ma resta il modo in cui l'ora si calcola. Chi rientra col
+        # pullman dei catanesi non ha ancora un orario, e nemmeno chi vola
+        # cosi' tardi da lasciare il resort nel pomeriggio.
         if _lt_rientro_a_catania(g) or _lt_rientro_tardi(r['partenza']):
             pullman_resort = ''
         else:
@@ -4608,11 +4636,9 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
         lobby = _lt_ora_meno(pullman_resort, ANTICIPO_LOBBY_MIN)
 
         return [g.aeroporto_partenza,
-                a['volo'], a['compagnia'], a['data'], a['partenza'], a['arrivo'],
-                ritrovo_aer, bus.get('ritrovo', ''), bus.get('partenza', ''),
-                g.aeroporto_arrivo,
-                r['volo'], r['compagnia'], r['data'], r['partenza'], r['arrivo'],
-                lobby, pullman_resort]
+                a['volo'], _export_data_andata(g, a), a['partenza'], a['arrivo'],
+                ritrovo_aer, bus.get('ritrovo', ''),
+                r['volo'], r['partenza'], r['arrivo'], lobby]
 
     @app.get('/api/export')
     def export_xlsx():
@@ -4655,33 +4681,33 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
             ['Cognome', 'Nome', 'Data Nascita', 'Email', 'Telefono', 'Sede Lavoro',
              '8 Ott', '9 Ott', '10 Ott', '11 Ott',
              'Tipo Camera', 'Divide stanza con',
-             'Parcheggio Linate', 'Parcheggio Hotel',
-             'Restrizioni Alimentari', 'Note Form', 'Note'],
+             'Parcheggio Linate',
+             'Restrizioni Alimentari', 'Note Form'],
             lambda g: [g.cognome, g.nome, g.data_nascita, g.email, g.telefono, g.sede_lavoro,
                        bool_label(g.presenza_8), bool_label(g.presenza_9),
                        bool_label(g.presenza_10), bool_label(g.presenza_11),
                        g.tipo_camera, g.divide_stanza_con,
-                       bool_label(g.parcheggio_linate), bool_label(g.parcheggio_hotel),
-                       g.restrizioni_alimentari, g.note_form, g.note])
+                       bool_label(g.parcheggio_linate),
+                       g.restrizioni_alimentari, g.note_form])
 
         # ── Sheet 2: Voli e Trasporti ─────────────────────────────────────────
         ws2 = wb.create_sheet('Voli e Trasporti')
-        write_sheet(ws2,
-            ['Cognome', 'Nome', 'Sede Lavoro',
-             'Aeroporto Partenza', 'Volo Andata', 'Compagnia Andata',
-             'Data Andata', 'Partenza Andata', 'Arrivo Andata',
-             'Ritrovo in Aeroporto',
-             'Ritrovo Pullman Catania', 'Partenza Pullman Catania',
-             'Aeroporto Arrivo', 'Volo Ritorno', 'Compagnia Ritorno',
-             'Data Ritorno', 'Partenza Ritorno', 'Arrivo Ritorno',
-             'Ritrovo Lobby Resort', 'Partenza Pullman dal Resort',
-             'Rientro in pullman a Catania',
-             'Pickup Bus Andata', 'Pickup Bus Ritorno'],
-            lambda g: [g.cognome, g.nome, g.sede_lavoro]
-                      + _export_viaggio(g)
-                      + ['SI' if g.rientro_con_catania else '',
-                         g.pickup_bus_andata, g.pickup_bus_ritorno],
+        # Il ritorno e' il 10 per tutti: la colonna con la data direbbe la
+        # stessa cosa 176 volte.
+        colonne2 = ['Cognome', 'Nome', 'Sede Lavoro',
+                    'Aeroporto Partenza', 'Volo Andata', 'Data Andata',
+                    'Partenza Andata', 'Arrivo Andata', 'Ritrovo in Aeroporto',
+                    'Ritrovo Pullman Catania',
+                    'Volo Ritorno', 'Partenza Ritorno', 'Arrivo Ritorno',
+                    'Ritrovo Lobby Resort']
+        write_sheet(ws2, colonne2,
+            lambda g: [g.cognome, g.nome, g.sede_lavoro] + _export_viaggio(g),
             fill=header_fill2)
+
+        # Senza formato Excel mostrerebbe il numero seriale della data.
+        col_data = colonne2.index('Data Andata') + 1
+        for riga in range(2, ws2.max_row + 1):
+            ws2.cell(row=riga, column=col_data).number_format = 'DD/MM/YYYY'
 
         buf = BytesIO()
         wb.save(buf)
