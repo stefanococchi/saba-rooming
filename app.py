@@ -2954,20 +2954,16 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
         if not text.strip():
             return jsonify(ok=False, error='Testo vuoto'), 400
 
-        # Split per blocchi RLR
-        blocks = re.split(r'---?\s*(?:AXR\s+)?RLR\s*---?', text)
+        # Un blocco per riga di testata "RP/... CODICE". Le righe RLR non
+        # separano sempre i PNR: l'agenzia ne incolla piu' d'uno di fila
+        # senza, e spezzando su RLR si leggeva solo il primo di ogni fila
+        # (4 PNR su 9 in un invio vero). A volte poi la testata arriva
+        # mutilata in "P/": la R facoltativa la riprende lo stesso.
+        parti = re.split(r'(?m)^\s*R?P/\S+\s+\S+\s+\S+\s+(\w{6})\s*$', text)
         groups = []
 
-        for block in blocks:
-            block = block.strip()
-            if not block:
-                continue
-
-            # PNR code: ultimo token della riga RP/
-            pnr_match = re.search(r'RP/\S+\s+\S+\s+\S+\s+(\w{6})', block)
-            pnr_code = pnr_match.group(1) if pnr_match else None
-            if not pnr_code:
-                continue
+        for i in range(1, len(parti), 2):
+            pnr_code, block = parti[i], parti[i + 1]
 
             # Seats + group name: "0. 32PAOLACATANIADOS  NM: 0" oppure "0.  0PAOLASICILIA  NM:32".
             # Il numero davanti al gruppo sono i posti ancora senza nome, NM quelli gia'
