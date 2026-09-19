@@ -2970,8 +2970,16 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
             # nominati: i posti del PNR sono la somma dei due. Leggendo solo il primo,
             # un PNR con tutti i nomi dentro risultava da zero posti.
             group_match = re.search(r'0\.\s*(\d+)(\w+)\s+NM:\s*(\d+)', block)
-            seats = int(group_match.group(1)) + int(group_match.group(3)) if group_match else 0
             group_name = group_match.group(2) if group_match else ''
+            if group_match:
+                seats = int(group_match.group(1)) + int(group_match.group(3))
+            else:
+                # Prenotazione singola, senza riga di gruppo: i posti sono
+                # l'HK della riga volo, e in mancanza i nomi elencati. Prima
+                # un PNR individuale entrava con zero posti.
+                hk = re.search(r'HK(\d+)', block)
+                nomi = re.findall(r"(?m)^\s*\d+\.[A-Z][A-Z '-]*/[A-Z]", block)
+                seats = int(hk.group(1)) if hk else len(nomi)
 
             # Voli: "1  AZ1765 S 08OCT 4 LINPMO HK32  0955 1135  *1A/E*"
             flights = re.findall(
