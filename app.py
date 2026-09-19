@@ -56,6 +56,47 @@ def volo_disallineato(g, pg):
                                  normalize_flight(pg.volo_ritorno))
 
 
+def copia_voli_da_pnr(g, pg):
+    """Scrive sull'ospite i voli e gli aeroporti del PNR a cui viene agganciato.
+
+    E' una scelta, non un automatismo: chi va con il gruppo all'andata ma
+    torna con un'altra compagnia ha voli suoi che il PNR non conosce, e
+    sovrascriverli in silenzio li cancellava. Chi assegna decide se copiare."""
+    g.volo_arrivo = pg.volo_andata
+    g.volo_partenza = pg.volo_ritorno
+    origin = pg.rotta_andata[:3] if pg.rotta_andata and len(pg.rotta_andata) >= 6 else ''
+    dest = pg.rotta_ritorno[3:] if pg.rotta_ritorno and len(pg.rotta_ritorno) >= 6 else ''
+    if origin:
+        g.aeroporto_partenza = origin
+    if dest:
+        g.aeroporto_arrivo = dest
+
+
+# Campi di un PNR che si possono scrivere a mano, oltre a codice e posti.
+PNR_STR_FIELDS = ('group_name', 'volo_andata', 'data_andata', 'rotta_andata',
+                  'orario_andata', 'volo_ritorno', 'data_ritorno',
+                  'rotta_ritorno', 'orario_ritorno')
+
+
+def normalizza_campo_pnr(campo, val):
+    """Porta un valore scritto a mano nella forma in cui lo scrive Amadeus,
+    che e' quella che lettere ed export sanno leggere: AZ1765, 08OCT,
+    LINPMO, 0955-1135. Un '09:55 - 11:35' battuto sulla tastiera diventa
+    '0955-1135' invece di restare un formato che nessuno riconosce."""
+    val = (val or '').strip()
+    if not val:
+        return None
+    if campo == 'group_name':
+        return val
+    val = val.upper()
+    if campo.startswith('orario'):
+        val = re.sub(r'[.:\s]', '', val)
+        val = re.sub(r'[–—]', '-', val)
+        m = re.fullmatch(r'(\d{4})-?(\d{4})', val)
+        return f'{m.group(1)}-{m.group(2)}' if m else val
+    return re.sub(r'\s+', '', val)
+
+
 # ── Deduzione Mr/Mrs dal nome di battesimo ────────────────────────────────
 # Serve per le liste passeggeri: il titolo va indicato per ogni nominativo.
 # I nomi elencati qui sono quelli che le regole sulla desinenza sbaglierebbero
@@ -2176,7 +2217,22 @@ Rispondi SOLO con JSON valido (no markdown, no commenti):
     @app.route('/rooming')
     def index(client_view=False):
         guests = Guest.query.filter_by(deleted=False).order_by(Guest.cognome, Guest.nome).all()
-        return render_template('index.html', guests=guests, client_view=client_view)
+        # Il PNR in colonna e la tendina per cambiarlo dalla riga: si
+        # calcolano una volta qui invece di una query per ospite.
+        pnr_groups = PnrGroup.query.order_by(PnrGroup.volo_andata, PnrGroup.pnr_code).all()
+        occupati = {}
+        for g in guests:
+            if g.pnr_group_id:
+                occupati[g.pnr_group_id] = occupati.get(g.pnr_group_id, 0) + 1
+        pnr_options = [{
+            'id': pg.id, 'pnr_code': pg.pnr_code, 'seats': pg.seats,
+            'occupati': occupati.get(pg.id, 0),
+            'volo_andata': pg.volo_andata or '', 'volo_ritorno': pg.volo_ritorno or '',
+            'rotta_andata': pg.rotta_andata or '', 'rotta_ritorno': pg.rotta_ritorno or '',
+        } for pg in pnr_groups]
+        pnr_codes = {pg.id: pg.pnr_code for pg in pnr_groups}
+        return render_template('index.html', guests=guests, client_view=client_view,
+                               pnr_codes=pnr_codes, pnr_options=pnr_options)
 
     # ── ROOMING CLIENT LINK API ──────────────────────────────────────────
 
@@ -2850,7 +2906,9 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
             assigned = [{
                 'id': p.id, 'cognome': p.cognome, 'nome': p.nome,
                 'sede_lavoro': p.sede_lavoro or '',
-            } for p in g.guests]
+                'volo_arrivo': p.volo_arrivo or '', 'volo_partenza': p.volo_partenza or '',
+                'disallineato': volo_disallineato(p, g),
+            } for p in g.guests if not p.deleted]
             totale_assegnati += len(assigned)
             # Parse rotta in origin/dest (es. LINPMO → LIN / PMO)
             orig_a = g.rotta_andata[:3] if g.rotta_andata and len(g.rotta_andata) >= 6 else ''
@@ -3001,27 +3059,84 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
                   summary=f'Importati {len(results)} gruppi PNR')
         return jsonify(ok=True, results=results)
 
+    def _pnr_leggi_form(data, pg=None):
+        """Valida e normalizza i campi di un PNR scritto a mano.
+        Restituisce (dict, errore)."""
+        code = (data.get('pnr_code') or '').strip().upper().replace(' ', '')
+        if not code:
+            return None, "Il codice PNR e' obbligatorio"
+        altro = PnrGroup.query.filter_by(pnr_code=code).first()
+        if altro and (pg is None or altro.id != pg.id):
+            return None, f"Esiste gia' un PNR {code}"
+        try:
+            seats = int(data.get('seats') or 0)
+        except (TypeError, ValueError):
+            return None, 'I posti devono essere un numero'
+        if seats < 0:
+            return None, 'I posti non possono essere negativi'
+        campi = {'pnr_code': code, 'seats': seats}
+        for f in PNR_STR_FIELDS:
+            if f in data:
+                campi[f] = normalizza_campo_pnr(f, data.get(f))
+        for f in ('rotta_andata', 'rotta_ritorno'):
+            v = campi.get(f)
+            if v and not re.fullmatch(r'[A-Z]{6}', v):
+                return None, f'La rotta va scritta come sei lettere, es. LINPMO (ricevuto {v})'
+        return campi, None
+
+    @app.post('/api/pnr')
+    def pnr_create():
+        """Crea un PNR a mano, senza passare dal testo Amadeus: serve quando
+        l'agenzia comunica una prenotazione a voce o per i voli comprati a
+        parte, che un testo RLR non ce l'hanno."""
+        campi, err = _pnr_leggi_form(request.get_json() or {})
+        if err:
+            return jsonify(ok=False, error=err), 400
+        pg = PnrGroup(**campi)
+        db.session.add(pg)
+        db.session.commit()
+        log_audit('rooming', 'PnrGroup', pg.id, 'create',
+                  changes={k: {'old': None, 'new': v} for k, v in campi.items() if v not in (None, '')},
+                  summary=f'Creato PNR {pg.pnr_code} ({pg.seats} posti)')
+        return jsonify(ok=True, id=pg.id)
+
+    @app.put('/api/pnr/<int:group_id>')
+    def pnr_update(group_id):
+        """Corregge un PNR esistente: posti, voli, orari. Gli ospiti restano
+        agganciati; i loro voli non si toccano, la lettera legge il PNR."""
+        pg = PnrGroup.query.get_or_404(group_id)
+        campi, err = _pnr_leggi_form(request.get_json() or {}, pg)
+        if err:
+            return jsonify(ok=False, error=err), 400
+        changes = {}
+        for k, v in campi.items():
+            old = getattr(pg, k)
+            if (old or None) != (v or None):
+                changes[k] = {'old': old, 'new': v}
+                setattr(pg, k, v)
+        db.session.commit()
+        if changes:
+            log_audit('rooming', 'PnrGroup', pg.id, 'update', changes=changes,
+                      summary=f'Modificato PNR {pg.pnr_code}: ' + ', '.join(changes))
+        occupati = Guest.query.filter_by(deleted=False, pnr_group_id=pg.id).count()
+        return jsonify(ok=True, changed=list(changes), occupati=occupati,
+                       overbooking=occupati > pg.seats)
+
     @app.post('/api/pnr/<int:group_id>/assign')
     def pnr_assign(group_id):
         """Assegna ospiti a un PNR group."""
         pg = PnrGroup.query.get_or_404(group_id)
         data = request.get_json()
         guest_ids = data.get('guest_ids', [])
+        copia_voli = _parse_bool(data.get('copia_voli', True))
 
         assigned = 0
         for gid in guest_ids:
             guest = Guest.query.get(gid)
             if guest:
                 guest.pnr_group_id = group_id
-                # Popola anche i campi volo sul guest
-                guest.volo_arrivo = pg.volo_andata
-                guest.volo_partenza = pg.volo_ritorno
-                origin_a = pg.rotta_andata[:3] if pg.rotta_andata and len(pg.rotta_andata) >= 6 else ''
-                dest_r = pg.rotta_ritorno[3:] if pg.rotta_ritorno and len(pg.rotta_ritorno) >= 6 else ''
-                if origin_a:
-                    guest.aeroporto_partenza = origin_a
-                if dest_r:
-                    guest.aeroporto_arrivo = dest_r
+                if copia_voli:
+                    copia_voli_da_pnr(guest, pg)
                 assigned += 1
 
         current_count = Guest.query.filter_by(deleted=False, pnr_group_id=group_id).count()
@@ -3061,9 +3176,13 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
     def pnr_delete(group_id):
         """Elimina un PNR group (scollega ospiti)."""
         pg = PnrGroup.query.get_or_404(group_id)
-        Guest.query.filter_by(deleted=False, pnr_group_id=group_id).update({'pnr_group_id': None})
+        code, seats = pg.pnr_code, pg.seats
+        scollegati = Guest.query.filter_by(deleted=False, pnr_group_id=group_id).update({'pnr_group_id': None})
         db.session.delete(pg)
         db.session.commit()
+        log_audit('rooming', 'PnrGroup', group_id, 'delete',
+                  changes={'pnr_code': code, 'seats': seats, 'scollegati': scollegati},
+                  summary=f'Eliminato PNR {code}, {scollegati} ospiti scollegati')
         return jsonify(ok=True)
 
     @app.post('/api/pnr/auto-assign')
@@ -3072,6 +3191,7 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
         Se confirm=true applica, altrimenti restituisce solo preview."""
         data = request.get_json() or {}
         confirm = data.get('confirm', False)
+        copia_voli = _parse_bool(data.get('copia_voli', True))
 
         groups = PnrGroup.query.all()
         # Indice: (volo_andata, volo_ritorno) → lista PnrGroup ordinata per posti
@@ -3238,15 +3358,8 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
                 if guest:
                     guest.pnr_group_id = m['pnr_id']
                     pg = PnrGroup.query.get(m['pnr_id'])
-                    if pg:
-                        guest.volo_arrivo = pg.volo_andata
-                        guest.volo_partenza = pg.volo_ritorno
-                        origin = pg.rotta_andata[:3] if pg.rotta_andata and len(pg.rotta_andata) >= 6 else ''
-                        dest = pg.rotta_ritorno[3:] if pg.rotta_ritorno and len(pg.rotta_ritorno) >= 6 else ''
-                        if origin:
-                            guest.aeroporto_partenza = origin
-                        if dest:
-                            guest.aeroporto_arrivo = dest
+                    if pg and copia_voli:
+                        copia_voli_da_pnr(guest, pg)
                     applied += 1
             db.session.commit()
             log_audit('rooming', 'PnrGroup', None, 'assign',
@@ -3316,17 +3429,51 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
         if not guest:
             return jsonify(ok=False, error='Ospite non trovato'), 404
 
+        old_id = guest.pnr_group_id
         guest.pnr_group_id = pg.id
-        guest.volo_arrivo = pg.volo_andata
-        guest.volo_partenza = pg.volo_ritorno
-        origin = pg.rotta_andata[:3] if pg.rotta_andata and len(pg.rotta_andata) >= 6 else ''
-        dest = pg.rotta_ritorno[3:] if pg.rotta_ritorno and len(pg.rotta_ritorno) >= 6 else ''
-        if origin:
-            guest.aeroporto_partenza = origin
-        if dest:
-            guest.aeroporto_arrivo = dest
+        if _parse_bool(data.get('copia_voli', True)):
+            copia_voli_da_pnr(guest, pg)
         db.session.commit()
+        log_audit('rooming', 'Guest', guest.id, 'assign',
+                  changes={'pnr_group_id': {'old': old_id, 'new': pg.id}},
+                  summary=f'{guest.nome_completo} assegnato a PNR {pg.pnr_code}')
         return jsonify(ok=True)
+
+    @app.put('/api/guest/<int:gid>/pnr')
+    def guest_set_pnr(gid):
+        """Cambia il PNR di un ospite dalla sua riga: un PNR, nessuno, e a
+        scelta la copia dei voli del gruppo sulla scheda."""
+        guest = Guest.query.get_or_404(gid)
+        data = request.get_json() or {}
+        pnr_id = data.get('pnr_id')
+        old_id = guest.pnr_group_id
+        if pnr_id in (None, '', 0):
+            guest.pnr_group_id = None
+            db.session.commit()
+            if old_id:
+                log_audit('rooming', 'Guest', guest.id, 'unassign',
+                          changes={'pnr_group_id': {'old': old_id, 'new': None}},
+                          summary=f'{guest.nome_completo} rimosso da PNR')
+            return jsonify(ok=True, pnr_code='')
+        pg = PnrGroup.query.get(int(pnr_id))
+        if not pg:
+            return jsonify(ok=False, error='PNR non trovato'), 404
+        guest.pnr_group_id = pg.id
+        copiati = _parse_bool(data.get('copia_voli', False))
+        if copiati:
+            copia_voli_da_pnr(guest, pg)
+        db.session.commit()
+        if old_id != pg.id:
+            log_audit('rooming', 'Guest', guest.id, 'assign',
+                      changes={'pnr_group_id': {'old': old_id, 'new': pg.id}},
+                      summary=f'{guest.nome_completo} assegnato a PNR {pg.pnr_code}')
+        occupati = Guest.query.filter_by(deleted=False, pnr_group_id=pg.id).count()
+        return jsonify(ok=True, pnr_code=pg.pnr_code,
+                       volo_arrivo=guest.volo_arrivo or '',
+                       volo_partenza=guest.volo_partenza or '',
+                       copiati=copiati,
+                       occupati=occupati, seats=pg.seats,
+                       overbooking=occupati > pg.seats)
 
     @app.get('/api/pnr/unassigned')
     def pnr_unassigned():
@@ -3338,6 +3485,7 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
             'id': g.id, 'cognome': g.cognome, 'nome': g.nome,
             'sede_lavoro': g.sede_lavoro or '',
             'aeroporto_partenza': g.aeroporto_partenza or '',
+            'volo_arrivo': g.volo_arrivo or '', 'volo_partenza': g.volo_partenza or '',
         } for g in guests])
 
     # ── ASSEGNAZIONE CAMERE ─────────────────────────────────────────────────
@@ -4694,14 +4842,15 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
         ws2 = wb.create_sheet('Voli e Trasporti')
         # Il ritorno e' il 10 per tutti: la colonna con la data direbbe la
         # stessa cosa 176 volte.
-        colonne2 = ['Cognome', 'Nome', 'Sede Lavoro',
+        colonne2 = ['Cognome', 'Nome', 'Sede Lavoro', 'PNR',
                     'Aeroporto Partenza', 'Volo Andata', 'Data Andata',
                     'Partenza Andata', 'Arrivo Andata', 'Ritrovo in Aeroporto',
                     'Ritrovo Pullman Catania',
                     'Volo Ritorno', 'Partenza Ritorno', 'Arrivo Ritorno',
                     'Ritrovo Lobby Resort']
         write_sheet(ws2, colonne2,
-            lambda g: [g.cognome, g.nome, g.sede_lavoro] + _export_viaggio(g),
+            lambda g: [g.cognome, g.nome, g.sede_lavoro,
+                       g.pnr_group.pnr_code if g.pnr_group else ''] + _export_viaggio(g),
             fill=header_fill2)
 
         # Senza formato Excel mostrerebbe il numero seriale della data.
@@ -4928,6 +5077,44 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
         for col in ws.columns:
             mx = max(len(str(c.value or '')) for c in col)
             ws.column_dimensions[col[0].column_letter].width = min(mx + 4, 40)
+
+        # Secondo foglio: un rigo per passeggero con il PNR ripetuto su ogni
+        # riga. Il primo foglio si legge, questo si filtra e si incolla.
+        ws2 = wb.create_sheet('Per passeggero')
+        headers2 = ['Cognome', 'Nome', 'Titolo', 'Data Nascita', 'Sede Lavoro',
+                    'PNR', 'Posti PNR', 'Volo Andata', 'Data Andata', 'Rotta Andata',
+                    'Orario Andata', 'Volo Ritorno', 'Data Ritorno', 'Rotta Ritorno',
+                    'Orario Ritorno', 'Volo ospite andata', 'Volo ospite ritorno',
+                    'Disallineato']
+        for c, h in enumerate(headers2, 1):
+            cell = ws2.cell(row=1, column=c, value=h)
+            cell.font = hfont
+            cell.fill = hfill
+            cell.alignment = Alignment(horizontal='center')
+            cell.border = border
+        tutti = Guest.query.filter_by(deleted=False).order_by(
+            Guest.cognome, Guest.nome).all()
+        for r, g in enumerate(tutti, 2):
+            pg = g.pnr_group
+            dis = volo_disallineato(g, pg) if pg else False
+            vals = [g.cognome, g.nome, g.titolo or '', g.data_nascita or '',
+                    g.sede_lavoro or '',
+                    pg.pnr_code if pg else '', pg.seats if pg else '',
+                    pg.volo_andata if pg else '', pg.data_andata if pg else '',
+                    pg.rotta_andata if pg else '', pg.orario_andata if pg else '',
+                    pg.volo_ritorno if pg else '', pg.data_ritorno if pg else '',
+                    pg.rotta_ritorno if pg else '', pg.orario_ritorno if pg else '',
+                    g.volo_arrivo or '', g.volo_partenza or '',
+                    'SI' if dis else '']
+            for c, v in enumerate(vals, 1):
+                cell = ws2.cell(row=r, column=c, value=v if v is not None else '')
+                cell.border = border
+                if dis and c >= 16:
+                    cell.fill = warn_fill
+                    cell.font = warn_font
+        for col in ws2.columns:
+            mx = max(len(str(c.value or '')) for c in col)
+            ws2.column_dimensions[col[0].column_letter].width = min(mx + 4, 40)
 
         buf = BytesIO()
         wb.save(buf)

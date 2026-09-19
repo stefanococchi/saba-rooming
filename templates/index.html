@@ -469,6 +469,18 @@ textarea { resize: vertical; min-height: 120px; }
   padding: 1px 8px; font-size: 11px; font-weight: 700;
 }
 .volo-passengers { padding: 0; }
+.pnr-badge {
+  font-family: monospace; font-size: 12px; font-weight: 600;
+  background: var(--surface-variant); padding: 1px 6px; border-radius: 4px;
+}
+.pnr-editable { cursor: pointer; }
+.pnr-editable:hover { background: var(--surface-variant); }
+.pnr-picker {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  font-size: 12px; white-space: nowrap;
+}
+.pnr-picker select { font-size: 12px; padding: 2px 4px; border-radius: 4px; border: 1px solid var(--outline-variant); max-width: 340px; }
+.pnr-picker label { display: flex; align-items: center; gap: 3px; cursor: pointer; }
 .volo-pax {
   display: flex; align-items: center; gap: 10px;
   padding: 6px 14px 6px 40px; border-top: 1px solid var(--outline-variant);
@@ -770,6 +782,7 @@ textarea { resize: vertical; min-height: 120px; }
               <th style="width:28px;text-align:center;padding:6px 2px">8</th><th style="width:28px;text-align:center;padding:6px 2px">9</th><th style="width:28px;text-align:center;padding:6px 2px">10</th><!-- <th>11</th> -->
               <th>Volo And.</th>
               <th>Volo Rit.</th>
+              <th title="PNR di gruppo a cui l'ospite e' agganciato. Doppio click per cambiarlo.">PNR</th>
               <th title="Torna in pullman a Catania invece che in aereo">Rit. bus CT</th>
               <!-- <th>Aer. Part.</th> -->
               <!-- <th>Aer. Arr.</th> -->
@@ -805,6 +818,7 @@ textarea { resize: vertical; min-height: 120px; }
               <!-- <td class="{{ 'editable bool-cell' if not client_view else '' }}" {% if not client_view %}data-field="presenza_11"{% endif %}><span class="bool-mark {{ 'bool-mark-yes' if g.presenza_11 else 'bool-mark-no' }}" title="{{ 'Sì' if g.presenza_11 else 'No' }}">{{ '✓' if g.presenza_11 else '✕' }}</span></td> -->
               <td class="{{ 'editable' if not client_view else '' }}" {% if not client_view %}data-field="volo_arrivo"{% endif %}>{{ g.volo_arrivo or '' }}</td>
               <td class="{{ 'editable' if not client_view else '' }}" {% if not client_view %}data-field="volo_partenza"{% endif %}>{{ g.volo_partenza or '' }}</td>
+              <td class="pnr-cell{{ '' if client_view else ' pnr-editable' }}" data-pnr-id="{{ g.pnr_group_id or '' }}">{% if g.pnr_group_id %}<span class="pnr-badge">{{ pnr_codes.get(g.pnr_group_id, '') }}</span>{% endif %}</td>
               <td class="{{ 'editable bool-cell' if not client_view else '' }}" {% if not client_view %}data-field="rientro_con_catania"{% endif %}><span class="bool-mark {{ 'bool-mark-yes' if g.rientro_con_catania else 'bool-mark-no' }}" title="{{ 'Torna in pullman a Catania' if g.rientro_con_catania else 'Torna in aereo' }}">{{ '✓' if g.rientro_con_catania else '✕' }}</span></td>
               <!-- <td class="{{ 'editable' if not client_view else '' }}" {% if not client_view %}data-field="aeroporto_partenza"{% endif %}>{{ g.aeroporto_partenza or '' }}</td> -->
               <!-- <td class="{{ 'editable' if not client_view else '' }}" {% if not client_view %}data-field="aeroporto_arrivo"{% endif %}>{{ g.aeroporto_arrivo or '' }}</td> -->
@@ -1133,6 +1147,9 @@ textarea { resize: vertical; min-height: 120px; }
       <button class="btn btn-sm" onclick="showPnrImport()" style="background:var(--primary);color:white">
         <span class="material-icons-round" style="font-size:16px">upload</span> Importa PNR
       </button>
+      <button class="btn btn-outline btn-sm" onclick="openPnrEdit(null)" title="Crea un PNR a mano, senza testo Amadeus">
+        <span class="material-icons-round" style="font-size:16px">add</span> Nuovo PNR
+      </button>
       <button class="btn btn-sm" onclick="pnrAutoAssign(false)" style="background:#ef6c00;color:white">
         <span class="material-icons-round" style="font-size:16px">auto_fix_high</span> Auto-Assegna
       </button>
@@ -1164,6 +1181,44 @@ RP/FCOAZ05RM/...   X2YKLK
       <button class="btn btn-sm" id="pnrParseBtn" onclick="parsePnrText()" style="background:var(--primary);color:white">Analizza</button>
       <button class="btn btn-sm" id="pnrSaveBtn" onclick="savePnrGroups()" style="background:var(--success,#4caf50);color:white;display:none">Salva nel DB</button>
       <button class="btn btn-outline" onclick="document.getElementById('pnrImportModal').classList.remove('active')">Chiudi</button>
+    </div>
+  </div>
+</div>
+
+<!-- PNR Edit Modal -->
+<div class="modal-overlay" id="pnrEditModal">
+  <div class="modal" style="max-width:620px">
+    <h3 id="pnrEditTitle">
+      <span class="material-icons-round" style="vertical-align:middle;margin-right:6px">edit</span> Modifica PNR
+    </h3>
+    <p style="font-size:12px;color:var(--on-surface-variant);margin:-8px 0 12px">
+      Stesso formato del testo Amadeus: volo <b>AZ1765</b>, data <b>08OCT</b>, rotta <b>LINPMO</b>, orario <b>0955-1135</b>.
+      Maiuscole e due punti si sistemano da soli.
+    </p>
+    <input type="hidden" id="pnrEditId">
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0 12px">
+      <div class="form-group"><label>Codice PNR *</label><input type="text" id="pnrEditCode" maxlength="20" style="font-family:monospace;text-transform:uppercase"></div>
+      <div class="form-group"><label>Posti *</label><input type="number" id="pnrEditSeats" min="0"></div>
+      <div class="form-group"><label>Nome gruppo</label><input type="text" id="pnrEditName" placeholder="es. PAOLASICILIA"></div>
+    </div>
+    <div style="font-size:12px;font-weight:600;color:var(--primary-dark);margin:4px 0 6px">Andata</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:0 12px">
+      <div class="form-group"><label>Volo</label><input type="text" id="pnrEditVoloA" placeholder="AZ1765"></div>
+      <div class="form-group"><label>Data</label><input type="text" id="pnrEditDataA" placeholder="08OCT"></div>
+      <div class="form-group"><label>Rotta</label><input type="text" id="pnrEditRottaA" placeholder="LINPMO" maxlength="6"></div>
+      <div class="form-group"><label>Orario</label><input type="text" id="pnrEditOraA" placeholder="0955-1135"></div>
+    </div>
+    <div style="font-size:12px;font-weight:600;color:var(--primary-dark);margin:4px 0 6px">Ritorno</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:0 12px">
+      <div class="form-group"><label>Volo</label><input type="text" id="pnrEditVoloR" placeholder="AZ1786"></div>
+      <div class="form-group"><label>Data</label><input type="text" id="pnrEditDataR" placeholder="10OCT"></div>
+      <div class="form-group"><label>Rotta</label><input type="text" id="pnrEditRottaR" placeholder="PMOLIN" maxlength="6"></div>
+      <div class="form-group"><label>Orario</label><input type="text" id="pnrEditOraR" placeholder="1505-1635"></div>
+    </div>
+    <p id="pnrEditHint" style="font-size:12px;color:var(--on-surface-variant);margin:0"></p>
+    <div class="btn-group">
+      <button class="btn btn-outline" onclick="document.getElementById('pnrEditModal').classList.remove('active')">Annulla</button>
+      <button class="btn btn-primary" id="pnrEditSaveBtn" onclick="savePnrEdit()">Salva</button>
     </div>
   </div>
 </div>
@@ -1258,6 +1313,9 @@ RP/FCOAZ05RM/...   X2YKLK
 
 <script>
 const CLIENT_VIEW = {{ 'true' if client_view else 'false' }};
+// I PNR come li conosce la pagina al caricamento: servono alla tendina per
+// cambiare PNR dalla riga. Dopo un cambio nel modale si ricaricano da /api/pnr.
+let PNR_OPTIONS = {{ pnr_options | tojson }};
 
 // ── Column Resize (con persistenza in localStorage) ───────────────────
 (function() {
@@ -1804,6 +1862,7 @@ async function showVoli(tipo) {
 
 // ── PNR Groups ───────────────────────────────────────────────────────────
 let _parsedPnrGroups = null;
+let _pnrGroupsCache = [];   // ultimi gruppi letti da /api/pnr, per il form di modifica
 
 async function showPNR() {
   const modal = document.getElementById('pnrModal');
@@ -1815,6 +1874,7 @@ async function showPNR() {
     const r = await fetch('/api/pnr');
     const j = await r.json();
     if (!j.ok) { content.innerHTML = `<p style="color:var(--error)">Errore: ${j.error}</p>`; return; }
+    _pnrGroupsCache = j.groups;
 
     let html = `<div class="stanze-summary">
       <div><strong>${j.totale_groups}</strong> PNR</div>
@@ -1853,10 +1913,13 @@ async function showPNR() {
           <span style="font-size:13px">${g.volo_ritorno} ${g.origin_ritorno}→${g.dest_ritorno} ${fmtTime(depR)}</span>
           <span class="volo-count" style="${countColor}">${countLabel}</span>
           <span style="flex:1"></span>
-          <button class="btn btn-outline btn-sm" onclick="event.stopPropagation(); openPnrAssign(${g.id}, '${g.pnr_code}')" style="padding:2px 8px;font-size:12px">
+          <button class="btn btn-outline btn-sm" onclick="event.stopPropagation(); openPnrAssign(${g.id}, '${g.pnr_code}')" style="padding:2px 8px;font-size:12px" title="Assegna ospiti">
             <span class="material-icons-round" style="font-size:14px">person_add</span>
           </button>
-          <button class="btn btn-outline btn-sm" onclick="event.stopPropagation(); deletePnrGroup(${g.id}, '${g.pnr_code}')" style="padding:2px 8px;font-size:12px;color:var(--error)">
+          <button class="btn btn-outline btn-sm" onclick="event.stopPropagation(); openPnrEdit(${g.id})" style="padding:2px 8px;font-size:12px" title="Modifica posti, voli e orari">
+            <span class="material-icons-round" style="font-size:14px">edit</span>
+          </button>
+          <button class="btn btn-outline btn-sm" onclick="event.stopPropagation(); deletePnrGroup(${g.id}, '${g.pnr_code}')" style="padding:2px 8px;font-size:12px;color:var(--error)" title="Elimina PNR">
             <span class="material-icons-round" style="font-size:14px">delete</span>
           </button>
           <span class="material-icons-round" style="font-size:16px;color:var(--on-surface-variant)">expand_more</span>
@@ -1874,6 +1937,7 @@ async function showPNR() {
       g.passeggeri.forEach(p => {
         html += `<div class="volo-pax" style="display:flex;align-items:center;gap:8px">
           <span class="nome" style="flex:1">${p.cognome} ${p.nome}</span>
+          ${p.disallineato ? `<span style="font-size:11px;color:#e65100;background:#fff3e0;border:1px solid #ffb74d;padding:1px 6px;border-radius:4px" title="I voli sulla scheda dell'ospite non coincidono con quelli del PNR">voli propri: ${p.volo_arrivo || '—'} / ${p.volo_partenza || '—'}</span>` : ''}
           ${p.sede_lavoro ? `<span class="sede">${p.sede_lavoro}</span>` : ''}
           <button onclick="unassignFromPnr(${g.id}, ${p.id})" class="btn btn-outline btn-sm" style="padding:1px 4px;font-size:11px;color:var(--error);border-color:var(--error)">
             <span class="material-icons-round" style="font-size:14px">close</span>
@@ -1969,6 +2033,62 @@ async function savePnrGroups() {
   btn.textContent = 'Salva nel DB';
 }
 
+function openPnrEdit(groupId) {
+  const g = groupId ? _pnrGroupsCache.find(x => x.id === groupId) : null;
+  document.getElementById('pnrEditTitle').innerHTML =
+    `<span class="material-icons-round" style="vertical-align:middle;margin-right:6px">${g ? 'edit' : 'add'}</span> ${g ? 'Modifica PNR ' + g.pnr_code : 'Nuovo PNR'}`;
+  const set = (id, v) => { document.getElementById(id).value = v == null ? '' : v; };
+  set('pnrEditId', g ? g.id : '');
+  set('pnrEditCode', g ? g.pnr_code : '');
+  set('pnrEditSeats', g ? g.seats : '');
+  set('pnrEditName', g ? g.group_name : '');
+  set('pnrEditVoloA', g ? g.volo_andata : '');
+  set('pnrEditDataA', g ? g.data_andata : '');
+  set('pnrEditRottaA', g ? g.rotta_andata : '');
+  set('pnrEditOraA', g ? g.orario_andata : '');
+  set('pnrEditVoloR', g ? g.volo_ritorno : '');
+  set('pnrEditDataR', g ? g.data_ritorno : '');
+  set('pnrEditRottaR', g ? g.rotta_ritorno : '');
+  set('pnrEditOraR', g ? g.orario_ritorno : '');
+  document.getElementById('pnrEditHint').textContent = g
+    ? `${g.assigned} ospiti agganciati: restano agganciati, e i voli sulle loro schede non vengono toccati.`
+    : '';
+  document.getElementById('pnrEditModal').classList.add('active');
+  document.getElementById(g ? 'pnrEditSeats' : 'pnrEditCode').focus();
+}
+
+async function savePnrEdit() {
+  const id = document.getElementById('pnrEditId').value;
+  const val = x => document.getElementById(x).value.trim();
+  const body = {
+    pnr_code: val('pnrEditCode'), seats: val('pnrEditSeats'), group_name: val('pnrEditName'),
+    volo_andata: val('pnrEditVoloA'), data_andata: val('pnrEditDataA'),
+    rotta_andata: val('pnrEditRottaA'), orario_andata: val('pnrEditOraA'),
+    volo_ritorno: val('pnrEditVoloR'), data_ritorno: val('pnrEditDataR'),
+    rotta_ritorno: val('pnrEditRottaR'), orario_ritorno: val('pnrEditOraR'),
+  };
+  if (!body.pnr_code) { showSnack('Serve il codice PNR', 4000); return; }
+  if (body.seats === '') { showSnack('Servono i posti', 4000); return; }
+  const btn = document.getElementById('pnrEditSaveBtn');
+  btn.disabled = true;
+  try {
+    const r = await fetch(id ? `/api/pnr/${id}` : '/api/pnr', {
+      method: id ? 'PUT' : 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(body),
+    });
+    const j = await r.json();
+    if (!j.ok) { showSnack('Errore: ' + (j.error || 'sconosciuto'), 6000); return; }
+    document.getElementById('pnrEditModal').classList.remove('active');
+    showSnack(j.overbooking ? `Salvato — attenzione: ${j.occupati} ospiti su ${body.seats} posti` : 'PNR salvato', j.overbooking ? 6000 : 2000);
+    await reloadPnrOptions();
+    showPNR();
+  } catch (err) {
+    showSnack('Errore: ' + err.message, 5000);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 async function openPnrAssign(groupId, pnrCode) {
   const modal = document.getElementById('pnrAssignModal');
   const content = document.getElementById('pnrAssignContent');
@@ -1985,16 +2105,22 @@ async function openPnrAssign(groupId, pnrCode) {
       <input type="text" id="pnrSearchGuest" oninput="filterPnrGuests()" placeholder="Cerca per cognome, nome o sede..."
         style="width:100%;padding:8px;border:1px solid var(--outline-variant);border-radius:8px">
     </div>`;
-    html += `<div style="margin-bottom:8px">
+    html += `<div style="margin-bottom:8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
       <button class="btn btn-sm" onclick="toggleAllPnrGuests(true)" style="font-size:12px">Seleziona tutti visibili</button>
       <button class="btn btn-outline btn-sm" onclick="toggleAllPnrGuests(false)" style="font-size:12px">Deseleziona</button>
+      <span style="flex:1"></span>
+      <label style="font-size:12px;display:flex;align-items:center;gap:4px;cursor:pointer" title="Scrive sulle schede i voli e gli aeroporti di questo PNR, al posto di quelli attuali">
+        <input type="checkbox" id="pnrAssignCopiaVoli" checked> copia i voli del PNR sulle schede
+      </label>
     </div>`;
     html += `<div id="pnrGuestList" style="max-height:50vh;overflow-y:auto">`;
 
     j.guests.forEach(g => {
+      const voli = (g.volo_arrivo || g.volo_partenza) ? `${g.volo_arrivo || '—'} / ${g.volo_partenza || '—'}` : '';
       html += `<label class="pnr-guest-item" data-search="${(g.cognome+' '+g.nome+' '+g.sede_lavoro).toLowerCase()}" style="display:flex;align-items:center;gap:8px;padding:6px 8px;border-bottom:1px solid var(--outline-variant);cursor:pointer">
         <input type="checkbox" class="pnr-guest-cb" value="${g.id}">
         <span style="flex:1;font-weight:500">${g.cognome} ${g.nome}</span>
+        ${voli ? `<span style="font-size:12px;font-family:monospace;color:var(--on-surface-variant)" title="Voli sulla scheda">${voli}</span>` : ''}
         ${g.sede_lavoro ? `<span style="font-size:12px;color:var(--on-surface-variant)">${g.sede_lavoro}</span>` : ''}
         ${g.aeroporto_partenza ? `<span style="font-size:12px;color:var(--on-surface-variant)">${g.aeroporto_partenza}</span>` : ''}
       </label>`;
@@ -2033,9 +2159,10 @@ async function confirmPnrAssign(groupId) {
   const ids = [...document.querySelectorAll('.pnr-guest-cb:checked')].map(cb => parseInt(cb.value));
   if (!ids.length) return;
 
+  const copia = document.getElementById('pnrAssignCopiaVoli');
   const r = await fetch(`/api/pnr/${groupId}/assign`, {
     method: 'POST', headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({guest_ids: ids})
+    body: JSON.stringify({guest_ids: ids, copia_voli: copia ? copia.checked : true})
   });
   const j = await r.json();
   if (j.overbooking) {
@@ -2061,10 +2188,13 @@ async function deletePnrGroup(groupId, pnrCode) {
 
 async function manualPnrAssign(guestId, pnrCode) {
   if (!pnrCode) return;
+  // Chi finisce nelle sezioni "da sistemare" ha voli diversi dal PNR per
+  // definizione: la copia qui e' spenta di default, si accende apposta.
+  const cb = document.getElementById('pnrManualCopiaVoli');
   try {
     const r = await fetch('/api/pnr/assign-by-code', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({guest_id: guestId, pnr_code: pnrCode})
+      body: JSON.stringify({guest_id: guestId, pnr_code: pnrCode, copia_voli: cb ? cb.checked : false})
     });
     const j = await r.json();
     if (!j.ok) alert('Errore: ' + (j.error || 'sconosciuto'));
@@ -2154,12 +2284,15 @@ async function titoliAuto(confirm) {
 // ── PNR Auto-Assign ──────────────────────────────────────────────────────
 async function pnrAutoAssign(confirm) {
   const content = document.getElementById('pnrContent');
+  // La scelta fatta in anteprima vale anche per la conferma
+  const cbAuto = document.getElementById('pnrAutoCopiaVoli');
+  const copiaVoli = cbAuto ? cbAuto.checked : true;
   content.innerHTML = '<div style="text-align:center;padding:16px"><span class="spinner"></span> Analisi in corso...</div>';
 
   try {
     const r = await fetch('/api/pnr/auto-assign', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({confirm})
+      body: JSON.stringify({confirm, copia_voli: copiaVoli})
     });
     const j = await r.json();
     if (!j.ok) { content.innerHTML = `<p style="color:var(--error)">${j.error}</p>`; return; }
@@ -2275,6 +2408,16 @@ async function pnrAutoAssign(confirm) {
       ${pnrSelect(g.id)}
     </div>`;
 
+    if (j.partial.length || j.overflow.length || j.no_match.length || j.no_flights.length) {
+      html += `<div style="margin:12px 0 0;padding:8px 10px;background:var(--surface-variant);border-radius:8px;font-size:12px;display:flex;align-items:center;gap:6px">
+        <span class="material-icons-round" style="font-size:16px;color:var(--on-surface-variant)">info</span>
+        <span>Le tendine qui sotto assegnano il PNR scelto.</span>
+        <label style="display:flex;align-items:center;gap:4px;cursor:pointer;margin-left:8px" title="Se acceso, i voli del PNR scelto sostituiscono quelli scritti sulla scheda dell'ospite">
+          <input type="checkbox" id="pnrManualCopiaVoli"> copia anche i voli del PNR sulla scheda
+        </label>
+      </div>`;
+    }
+
     // Partial matches
     if (j.partial.length) {
       html += `<h4 style="margin:12px 0 6px;font-size:14px;color:#ef6c00">⚠ Match parziali (${j.partial.length})</h4>`;
@@ -2313,6 +2456,9 @@ async function pnrAutoAssign(confirm) {
     // Confirm button (only in preview mode, if there are matches)
     if (!confirm && j.matched.length) {
       html += `<div style="margin-top:12px;text-align:center">
+        <label style="font-size:12px;display:inline-flex;align-items:center;gap:4px;cursor:pointer;margin-bottom:8px" title="I match esatti hanno gia' gli stessi voli del PNR: la copia serve solo a riscrivere gli aeroporti e a uniformare come e' scritto il numero di volo">
+          <input type="checkbox" id="pnrAutoCopiaVoli" ${copiaVoli ? 'checked' : ''}> copia voli e aeroporti del PNR sulle schede
+        </label><br>
         <button class="btn btn-sm" onclick="pnrAutoAssign(true)" style="background:#2e7d32;color:white;padding:8px 24px">
           <span class="material-icons-round" style="font-size:16px;vertical-align:middle">check</span>
           Conferma assegnazione (${j.matched.length} passeggeri${t.reassign ? `, ${t.reassign} spostati di PNR` : ''})
@@ -2578,6 +2724,93 @@ document.querySelectorAll('td.editable').forEach(td => {
       });
     });
   }
+});
+
+// ── PNR dalla riga ────────────────────────────────────────────────────────
+// Doppio click sulla cella PNR: tendina con i PNR e la scelta se copiare i
+// voli del gruppo sulla scheda. La copia e' spenta di default: chi cambia
+// PNR da qui di solito sta correggendo un caso particolare, e i voli scritti
+// a mano sono l'informazione da non perdere.
+const fmtRottaOpt = r => r && r.length >= 6 ? r.slice(0,3)+'→'+r.slice(3) : '';
+function pnrOptionLabel(p) {
+  const liberi = p.seats - p.occupati;
+  return `${p.pnr_code}  ${p.volo_andata} ${fmtRottaOpt(p.rotta_andata)} | ${p.volo_ritorno} ${fmtRottaOpt(p.rotta_ritorno)}  [${liberi} liberi]`;
+}
+async function reloadPnrOptions() {
+  try {
+    const r = await fetch('/api/pnr');
+    const j = await r.json();
+    if (j.ok) PNR_OPTIONS = j.groups.map(g => ({
+      id: g.id, pnr_code: g.pnr_code, seats: g.seats, occupati: g.assigned,
+      volo_andata: g.volo_andata, volo_ritorno: g.volo_ritorno,
+      rotta_andata: g.rotta_andata, rotta_ritorno: g.rotta_ritorno,
+    }));
+  } catch (e) { /* la tendina resta com'era */ }
+}
+document.querySelectorAll('td.pnr-editable').forEach(td => {
+  td.addEventListener('dblclick', () => {
+    if (td.querySelector('select')) return;
+    const tr = td.closest('tr');
+    const gid = tr.dataset.id;
+    const current = td.dataset.pnrId || '';
+    const originalHtml = td.innerHTML;
+
+    const wrap = document.createElement('div');
+    wrap.className = 'pnr-picker';
+    const sel = document.createElement('select');
+    sel.innerHTML = `<option value="">— nessun PNR —</option>` + PNR_OPTIONS.map(p =>
+      `<option value="${p.id}" ${String(p.id) === current ? 'selected' : ''} ${p.seats - p.occupati <= 0 && String(p.id) !== current ? 'style="color:#d32f2f"' : ''}>${pnrOptionLabel(p)}</option>`
+    ).join('');
+    const lab = document.createElement('label');
+    lab.title = 'Scrive sulla scheda i voli e gli aeroporti del PNR scelto, al posto di quelli attuali';
+    lab.innerHTML = `<input type="checkbox" id="pnrCopiaVoli_${gid}"> copia voli`;
+    const ok = document.createElement('button');
+    ok.className = 'btn btn-sm btn-primary'; ok.style.padding = '2px 8px'; ok.textContent = 'OK';
+    const ann = document.createElement('button');
+    ann.className = 'btn btn-outline btn-sm'; ann.style.padding = '2px 8px'; ann.textContent = '✕';
+    wrap.append(sel, lab, ok, ann);
+    td.innerHTML = '';
+    td.appendChild(wrap);
+    sel.focus();
+
+    const chiudi = () => { td.innerHTML = originalHtml; };
+    ann.addEventListener('click', e => { e.stopPropagation(); chiudi(); });
+    const salva = async () => {
+      const pnrId = sel.value ? parseInt(sel.value) : null;
+      const copia = lab.querySelector('input').checked;
+      if (String(pnrId || '') === current && !copia) { chiudi(); return; }
+      try {
+        const r = await fetch(`/api/guest/${gid}/pnr`, {
+          method: 'PUT', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({pnr_id: pnrId, copia_voli: copia}),
+        });
+        const j = await r.json();
+        if (!j.ok) { showSnack('Errore: ' + (j.error || 'sconosciuto'), 5000); chiudi(); return; }
+        td.dataset.pnrId = pnrId || '';
+        td.innerHTML = j.pnr_code ? `<span class="pnr-badge">${j.pnr_code}</span>` : '';
+        if (j.copiati) {
+          const cA = tr.querySelector('td[data-field="volo_arrivo"]');
+          const cR = tr.querySelector('td[data-field="volo_partenza"]');
+          if (cA) cA.textContent = j.volo_arrivo;
+          if (cR) cR.textContent = j.volo_partenza;
+        }
+        // Aggiorna i conteggi della tendina senza ricaricare
+        PNR_OPTIONS.forEach(p => {
+          if (String(p.id) === current) p.occupati = Math.max(0, p.occupati - 1);
+          if (pnrId && p.id === pnrId && String(p.id) !== current) p.occupati += 1;
+        });
+        showSnack(j.overbooking ? `Salvato — attenzione: ${j.occupati} su ${j.seats} posti` : 'Salvato', j.overbooking ? 5000 : 2000);
+      } catch (err) {
+        showSnack('Errore: ' + err.message, 5000);
+        chiudi();
+      }
+    };
+    ok.addEventListener('click', e => { e.stopPropagation(); salva(); });
+    sel.addEventListener('keydown', e => {
+      if (e.key === 'Enter') salva();
+      if (e.key === 'Escape') chiudi();
+    });
+  });
 });
 
 // ── Search ────────────────────────────────────────────────────────────────
