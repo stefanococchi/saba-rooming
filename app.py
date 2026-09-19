@@ -4990,8 +4990,6 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
         groups = PnrGroup.query.order_by(PnrGroup.volo_andata, PnrGroup.pnr_code).all()
 
         wb = Workbook()
-        ws = wb.active
-        ws.title = 'PNR Groups'
         hfont = Font(bold=True, color='FFFFFF', size=11)
         hfill = PatternFill('solid', fgColor='6D4C41')
         cluster_fill = PatternFill('solid', fgColor='EFEBE9')
@@ -4999,6 +4997,54 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
         warn_font = Font(bold=True, color='C62828')
         border = Border(left=Side(style='thin'), right=Side(style='thin'),
                         top=Side(style='thin'), bottom=Side(style='thin'))
+
+        def _ora(o):
+            """'0955-1135' -> '09:55-11:35', per leggerlo senza contare le cifre."""
+            if not o or not re.fullmatch(r'\d{4}-\d{4}', o):
+                return o or ''
+            return f'{o[:2]}:{o[2:4]}-{o[5:7]}:{o[7:]}'
+
+        # ── Foglio 1: una riga per PNR, con i passeggeri in una colonna ──
+        # E' la tabella da mettere accanto al testo dell'agenzia: posti,
+        # voli, orari e nomi si confrontano riga per riga.
+        ws0 = wb.active
+        ws0.title = 'Riepilogo'
+        headers0 = ['PNR', 'Gruppo', 'Posti', 'Occupati', 'Liberi',
+                    'Volo Andata', 'Data', 'Rotta', 'Orario',
+                    'Volo Ritorno', 'Data', 'Rotta', 'Orario',
+                    'Passeggeri (COGNOME Nome)', 'Voli propri diversi dal PNR']
+        for c, h in enumerate(headers0, 1):
+            cell = ws0.cell(row=1, column=c, value=h)
+            cell.font = hfont
+            cell.fill = hfill
+            cell.alignment = Alignment(horizontal='center')
+            cell.border = border
+        for r, pg in enumerate(groups, 2):
+            pax = sorted((g for g in pg.guests if not g.deleted),
+                         key=lambda g: ((g.cognome or '').upper(), (g.nome or '').upper()))
+            diversi = [f'{g.nome_completo} ({g.volo_arrivo or "-"}/{g.volo_partenza or "-"})'
+                       for g in pax if volo_disallineato(g, pg)]
+            liberi = pg.seats - len(pax)
+            vals = [pg.pnr_code, pg.group_name or '', pg.seats, len(pax), liberi,
+                    pg.volo_andata or '', pg.data_andata or '', pg.rotta_andata or '', _ora(pg.orario_andata),
+                    pg.volo_ritorno or '', pg.data_ritorno or '', pg.rotta_ritorno or '', _ora(pg.orario_ritorno),
+                    ', '.join(f'{(g.cognome or "").upper()} {g.nome or ""}'.strip() for g in pax),
+                    '; '.join(diversi)]
+            for c, v in enumerate(vals, 1):
+                cell = ws0.cell(row=r, column=c, value=v)
+                cell.border = border
+                cell.alignment = Alignment(vertical='top', wrap_text=(c == 14))
+                if c == 5 and liberi < 0:
+                    cell.fill = warn_fill
+                    cell.font = warn_font
+                if c == 15 and diversi:
+                    cell.fill = warn_fill
+        for col in ws0.columns:
+            mx = max(len(str(c.value or '')) for c in col)
+            ws0.column_dimensions[col[0].column_letter].width = min(mx + 3, 80)
+        ws0.freeze_panes = 'B2'
+
+        ws = wb.create_sheet('PNR Groups')
 
         headers = ['PNR', 'Posti', 'Volo Andata', 'Rotta', 'Data', 'Orario',
                     'Volo Ritorno', 'Rotta', 'Data', 'Orario',
