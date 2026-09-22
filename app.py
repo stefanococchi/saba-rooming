@@ -793,6 +793,68 @@ def _punteggio_nome(nome_fattura, ospiti):
     return best
 
 
+def _punteggio_compagno(cn, p):
+    """Quanto il nome scritto in divide_stanza_con (cn) indica l'ospite p.
+
+    2 = nome completo (in entrambi gli ordini), 1 = solo cognome, 0 = nessun match.
+    Il confronto e' per parole intere e non guarda mai il solo nome di battesimo:
+    "TIRINELLI Fabio" deve trovare Tirinelli, non anche Scaglianti Fabio.
+    """
+    cn = ' '.join(cn.lower().split())
+    cognome = ' '.join((p.cognome or '').lower().split())
+    nome = ' '.join((p.nome or '').lower().split())
+    if not cn or not cognome:
+        return 0
+    if cn in (f'{nome} {cognome}'.strip(), f'{cognome} {nome}'.strip()):
+        return 2
+    parole_cn, parole_cog = cn.split(), cognome.split()
+
+    def contiene(a, b):
+        return any(a[i:i + len(b)] == b for i in range(len(a) - len(b) + 1))
+
+    if contiene(parole_cn, parole_cog) or contiene(parole_cog, parole_cn):
+        return 1
+    return 0
+
+
+def _trova_compagni(g, candidati):
+    """Ospiti tra i candidati indicati in g.divide_stanza_con: al massimo uno per nome scritto."""
+    testo = (g.divide_stanza_con or '').strip()
+    if not testo:
+        return []
+    trovati, trovati_ids = [], set()
+    for cn in testo.split(','):
+        migliore, punteggio = None, 0
+        for p in candidati:
+            if p.id == g.id or p.id in trovati_ids:
+                continue
+            s = _punteggio_compagno(cn, p)
+            if s > punteggio:
+                migliore, punteggio = p, s
+                if s == 2:
+                    break
+        if migliore is not None:
+            trovati.append(migliore)
+            trovati_ids.add(migliore.id)
+    return trovati
+
+
+def _raggruppa_stanze(presenti):
+    """Raggruppa gli ospiti in stanze: chi divide la camera finisce nella stessa lista."""
+    stanze, assegnati = [], set()
+    for g in presenti:
+        if g.id in assegnati:
+            continue
+        stanza = [g]
+        assegnati.add(g.id)
+        liberi = [p for p in presenti if p.id not in assegnati]
+        for p in _trova_compagni(g, liberi):
+            stanza.append(p)
+            assegnati.add(p.id)
+        stanze.append(stanza)
+    return stanze
+
+
 def _abbina_camere(voci_camera, camere_actual):
     """Abbina le righe camera della fattura alle camere del rooming.
 
@@ -2732,35 +2794,7 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
             Guest.cognome, Guest.nome).all()
 
         # Raggruppa per stanze: chi condivide conta come 1 stanza
-        stanze = []       # lista di liste di nomi
-        assegnati = set() # id già assegnati a una stanza
-
-        for g in presenti:
-            if g.id in assegnati:
-                continue
-
-            stanza = [g]
-            assegnati.add(g.id)
-
-            if g.divide_stanza_con and g.divide_stanza_con.strip():
-                # Cerca i compagni di stanza tra i presenti
-                compagni_nomi = [n.strip().lower() for n in g.divide_stanza_con.split(',')]
-                for p in presenti:
-                    if p.id in assegnati:
-                        continue
-                    nome_completo = f'{p.nome} {p.cognome}'.lower()
-                    cognome_lower = p.cognome.lower()
-                    nome_lower = p.nome.lower()
-                    # Match flessibile: nome completo, solo cognome, o solo nome
-                    for cn in compagni_nomi:
-                        if cn and (cn in nome_completo or cn in cognome_lower
-                                or cn in nome_lower or (cognome_lower and cognome_lower in cn)
-                                or (nome_lower and nome_lower in cn)):
-                            stanza.append(p)
-                            assegnati.add(p.id)
-                            break
-
-            stanze.append(stanza)
+        stanze = _raggruppa_stanze(presenti)
 
         # Serializza
         result = []
@@ -3508,27 +3542,7 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
             Guest.cognome, Guest.nome).all()
 
         # Calcola stanze necessarie (come endpoint stanze)
-        assegnati_ids = set()
-        stanze_necessarie = []
-        for g in presenti:
-            if g.id in assegnati_ids:
-                continue
-            stanza = [g]
-            assegnati_ids.add(g.id)
-            if g.divide_stanza_con and g.divide_stanza_con.strip():
-                compagni = [n.strip().lower() for n in g.divide_stanza_con.split(',')]
-                for p in presenti:
-                    if p.id in assegnati_ids:
-                        continue
-                    nc = f'{p.nome} {p.cognome}'.lower()
-                    cl = p.cognome.lower()
-                    nl = p.nome.lower()
-                    for cn in compagni:
-                        if cn and (cn in nc or cn in cl or cn in nl or (cl and cl in cn) or (nl and nl in cn)):
-                            stanza.append(p)
-                            assegnati_ids.add(p.id)
-                            break
-            stanze_necessarie.append(stanza)
+        stanze_necessarie = _raggruppa_stanze(presenti)
 
         # Conta assegnazioni per tipo
         assegnazioni_per_tipo = {}
@@ -3588,21 +3602,11 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
 
         # Assegna anche ai compagni di stanza
         assegnati = [g.id]
-        if g.divide_stanza_con and g.divide_stanza_con.strip():
-            compagni = [n.strip().lower() for n in g.divide_stanza_con.split(',')]
-            tutti = Guest.query.filter_by(deleted=False).all()
-            for p in tutti:
-                if p.id == g.id:
-                    continue
-                nc = f'{p.nome} {p.cognome}'.lower()
-                cl = p.cognome.lower()
-                nl = p.nome.lower()
-                for cn in compagni:
-                    if cn and (cn in nc or cn in cl or cn in nl or (cl and cl in cn) or (nl and nl in cn)):
-                        p.camera_assegnata = tipo_camera
-                        p.updated_at = datetime.utcnow()
-                        assegnati.append(p.id)
-                        break
+        tutti = [p for p in Guest.query.filter_by(deleted=False).all() if p.id != g.id]
+        for p in _trova_compagni(g, tutti):
+            p.camera_assegnata = tipo_camera
+            p.updated_at = datetime.utcnow()
+            assegnati.append(p.id)
 
         db.session.commit()
         log_audit('rooming', 'Guest', g.id, 'assign',
@@ -3624,27 +3628,7 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
             Guest.cognome, Guest.nome).all()
 
         # Calcola stanze
-        assegnati_ids = set()
-        stanze = []
-        for g in presenti:
-            if g.id in assegnati_ids:
-                continue
-            stanza = [g]
-            assegnati_ids.add(g.id)
-            if g.divide_stanza_con and g.divide_stanza_con.strip():
-                compagni = [n.strip().lower() for n in g.divide_stanza_con.split(',')]
-                for p in presenti:
-                    if p.id in assegnati_ids:
-                        continue
-                    nc = f'{p.nome} {p.cognome}'.lower()
-                    cl = p.cognome.lower()
-                    nl = p.nome.lower()
-                    for cn in compagni:
-                        if cn and (cn in nc or cn in cl or cn in nl or (cl and cl in cn) or (nl and nl in cn)):
-                            stanza.append(p)
-                            assegnati_ids.add(p.id)
-                            break
-            stanze.append(stanza)
+        stanze = _raggruppa_stanze(presenti)
 
         # Filtra solo stanze non ancora assegnate
         stanze_da_assegnare = [s for s in stanze if not s[0].camera_assegnata]
@@ -4886,25 +4870,7 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
             Guest.cognome, Guest.nome).all()
 
         # Raggruppa per stanze
-        stanze, assegnati = [], set()
-        for g in presenti:
-            if g.id in assegnati:
-                continue
-            stanza = [g]
-            assegnati.add(g.id)
-            if g.divide_stanza_con and g.divide_stanza_con.strip():
-                compagni = [n.strip().lower() for n in g.divide_stanza_con.split(',')]
-                for p in presenti:
-                    if p.id in assegnati:
-                        continue
-                    nc = f'{p.nome} {p.cognome}'.lower()
-                    cl, nl = p.cognome.lower(), p.nome.lower()
-                    for cn in compagni:
-                        if cn and (cn in nc or cn in cl or cn in nl or (cl and cl in cn) or (nl and nl in cn)):
-                            stanza.append(p)
-                            assegnati.add(p.id)
-                            break
-            stanze.append(stanza)
+        stanze = _raggruppa_stanze(presenti)
 
         wb = Workbook()
         ws = wb.active
@@ -5189,26 +5155,7 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
             Guest.cognome, Guest.nome).all()
 
         # Raggruppa per stanze
-        assegnati_ids = set()
-        stanze = []
-        for g in presenti:
-            if g.id in assegnati_ids:
-                continue
-            stanza = [g]
-            assegnati_ids.add(g.id)
-            if g.divide_stanza_con and g.divide_stanza_con.strip():
-                compagni = [n.strip().lower() for n in g.divide_stanza_con.split(',')]
-                for p in presenti:
-                    if p.id in assegnati_ids:
-                        continue
-                    nc = f'{p.nome} {p.cognome}'.lower()
-                    cl, nl = p.cognome.lower(), p.nome.lower()
-                    for cn in compagni:
-                        if cn and (cn in nc or cn in cl or cn in nl or (cl and cl in cn) or (nl and nl in cn)):
-                            stanza.append(p)
-                            assegnati_ids.add(p.id)
-                            break
-            stanze.append(stanza)
+        stanze = _raggruppa_stanze(presenti)
 
         assegnazioni_per_tipo = {}
         non_assegnati = []

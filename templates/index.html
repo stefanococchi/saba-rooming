@@ -1653,7 +1653,7 @@ async function showStanze(giorno) {
     let html = `<div class="stanze-summary">
       <div><strong>${j.totale_presenti}</strong> presenti</div>
       <div><strong>${j.totale_stanze}</strong> stanze</div>
-      <div><strong>${j.totale_presenti - j.totale_stanze}</strong> condivisioni</div>
+      <div><strong>${j.stanze.filter(s => s.ospiti.length > 1).length}</strong> condivisioni</div>
     </div>`;
 
     html += `<div style="border:1px solid var(--outline-variant);border-radius:var(--radius-sm);overflow:hidden;max-height:60vh;overflow-y:auto">`;
