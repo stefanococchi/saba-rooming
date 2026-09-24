@@ -4931,7 +4931,28 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
         border = Border(left=Side(style='thin'), right=Side(style='thin'),
                         top=Side(style='thin'), bottom=Side(style='thin'))
 
-        headers = ['Volo', 'Cognome', 'Nome', 'Sede Lavoro', 'Aeroporto']
+        # Data, rotta e orari stanno sul PNR, non sull'ospite. Si prendono dal
+        # suo PNR solo se il volo della tratta coincide; altrimenti dai PNR con
+        # lo stesso volo. Lo stesso volo puo' partire in giorni diversi (AZ1773
+        # l'8 e il 9): se i PNR non concordano la data resta vuota.
+        def tratta(pg):
+            v = (pg.volo_andata, pg.data_andata, pg.rotta_andata, pg.orario_andata)                 if tipo == 'andata' else                 (pg.volo_ritorno, pg.data_ritorno, pg.rotta_ritorno, pg.orario_ritorno)
+            return tuple(x or '' for x in v)
+
+        dati_volo = {}
+        for pg in PnrGroup.query.all():
+            volo_pnr, *dati = tratta(pg)
+            dati_volo.setdefault(normalize_flight(volo_pnr), set()).add(tuple(dati))
+        dati_volo.pop('', None)
+
+        def concorde(valori):
+            return valori.pop() if len(valori) == 1 else ''
+
+        def ora(hhmm):
+            return f'{hhmm[:2]}:{hhmm[2:]}' if len(hhmm) == 4 and hhmm.isdigit() else hhmm
+
+        headers = ['Volo', 'Data', 'Rotta', 'Partenza', 'Arrivo',
+                   'Cognome', 'Nome', 'Sede Lavoro', 'Aeroporto']
         for c, h in enumerate(headers, 1):
             cell = ws.cell(row=1, column=c, value=h)
             cell.font = hfont
@@ -4942,7 +4963,19 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
         for r, g in enumerate(guests, 2):
             volo = (g.volo_arrivo if tipo == 'andata' else g.volo_partenza) or ''
             aeroporto = (g.aeroporto_partenza if tipo == 'andata' else g.aeroporto_arrivo) or ''
-            vals = [volo, g.cognome, g.nome, g.sede_lavoro or '', aeroporto]
+            chiave = normalize_flight(volo)
+            pg = g.pnr_group
+            if pg and normalize_flight(tratta(pg)[0]) == chiave:
+                data, rotta, orario = tratta(pg)[1:]
+            else:
+                noti = dati_volo.get(chiave, set())
+                data, rotta, orario = (concorde({t[i] for t in noti}) for i in range(3))
+            if len(rotta) == 6:
+                rotta = f'{rotta[:3]}-{rotta[3:]}'
+            partenza, _, arrivo = orario.partition('-')
+            partenza, arrivo = ora(partenza), ora(arrivo)
+            vals = [volo, data, rotta, partenza, arrivo,
+                    g.cognome, g.nome, g.sede_lavoro or '', aeroporto]
             for c, v in enumerate(vals, 1):
                 ws.cell(row=r, column=c, value=v).border = border
 
