@@ -4880,7 +4880,7 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
         border = Border(left=Side(style='thin'), right=Side(style='thin'),
                         top=Side(style='thin'), bottom=Side(style='thin'))
 
-        headers = ['#', 'Cognome', 'Nome', 'Tipo Camera', 'Divide stanza con']
+        headers = ['#', 'Cognome', 'Nome', 'Sede Lavoro', 'Tipo Camera', 'Divide stanza con']
         for c, h in enumerate(headers, 1):
             cell = ws.cell(row=1, column=c, value=h)
             cell.font = hfont
@@ -4894,8 +4894,9 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
                 ws.cell(row=row, column=1, value=i).border = border
                 ws.cell(row=row, column=2, value=g.cognome).border = border
                 ws.cell(row=row, column=3, value=g.nome).border = border
-                ws.cell(row=row, column=4, value=g.tipo_camera or '').border = border
-                ws.cell(row=row, column=5, value=g.divide_stanza_con or '').border = border
+                ws.cell(row=row, column=4, value=g.sede_lavoro or '').border = border
+                ws.cell(row=row, column=5, value=g.tipo_camera or '').border = border
+                ws.cell(row=row, column=6, value=g.divide_stanza_con or '').border = border
                 row += 1
 
         for col in ws.columns:
