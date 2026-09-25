@@ -4896,7 +4896,9 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
         border = Border(left=Side(style='thin'), right=Side(style='thin'),
                         top=Side(style='thin'), bottom=Side(style='thin'))
 
-        headers = ['#', 'Cognome', 'Nome', 'Sede Lavoro', 'Tipo Camera', 'Divide stanza con']
+        headers = ['#', 'Cognome', 'Nome', 'Sede Lavoro', 'Tipo Camera', 'Divide stanza con',
+                   'Data Nascita', 'Luogo Nascita', 'Codice Fiscale',
+                   'Tipo Documento', 'Numero Documento']
         for c, h in enumerate(headers, 1):
             cell = ws.cell(row=1, column=c, value=h)
             cell.font = hfont
@@ -4907,12 +4909,11 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
         row = 2
         for i, stanza in enumerate(stanze, 1):
             for g in stanza:
-                ws.cell(row=row, column=1, value=i).border = border
-                ws.cell(row=row, column=2, value=g.cognome).border = border
-                ws.cell(row=row, column=3, value=g.nome).border = border
-                ws.cell(row=row, column=4, value=g.sede_lavoro or '').border = border
-                ws.cell(row=row, column=5, value=g.tipo_camera or '').border = border
-                ws.cell(row=row, column=6, value=g.divide_stanza_con or '').border = border
+                vals = [i, g.cognome, g.nome, g.sede_lavoro, g.tipo_camera,
+                        g.divide_stanza_con, g.data_nascita, g.luogo_nascita,
+                        g.codice_fiscale, g.tipo_documento, g.numero_documento]
+                for c, v in enumerate(vals, 1):
+                    ws.cell(row=row, column=c, value=v or '').border = border
                 row += 1
 
         for col in ws.columns:
