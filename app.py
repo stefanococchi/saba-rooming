@@ -1131,6 +1131,13 @@ def create_app():
             if 'data_nascita' not in guest_cols:
                 conn.execute(text("ALTER TABLE guests ADD COLUMN data_nascita VARCHAR(20)"))
                 conn.commit()
+            for col, col_type in (('luogo_nascita', 'VARCHAR(100)'),
+                                  ('codice_fiscale', 'VARCHAR(16)'),
+                                  ('tipo_documento', 'VARCHAR(30)'),
+                                  ('numero_documento', 'VARCHAR(30)')):
+                if col not in guest_cols:
+                    conn.execute(text(f"ALTER TABLE guests ADD COLUMN {col} {col_type}"))
+                    conn.commit()
             if 'rientro_con_catania' not in guest_cols:
                 conn.execute(text("ALTER TABLE guests ADD COLUMN rientro_con_catania "
                                   "BOOLEAN DEFAULT FALSE"))
@@ -2337,6 +2344,7 @@ Rispondi SOLO con JSON valido (no markdown, no commenti):
         'divide_stanza_con', 'restrizioni_alimentari',
         'tipo_camera', 'camera_assegnata', 'note_form', 'note',
         'data_nascita', 'titolo',
+        'luogo_nascita', 'codice_fiscale', 'tipo_documento', 'numero_documento',
     )
     GUEST_BOOL_FIELDS = (
         'presenza_8', 'presenza_9', 'presenza_10', 'presenza_11',
@@ -2764,6 +2772,10 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
                 note_form=get_val('note_form'),
                 note=get_val('note'),
                 data_nascita=get_val('data_nascita'),
+                luogo_nascita=get_val('luogo_nascita'),
+                codice_fiscale=get_val('codice_fiscale'),
+                tipo_documento=get_val('tipo_documento'),
+                numero_documento=get_val('numero_documento'),
                 source='xlsx',
             )
             db.session.add(g)
@@ -4814,12 +4826,16 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
         ws = wb.active
         ws.title = 'Anagrafica'
         write_sheet(ws,
-            ['Cognome', 'Nome', 'Data Nascita', 'Email', 'Telefono', 'Sede Lavoro',
+            ['Cognome', 'Nome', 'Data Nascita', 'Luogo Nascita', 'Codice Fiscale',
+             'Tipo Documento', 'Numero Documento',
+             'Email', 'Telefono', 'Sede Lavoro',
              '8 Ott', '9 Ott', '10 Ott', '11 Ott',
              'Tipo Camera', 'Divide stanza con',
              'Parcheggio Linate',
              'Restrizioni Alimentari', 'Note Form'],
-            lambda g: [g.cognome, g.nome, g.data_nascita, g.email, g.telefono, g.sede_lavoro,
+            lambda g: [g.cognome, g.nome, g.data_nascita, g.luogo_nascita, g.codice_fiscale,
+                       g.tipo_documento, g.numero_documento,
+                       g.email, g.telefono, g.sede_lavoro,
                        bool_label(g.presenza_8), bool_label(g.presenza_9),
                        bool_label(g.presenza_10), bool_label(g.presenza_11),
                        g.tipo_camera, g.divide_stanza_con,

@@ -128,6 +128,10 @@ class Guest(db.Model):
     note_form             = db.Column(db.Text)
     note                  = db.Column(db.Text)
     data_nascita          = db.Column(db.String(20))
+    luogo_nascita         = db.Column(db.String(100))
+    codice_fiscale        = db.Column(db.String(16))
+    tipo_documento        = db.Column(db.String(30))   # CIE, CI_cartacea, passaporto, ...
+    numero_documento      = db.Column(db.String(30))
     source                = db.Column(db.String(20), default='manual')  # manual, xlsx, email
     pnr_group_id          = db.Column(db.Integer, db.ForeignKey('pnr_groups.id'))
     email_log_id          = db.Column(db.Integer, db.ForeignKey('email_logs.id'))

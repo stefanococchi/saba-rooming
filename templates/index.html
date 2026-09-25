@@ -776,6 +776,10 @@ textarea { resize: vertical; min-height: 120px; }
               <th>Cognome</th>
               <th>Nome</th>
               <th>Data Nascita</th>
+              <th>Luogo Nascita</th>
+              <th>Cod. Fiscale</th>
+              <th>Documento</th>
+              <th>N. Documento</th>
               <th>Email</th>
               <th>Telefono</th>
               <th>Sede</th>
@@ -809,6 +813,10 @@ textarea { resize: vertical; min-height: 120px; }
               <td class="{{ 'editable' if not client_view else '' }}" {% if not client_view %}data-field="cognome"{% endif %}>{{ g.cognome }}</td>
               <td class="{{ 'editable' if not client_view else '' }}" {% if not client_view %}data-field="nome"{% endif %}>{{ g.nome }}</td>
               <td class="{{ 'editable' if not client_view else '' }}" {% if not client_view %}data-field="data_nascita"{% endif %}>{{ g.data_nascita or '' }}</td>
+              <td class="{{ 'editable' if not client_view else '' }}" {% if not client_view %}data-field="luogo_nascita"{% endif %}>{{ g.luogo_nascita or '' }}</td>
+              <td class="{{ 'editable' if not client_view else '' }}" {% if not client_view %}data-field="codice_fiscale"{% endif %}>{{ g.codice_fiscale or '' }}</td>
+              <td class="{{ 'editable' if not client_view else '' }}" {% if not client_view %}data-field="tipo_documento"{% endif %}>{{ g.tipo_documento or '' }}</td>
+              <td class="{{ 'editable' if not client_view else '' }}" {% if not client_view %}data-field="numero_documento"{% endif %}>{{ g.numero_documento or '' }}</td>
               <td class="{{ 'editable' if not client_view else '' }}" {% if not client_view %}data-field="email"{% endif %}>{{ g.email or '' }}</td>
               <td class="{{ 'editable' if not client_view else '' }}" {% if not client_view %}data-field="telefono"{% endif %}>{{ g.telefono or '' }}</td>
               <td class="{{ 'editable' if not client_view else '' }}" {% if not client_view %}data-field="sede_lavoro"{% endif %}>{{ g.sede_lavoro or '' }}</td>
@@ -1466,6 +1474,10 @@ const FIELD_OPTIONS = [
   { value: 'nome_completo', label: 'Nome completo' },
   { value: 'titolo', label: 'Titolo (Mr/Mrs)' },
   { value: 'data_nascita', label: 'Data Nascita' },
+  { value: 'luogo_nascita', label: 'Luogo Nascita' },
+  { value: 'codice_fiscale', label: 'Codice Fiscale' },
+  { value: 'tipo_documento', label: 'Tipo Documento' },
+  { value: 'numero_documento', label: 'Numero Documento' },
   { value: 'email', label: 'Email' },
   { value: 'telefono', label: 'Telefono' },
   { value: 'sede_lavoro', label: 'Sede Lavoro' },
