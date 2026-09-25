@@ -1,6 +1,6 @@
 flask
 flask-sqlalchemy
-sqlalchemy
+sqlalchemy>=2.0,<2.1
 flask-login
 openpyxl
 pypdf
