@@ -134,6 +134,9 @@ class Guest(db.Model):
     numero_documento      = db.Column(db.String(30))
     source                = db.Column(db.String(20), default='manual')  # manual, xlsx, email
     pnr_group_id          = db.Column(db.Integer, db.ForeignKey('pnr_groups.id'))
+    # Il PNR del ritorno, solo quando e' un altro: chi torna con una
+    # prenotazione diversa da quella dell'andata. Vuoto = stesso PNR.
+    pnr_ritorno_id        = db.Column(db.Integer, db.ForeignKey('pnr_groups.id'))
     email_log_id          = db.Column(db.Integer, db.ForeignKey('email_logs.id'))
     created_at            = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at            = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -143,6 +146,12 @@ class Guest(db.Model):
     @property
     def nome_completo(self):
         return f'{self.cognome} {self.nome}'.strip()
+
+    @property
+    def pnr_ritorno(self):
+        """Il PNR su cui viaggia al ritorno: quello a parte se c'e',
+        altrimenti lo stesso dell'andata."""
+        return self.pnr_ritorno_group or self.pnr_group
 
 
 class RoomingClientToken(db.Model):
@@ -171,7 +180,17 @@ class PnrGroup(db.Model):
     orario_ritorno  = db.Column(db.String(20))
     created_at      = db.Column(db.DateTime, default=datetime.utcnow)
 
-    guests = db.relationship('Guest', backref='pnr_group', lazy='joined')
+    guests = db.relationship('Guest', backref='pnr_group', lazy='joined',
+                             foreign_keys='Guest.pnr_group_id')
+    # Chi torna su questo PNR ma e' andato con un altro.
+    guests_ritorno = db.relationship('Guest', backref='pnr_ritorno_group',
+                                     foreign_keys='Guest.pnr_ritorno_id')
+
+    @property
+    def passeggeri(self):
+        """Chi usa il PNR per almeno una tratta: ognuno occupa un posto,
+        anche chi ci fa solo l'andata o solo il ritorno."""
+        return [g for g in self.guests + self.guests_ritorno if not g.deleted]
 
 
 class EmailLog(db.Model):

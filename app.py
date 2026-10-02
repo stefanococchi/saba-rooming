@@ -44,32 +44,62 @@ def normalize_flight(s):
     return s
 
 
-def volo_disallineato(g, pg):
-    """True se i voli dell'ospite non coincidono con quelli del suo PNR.
+def volo_disallineato(g):
+    """True se i voli dell'ospite non coincidono con quelli dei suoi PNR:
+    l'andata con il PNR dell'andata, il ritorno con quello del ritorno.
     Un ospite senza voli compilati non è disallineato."""
-    if not pg:
+    pa, pr = g.pnr_group, g.pnr_ritorno
+    if not pa and not pr:
         return False
     andata, ritorno = normalize_flight(g.volo_arrivo), normalize_flight(g.volo_partenza)
     if not andata and not ritorno:
         return False
-    return (andata, ritorno) != (normalize_flight(pg.volo_andata),
-                                 normalize_flight(pg.volo_ritorno))
+    return bool((pa and andata != normalize_flight(pa.volo_andata)) or
+                (pr and ritorno != normalize_flight(pr.volo_ritorno)))
 
 
-def copia_voli_da_pnr(g, pg):
-    """Scrive sull'ospite i voli e gli aeroporti del PNR a cui viene agganciato.
+def imposta_pnr(g, andata_id, ritorno_id):
+    """Aggancia l'ospite ai PNR delle due tratte. Il ritorno si scrive solo
+    se e' un PNR diverso dall'andata: vuoto vuol dire 'come l'andata'."""
+    g.pnr_group_id = andata_id or None
+    g.pnr_ritorno_id = (ritorno_id if ritorno_id and ritorno_id != g.pnr_group_id
+                        else None)
+
+
+def tratta_su_pnr(g, pg):
+    """'' se l'ospite usa il PNR per andata e ritorno, altrimenti quale tratta."""
+    andata = g.pnr_group_id == pg.id
+    ritorno = (g.pnr_ritorno_id or g.pnr_group_id) == pg.id
+    if andata and ritorno:
+        return ''
+    return 'solo andata' if andata else 'solo ritorno'
+
+
+def conta_occupati(pg_id):
+    """Ospiti che occupano un posto sul PNR, per l'una o l'altra tratta."""
+    return Guest.query.filter(
+        Guest.deleted == False,
+        db.or_(Guest.pnr_group_id == pg_id, Guest.pnr_ritorno_id == pg_id),
+    ).count()
+
+
+def copia_voli_da_pnr(g, pg, tratta='entrambe'):
+    """Scrive sull'ospite i voli e gli aeroporti del PNR a cui viene agganciato,
+    per la tratta che quel PNR gli copre.
 
     E' una scelta, non un automatismo: chi va con il gruppo all'andata ma
     torna con un'altra compagnia ha voli suoi che il PNR non conosce, e
     sovrascriverli in silenzio li cancellava. Chi assegna decide se copiare."""
-    g.volo_arrivo = pg.volo_andata
-    g.volo_partenza = pg.volo_ritorno
-    origin = pg.rotta_andata[:3] if pg.rotta_andata and len(pg.rotta_andata) >= 6 else ''
-    dest = pg.rotta_ritorno[3:] if pg.rotta_ritorno and len(pg.rotta_ritorno) >= 6 else ''
-    if origin:
-        g.aeroporto_partenza = origin
-    if dest:
-        g.aeroporto_arrivo = dest
+    if tratta != 'ritorno':
+        g.volo_arrivo = pg.volo_andata
+        origin = pg.rotta_andata[:3] if pg.rotta_andata and len(pg.rotta_andata) >= 6 else ''
+        if origin:
+            g.aeroporto_partenza = origin
+    if tratta != 'andata':
+        g.volo_partenza = pg.volo_ritorno
+        dest = pg.rotta_ritorno[3:] if pg.rotta_ritorno and len(pg.rotta_ritorno) >= 6 else ''
+        if dest:
+            g.aeroporto_arrivo = dest
 
 
 # Campi di un PNR che si possono scrivere a mano, oltre a codice e posti.
@@ -1124,6 +1154,9 @@ def create_app():
             guest_cols = [c['name'] for c in inspect(db.engine).get_columns('guests')]
             if 'pnr_group_id' not in guest_cols:
                 conn.execute(text("ALTER TABLE guests ADD COLUMN pnr_group_id INTEGER REFERENCES pnr_groups(id)"))
+                conn.commit()
+            if 'pnr_ritorno_id' not in guest_cols:
+                conn.execute(text("ALTER TABLE guests ADD COLUMN pnr_ritorno_id INTEGER REFERENCES pnr_groups(id)"))
                 conn.commit()
             if 'titolo' not in guest_cols:
                 conn.execute(text("ALTER TABLE guests ADD COLUMN titolo VARCHAR(10)"))
@@ -2291,8 +2324,9 @@ Rispondi SOLO con JSON valido (no markdown, no commenti):
         pnr_groups = PnrGroup.query.order_by(PnrGroup.volo_andata, PnrGroup.pnr_code).all()
         occupati = {}
         for g in guests:
-            if g.pnr_group_id:
-                occupati[g.pnr_group_id] = occupati.get(g.pnr_group_id, 0) + 1
+            for pid in (g.pnr_group_id, g.pnr_ritorno_id):
+                if pid:
+                    occupati[pid] = occupati.get(pid, 0) + 1
         pnr_options = [{
             'id': pg.id, 'pnr_code': pg.pnr_code, 'seats': pg.seats,
             'occupati': occupati.get(pg.id, 0),
@@ -2940,6 +2974,7 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
         senza_pnr = Guest.query.filter(
             Guest.deleted==False,
             Guest.pnr_group_id.is_(None),
+            Guest.pnr_ritorno_id.is_(None),
             db.or_(
                 db.and_(Guest.volo_arrivo.isnot(None), Guest.volo_arrivo != ''),
                 db.and_(Guest.volo_partenza.isnot(None), Guest.volo_partenza != ''),
@@ -2953,8 +2988,9 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
                 'id': p.id, 'cognome': p.cognome, 'nome': p.nome,
                 'sede_lavoro': p.sede_lavoro or '',
                 'volo_arrivo': p.volo_arrivo or '', 'volo_partenza': p.volo_partenza or '',
-                'disallineato': volo_disallineato(p, g),
-            } for p in g.guests if not p.deleted]
+                'disallineato': volo_disallineato(p),
+                'tratta': tratta_su_pnr(p, g),
+            } for p in g.passeggeri]
             totale_assegnati += len(assigned)
             # Parse rotta in origin/dest (es. LINPMO → LIN / PMO)
             orig_a = g.rotta_andata[:3] if g.rotta_andata and len(g.rotta_andata) >= 6 else ''
@@ -3168,37 +3204,48 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
         if changes:
             log_audit('rooming', 'PnrGroup', pg.id, 'update', changes=changes,
                       summary=f'Modificato PNR {pg.pnr_code}: ' + ', '.join(changes))
-        occupati = Guest.query.filter_by(deleted=False, pnr_group_id=pg.id).count()
+        occupati = conta_occupati(pg.id)
         return jsonify(ok=True, changed=list(changes), occupati=occupati,
                        overbooking=occupati > pg.seats)
 
     @app.post('/api/pnr/<int:group_id>/assign')
     def pnr_assign(group_id):
-        """Assegna ospiti a un PNR group."""
+        """Assegna ospiti a un PNR group, per andata e ritorno o solo per il
+        ritorno: chi torna con una prenotazione diversa da quella dell'andata."""
         pg = PnrGroup.query.get_or_404(group_id)
         data = request.get_json()
         guest_ids = data.get('guest_ids', [])
         copia_voli = _parse_bool(data.get('copia_voli', True))
+        tratta = 'ritorno' if data.get('tratta') == 'ritorno' else 'entrambe'
 
         assigned = 0
+        prima = {}
         for gid in guest_ids:
             guest = Guest.query.get(gid)
             if guest:
-                guest.pnr_group_id = group_id
+                prima[guest.id] = (guest.pnr_group_id, guest.pnr_ritorno_id)
+                if tratta == 'ritorno':
+                    imposta_pnr(guest, guest.pnr_group_id, group_id)
+                else:
+                    imposta_pnr(guest, group_id, None)
                 if copia_voli:
-                    copia_voli_da_pnr(guest, pg)
+                    copia_voli_da_pnr(guest, pg, tratta)
                 assigned += 1
 
-        current_count = Guest.query.filter_by(deleted=False, pnr_group_id=group_id).count()
+        db.session.flush()
+        current_count = conta_occupati(group_id)
         overbooking = current_count > pg.seats
 
         db.session.commit()
         for gid in guest_ids:
             guest = Guest.query.get(gid)
             if guest:
+                old_a, old_r = prima[guest.id]
                 log_audit('rooming', 'Guest', guest.id, 'assign',
-                          changes={'pnr_group_id': {'old': None, 'new': group_id}},
-                          summary=f'{guest.nome_completo} assegnato a PNR {pg.pnr_code}')
+                          changes={'pnr_group_id': {'old': old_a, 'new': guest.pnr_group_id},
+                                   'pnr_ritorno_id': {'old': old_r, 'new': guest.pnr_ritorno_id}},
+                          summary=f'{guest.nome_completo} assegnato a PNR {pg.pnr_code}'
+                                  + (' per il ritorno' if tratta == 'ritorno' else ''))
         return jsonify(ok=True, assigned=assigned, total=current_count,
                        seats=pg.seats, overbooking=overbooking)
 
@@ -3208,17 +3255,24 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
         data = request.get_json()
         guest_ids = data.get('guest_ids', [])
 
+        # Si toglie la tratta che l'ospite fa su questo PNR, l'altra resta:
+        # chi perde il ritorno a parte torna a seguire il PNR dell'andata.
         unassigned_guests = []
         for gid in guest_ids:
             guest = Guest.query.get(gid)
-            if guest and guest.pnr_group_id == group_id:
-                unassigned_guests.append(guest)
-                guest.pnr_group_id = None
+            if guest and group_id in (guest.pnr_group_id, guest.pnr_ritorno_id):
+                prima = (guest.pnr_group_id, guest.pnr_ritorno_id)
+                if guest.pnr_ritorno_id == group_id:
+                    guest.pnr_ritorno_id = None
+                else:
+                    imposta_pnr(guest, None, guest.pnr_ritorno_id)
+                unassigned_guests.append((guest, prima))
 
         db.session.commit()
-        for guest in unassigned_guests:
+        for guest, (old_a, old_r) in unassigned_guests:
             log_audit('rooming', 'Guest', guest.id, 'unassign',
-                      changes={'pnr_group_id': {'old': group_id, 'new': None}},
+                      changes={'pnr_group_id': {'old': old_a, 'new': guest.pnr_group_id},
+                               'pnr_ritorno_id': {'old': old_r, 'new': guest.pnr_ritorno_id}},
                       summary=f'{guest.nome_completo} rimosso da PNR')
         return jsonify(ok=True)
 
@@ -3227,7 +3281,9 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
         """Elimina un PNR group (scollega ospiti)."""
         pg = PnrGroup.query.get_or_404(group_id)
         code, seats = pg.pnr_code, pg.seats
-        scollegati = Guest.query.filter_by(deleted=False, pnr_group_id=group_id).update({'pnr_group_id': None})
+        scollegati = conta_occupati(group_id)
+        Guest.query.filter_by(pnr_group_id=group_id).update({'pnr_group_id': None})
+        Guest.query.filter_by(pnr_ritorno_id=group_id).update({'pnr_ritorno_id': None})
         db.session.delete(pg)
         db.session.commit()
         log_audit('rooming', 'PnrGroup', group_id, 'delete',
@@ -3260,6 +3316,15 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
         aderenti = {}   # pg.id → ospiti i cui voli coincidono con quelli del PNR
         for g in Guest.query.filter(Guest.deleted == False).order_by(
                 Guest.cognome, Guest.nome).all():
+            # Chi torna con un PNR diverso da quello dell'andata e' stato
+            # sistemato a mano, tratta per tratta: l'auto-assegnazione cerca
+            # un PNR solo con entrambi i voli e lo sposterebbe. Resta dov'e',
+            # e occupa un posto su ognuno dei due PNR.
+            if g.pnr_ritorno_id:
+                for pid in (g.pnr_group_id, g.pnr_ritorno_id):
+                    if pid in seats_used:
+                        seats_used[pid] += 1
+                continue
             pg = pnr_by_id.get(g.pnr_group_id) if g.pnr_group_id else None
             if pg is None:
                 to_assign.append(g)
@@ -3480,7 +3545,7 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
             return jsonify(ok=False, error='Ospite non trovato'), 404
 
         old_id = guest.pnr_group_id
-        guest.pnr_group_id = pg.id
+        imposta_pnr(guest, pg.id, guest.pnr_ritorno_id)
         if _parse_bool(data.get('copia_voli', True)):
             copia_voli_da_pnr(guest, pg)
         db.session.commit()
@@ -3491,51 +3556,84 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
 
     @app.put('/api/guest/<int:gid>/pnr')
     def guest_set_pnr(gid):
-        """Cambia il PNR di un ospite dalla sua riga: un PNR, nessuno, e a
-        scelta la copia dei voli del gruppo sulla scheda."""
+        """Cambia i PNR di un ospite dalla sua riga: quello dell'andata e, se
+        torna con un'altra prenotazione, quello del ritorno. A scelta copia
+        sulla scheda i voli dei PNR scelti."""
         guest = Guest.query.get_or_404(gid)
         data = request.get_json() or {}
-        pnr_id = data.get('pnr_id')
-        old_id = guest.pnr_group_id
-        if pnr_id in (None, '', 0):
-            guest.pnr_group_id = None
-            db.session.commit()
-            if old_id:
-                log_audit('rooming', 'Guest', guest.id, 'unassign',
-                          changes={'pnr_group_id': {'old': old_id, 'new': None}},
-                          summary=f'{guest.nome_completo} rimosso da PNR')
-            return jsonify(ok=True, pnr_code='')
-        pg = PnrGroup.query.get(int(pnr_id))
-        if not pg:
+
+        def _pnr(chiave):
+            val = data.get(chiave)
+            if val in (None, '', 0):
+                return None
+            pg = PnrGroup.query.get(int(val))
+            if not pg:
+                raise LookupError
+            return pg
+        try:
+            pa = _pnr('pnr_id')
+            # Senza la chiave il ritorno resta quello che era.
+            pr = _pnr('pnr_ritorno_id') if 'pnr_ritorno_id' in data else guest.pnr_ritorno_group
+        except LookupError:
             return jsonify(ok=False, error='PNR non trovato'), 404
-        guest.pnr_group_id = pg.id
+
+        old_a, old_r = guest.pnr_group_id, guest.pnr_ritorno_id
+        imposta_pnr(guest, pa.id if pa else None, pr.id if pr else None)
         copiati = _parse_bool(data.get('copia_voli', False))
         if copiati:
-            copia_voli_da_pnr(guest, pg)
+            if pa:
+                copia_voli_da_pnr(guest, pa, 'andata' if guest.pnr_ritorno_id else 'entrambe')
+            if guest.pnr_ritorno_id:
+                copia_voli_da_pnr(guest, pr, 'ritorno')
         db.session.commit()
-        if old_id != pg.id:
-            log_audit('rooming', 'Guest', guest.id, 'assign',
-                      changes={'pnr_group_id': {'old': old_id, 'new': pg.id}},
-                      summary=f'{guest.nome_completo} assegnato a PNR {pg.pnr_code}')
-        occupati = Guest.query.filter_by(deleted=False, pnr_group_id=pg.id).count()
-        return jsonify(ok=True, pnr_code=pg.pnr_code,
+
+        if (old_a, old_r) != (guest.pnr_group_id, guest.pnr_ritorno_id):
+            codici = (pa.pnr_code if pa else 'nessuno') + (
+                f', ritorno {pr.pnr_code}' if guest.pnr_ritorno_id else '')
+            log_audit('rooming', 'Guest', guest.id,
+                      'assign' if (pa or guest.pnr_ritorno_id) else 'unassign',
+                      changes={'pnr_group_id': {'old': old_a, 'new': guest.pnr_group_id},
+                               'pnr_ritorno_id': {'old': old_r, 'new': guest.pnr_ritorno_id}},
+                      summary=f'{guest.nome_completo}: PNR {codici}')
+
+        # Overbooking su uno qualunque dei due PNR toccati
+        pieni = []
+        for pg in {p for p in (pa, guest.pnr_ritorno_group) if p}:
+            occ = conta_occupati(pg.id)
+            if occ > pg.seats:
+                pieni.append(f'{pg.pnr_code} {occ} su {pg.seats} posti')
+        return jsonify(ok=True,
+                       pnr_code=pa.pnr_code if pa else '',
+                       pnr_ritorno_code=pr.pnr_code if guest.pnr_ritorno_id else '',
+                       pnr_id=guest.pnr_group_id, pnr_ritorno_id=guest.pnr_ritorno_id,
                        volo_arrivo=guest.volo_arrivo or '',
                        volo_partenza=guest.volo_partenza or '',
                        copiati=copiati,
-                       occupati=occupati, seats=pg.seats,
-                       overbooking=occupati > pg.seats)
+                       overbooking=', '.join(pieni))
 
     @app.get('/api/pnr/unassigned')
     def pnr_unassigned():
-        """Lista ospiti non assegnati a nessun PNR."""
-        guests = Guest.query.filter(
-            Guest.deleted==False, Guest.pnr_group_id.is_(None)
-        ).order_by(Guest.cognome, Guest.nome).all()
+        """Ospiti da proporre nella finestra 'Assegna a PNR'.
+
+        Per andata e ritorno: chi non ha un PNR per l'andata. Solo ritorno
+        (?tratta=ritorno&pnr=<id>): tutti quelli che non tornano gia' su
+        quel PNR, perche' di solito hanno l'andata su un altro."""
+        q = Guest.query.filter(Guest.deleted == False)
+        if request.args.get('tratta') == 'ritorno':
+            pnr_id = request.args.get('pnr', type=int)
+            ritorno = db.func.coalesce(Guest.pnr_ritorno_id, Guest.pnr_group_id)
+            if pnr_id:
+                q = q.filter(db.or_(ritorno.is_(None), ritorno != pnr_id))
+        else:
+            q = q.filter(Guest.pnr_group_id.is_(None))
+        guests = q.order_by(Guest.cognome, Guest.nome).all()
         return jsonify(ok=True, guests=[{
             'id': g.id, 'cognome': g.cognome, 'nome': g.nome,
             'sede_lavoro': g.sede_lavoro or '',
             'aeroporto_partenza': g.aeroporto_partenza or '',
             'volo_arrivo': g.volo_arrivo or '', 'volo_partenza': g.volo_partenza or '',
+            'pnr_andata': g.pnr_group.pnr_code if g.pnr_group else '',
+            'pnr_ritorno': g.pnr_ritorno.pnr_code if g.pnr_ritorno else '',
         } for g in guests])
 
     # ── ASSEGNAZIONE CAMERE ─────────────────────────────────────────────────
@@ -3912,8 +4010,9 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
     def _lt_tratta(g, tipo):
         """Dati del volo di andata o ritorno, dal PNR di gruppo se assegnato.
         Se l'ospite ha solo il volo scritto a mano si completa con gli orari
-        che conosciamo; se non li conosciamo torna {'libero': '…'}."""
-        pg = g.pnr_group
+        che conosciamo; se non li conosciamo torna {'libero': '…'}.
+        Il ritorno si legge dal PNR del ritorno, che puo' essere un altro."""
+        pg = g.pnr_group if tipo == 'andata' else g.pnr_ritorno
         if not pg:
             libero = g.volo_arrivo if tipo == 'andata' else g.volo_partenza
             libero = (libero or '').strip()
@@ -4846,7 +4945,7 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
         ws2 = wb.create_sheet('Voli e Trasporti')
         # Il ritorno e' il 10 per tutti: la colonna con la data direbbe la
         # stessa cosa 176 volte.
-        colonne2 = ['Cognome', 'Nome', 'Sede Lavoro', 'PNR',
+        colonne2 = ['Cognome', 'Nome', 'Sede Lavoro', 'PNR', 'PNR Ritorno',
                     'Aeroporto Partenza', 'Volo Andata', 'Data Andata',
                     'Partenza Andata', 'Arrivo Andata', 'Ritrovo in Aeroporto',
                     'Ritrovo Pullman Catania',
@@ -4854,7 +4953,8 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
                     'Ritrovo Lobby Resort']
         write_sheet(ws2, colonne2,
             lambda g: [g.cognome, g.nome, g.sede_lavoro,
-                       g.pnr_group.pnr_code if g.pnr_group else ''] + _export_viaggio(g),
+                       g.pnr_group.pnr_code if g.pnr_group else '',
+                       g.pnr_ritorno.pnr_code if g.pnr_ritorno else ''] + _export_viaggio(g),
             fill=header_fill2)
 
         # Senza formato Excel mostrerebbe il numero seriale della data.
@@ -4981,7 +5081,7 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
             volo = (g.volo_arrivo if tipo == 'andata' else g.volo_partenza) or ''
             aeroporto = (g.aeroporto_partenza if tipo == 'andata' else g.aeroporto_arrivo) or ''
             chiave = normalize_flight(volo)
-            pg = g.pnr_group
+            pg = g.pnr_group if tipo == 'andata' else g.pnr_ritorno
             if pg and normalize_flight(tratta(pg)[0]) == chiave:
                 data, rotta, orario = tratta(pg)[1:]
             else:
@@ -5045,15 +5145,17 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
             cell.alignment = Alignment(horizontal='center')
             cell.border = border
         for r, pg in enumerate(groups, 2):
-            pax = sorted((g for g in pg.guests if not g.deleted),
+            pax = sorted(pg.passeggeri,
                          key=lambda g: ((g.cognome or '').upper(), (g.nome or '').upper()))
             diversi = [f'{g.nome_completo} ({g.volo_arrivo or "-"}/{g.volo_partenza or "-"})'
-                       for g in pax if volo_disallineato(g, pg)]
+                       for g in pax if volo_disallineato(g)]
             liberi = pg.seats - len(pax)
             vals = [pg.pnr_code, pg.group_name or '', pg.seats, len(pax), liberi,
                     pg.volo_andata or '', pg.data_andata or '', pg.rotta_andata or '', _ora(pg.orario_andata),
                     pg.volo_ritorno or '', pg.data_ritorno or '', pg.rotta_ritorno or '', _ora(pg.orario_ritorno),
-                    ', '.join(f'{(g.cognome or "").upper()} {g.nome or ""}'.strip() for g in pax),
+                    ', '.join(f'{(g.cognome or "").upper()} {g.nome or ""}'.strip()
+                              + (f' ({tratta_su_pnr(g, pg)})' if tratta_su_pnr(g, pg) else '')
+                              for g in pax),
                     '; '.join(diversi)]
             for c, v in enumerate(vals, 1):
                 cell = ws0.cell(row=r, column=c, value=v)
@@ -5074,7 +5176,7 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
         headers = ['PNR', 'Posti', 'Volo Andata', 'Rotta', 'Data', 'Orario',
                     'Volo Ritorno', 'Rotta', 'Data', 'Orario',
                     'Titolo', 'Cognome', 'Nome', 'Data Nascita', 'Sede Lavoro',
-                    'Volo ospite (se diverso)']
+                    'Volo ospite (se diverso)', 'Tratta']
         for c, h in enumerate(headers, 1):
             cell = ws.cell(row=1, column=c, value=h)
             cell.font = hfont
@@ -5084,13 +5186,12 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
 
         row = 2
         for pg in groups:
-            guests = Guest.query.filter_by(deleted=False, pnr_group_id=pg.id).order_by(
-                Guest.cognome, Guest.nome).all()
+            guests = sorted(pg.passeggeri, key=lambda g: (g.cognome or '', g.nome or ''))
             if not guests:
                 vals = [pg.pnr_code, pg.seats, pg.volo_andata, pg.rotta_andata,
                         pg.data_andata, pg.orario_andata, pg.volo_ritorno,
                         pg.rotta_ritorno, pg.data_ritorno, pg.orario_ritorno,
-                        '', '', '', '', '', '']
+                        '', '', '', '', '', '', '']
                 for c, v in enumerate(vals, 1):
                     cell = ws.cell(row=row, column=c, value=v)
                     cell.border = border
@@ -5098,7 +5199,7 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
                 row += 1
             else:
                 for i, g in enumerate(guests):
-                    disallineato = volo_disallineato(g, pg)
+                    disallineato = volo_disallineato(g)
                     vals = [
                         pg.pnr_code if i == 0 else '',
                         pg.seats if i == 0 else '',
@@ -5114,6 +5215,7 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
                         g.data_nascita or '', g.sede_lavoro or '',
                         (f'{g.volo_arrivo or "—"} / {g.volo_partenza or "—"}'
                          if disallineato else ''),
+                        tratta_su_pnr(g, pg),
                     ]
                     for c, v in enumerate(vals, 1):
                         cell = ws.cell(row=row, column=c, value=v)
@@ -5126,7 +5228,8 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
                     row += 1
 
         # Unassigned guests
-        unassigned = Guest.query.filter(Guest.deleted==False, Guest.pnr_group_id.is_(None)).order_by(
+        unassigned = Guest.query.filter(Guest.deleted==False, Guest.pnr_group_id.is_(None),
+                                        Guest.pnr_ritorno_id.is_(None)).order_by(
             Guest.cognome, Guest.nome).all()
         if unassigned:
             row += 1
@@ -5150,9 +5253,9 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
         ws2 = wb.create_sheet('Per passeggero')
         headers2 = ['Cognome', 'Nome', 'Titolo', 'Data Nascita', 'Sede Lavoro',
                     'PNR', 'Posti PNR', 'Volo Andata', 'Data Andata', 'Rotta Andata',
-                    'Orario Andata', 'Volo Ritorno', 'Data Ritorno', 'Rotta Ritorno',
-                    'Orario Ritorno', 'Volo ospite andata', 'Volo ospite ritorno',
-                    'Disallineato']
+                    'Orario Andata', 'PNR Ritorno', 'Volo Ritorno', 'Data Ritorno',
+                    'Rotta Ritorno', 'Orario Ritorno', 'Volo ospite andata',
+                    'Volo ospite ritorno', 'Disallineato']
         for c, h in enumerate(headers2, 1):
             cell = ws2.cell(row=1, column=c, value=h)
             cell.font = hfont
@@ -5162,21 +5265,23 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
         tutti = Guest.query.filter_by(deleted=False).order_by(
             Guest.cognome, Guest.nome).all()
         for r, g in enumerate(tutti, 2):
-            pg = g.pnr_group
-            dis = volo_disallineato(g, pg) if pg else False
+            # Andata e ritorno ciascuno dal suo PNR: di solito e' lo stesso.
+            pa, pr = g.pnr_group, g.pnr_ritorno
+            dis = volo_disallineato(g)
             vals = [g.cognome, g.nome, g.titolo or '', g.data_nascita or '',
                     g.sede_lavoro or '',
-                    pg.pnr_code if pg else '', pg.seats if pg else '',
-                    pg.volo_andata if pg else '', pg.data_andata if pg else '',
-                    pg.rotta_andata if pg else '', pg.orario_andata if pg else '',
-                    pg.volo_ritorno if pg else '', pg.data_ritorno if pg else '',
-                    pg.rotta_ritorno if pg else '', pg.orario_ritorno if pg else '',
+                    pa.pnr_code if pa else '', pa.seats if pa else '',
+                    pa.volo_andata if pa else '', pa.data_andata if pa else '',
+                    pa.rotta_andata if pa else '', pa.orario_andata if pa else '',
+                    pr.pnr_code if pr else '',
+                    pr.volo_ritorno if pr else '', pr.data_ritorno if pr else '',
+                    pr.rotta_ritorno if pr else '', pr.orario_ritorno if pr else '',
                     g.volo_arrivo or '', g.volo_partenza or '',
                     'SI' if dis else '']
             for c, v in enumerate(vals, 1):
                 cell = ws2.cell(row=r, column=c, value=v if v is not None else '')
                 cell.border = border
-                if dis and c >= 16:
+                if dis and c >= 17:
                     cell.fill = warn_fill
                     cell.font = warn_font
         for col in ws2.columns:

@@ -473,6 +473,7 @@ textarea { resize: vertical; min-height: 120px; }
   font-family: monospace; font-size: 12px; font-weight: 600;
   background: var(--surface-variant); padding: 1px 6px; border-radius: 4px;
 }
+.pnr-badge-ritorno { background: #fff3e0; color: #e65100; }
 .pnr-editable { cursor: pointer; }
 .pnr-editable:hover { background: var(--surface-variant); }
 .pnr-picker {
@@ -786,7 +787,7 @@ textarea { resize: vertical; min-height: 120px; }
               <th style="width:28px;text-align:center;padding:6px 2px">8</th><th style="width:28px;text-align:center;padding:6px 2px">9</th><th style="width:28px;text-align:center;padding:6px 2px">10</th><!-- <th>11</th> -->
               <th>Volo And.</th>
               <th>Volo Rit.</th>
-              <th title="PNR di gruppo a cui l'ospite e' agganciato. Doppio click per cambiarlo.">PNR</th>
+              <th title="PNR di gruppo a cui l'ospite e' agganciato; con ↩ il PNR del ritorno, quando e' un altro. Doppio click per cambiarli.">PNR</th>
               <th title="Torna in pullman a Catania invece che in aereo">Rit. bus CT</th>
               <!-- <th>Aer. Part.</th> -->
               <!-- <th>Aer. Arr.</th> -->
@@ -826,7 +827,7 @@ textarea { resize: vertical; min-height: 120px; }
               <!-- <td class="{{ 'editable bool-cell' if not client_view else '' }}" {% if not client_view %}data-field="presenza_11"{% endif %}><span class="bool-mark {{ 'bool-mark-yes' if g.presenza_11 else 'bool-mark-no' }}" title="{{ 'Sì' if g.presenza_11 else 'No' }}">{{ '✓' if g.presenza_11 else '✕' }}</span></td> -->
               <td class="{{ 'editable' if not client_view else '' }}" {% if not client_view %}data-field="volo_arrivo"{% endif %}>{{ g.volo_arrivo or '' }}</td>
               <td class="{{ 'editable' if not client_view else '' }}" {% if not client_view %}data-field="volo_partenza"{% endif %}>{{ g.volo_partenza or '' }}</td>
-              <td class="pnr-cell{{ '' if client_view else ' pnr-editable' }}" data-pnr-id="{{ g.pnr_group_id or '' }}">{% if g.pnr_group_id %}<span class="pnr-badge">{{ pnr_codes.get(g.pnr_group_id, '') }}</span>{% endif %}</td>
+              <td class="pnr-cell{{ '' if client_view else ' pnr-editable' }}" data-pnr-id="{{ g.pnr_group_id or '' }}" data-pnr-ritorno-id="{{ g.pnr_ritorno_id or '' }}">{% if g.pnr_group_id %}<span class="pnr-badge">{{ pnr_codes.get(g.pnr_group_id, '') }}</span>{% endif %}{% if g.pnr_ritorno_id %} <span class="pnr-badge pnr-badge-ritorno" title="Il ritorno e' su un altro PNR">↩ {{ pnr_codes.get(g.pnr_ritorno_id, '') }}</span>{% endif %}</td>
               <td class="{{ 'editable bool-cell' if not client_view else '' }}" {% if not client_view %}data-field="rientro_con_catania"{% endif %}><span class="bool-mark {{ 'bool-mark-yes' if g.rientro_con_catania else 'bool-mark-no' }}" title="{{ 'Torna in pullman a Catania' if g.rientro_con_catania else 'Torna in aereo' }}">{{ '✓' if g.rientro_con_catania else '✕' }}</span></td>
               <!-- <td class="{{ 'editable' if not client_view else '' }}" {% if not client_view %}data-field="aeroporto_partenza"{% endif %}>{{ g.aeroporto_partenza or '' }}</td> -->
               <!-- <td class="{{ 'editable' if not client_view else '' }}" {% if not client_view %}data-field="aeroporto_arrivo"{% endif %}>{{ g.aeroporto_arrivo or '' }}</td> -->
@@ -1949,6 +1950,7 @@ async function showPNR() {
       g.passeggeri.forEach(p => {
         html += `<div class="volo-pax" style="display:flex;align-items:center;gap:8px">
           <span class="nome" style="flex:1">${p.cognome} ${p.nome}</span>
+          ${p.tratta ? `<span class="pnr-badge pnr-badge-ritorno" title="Su questo PNR fa una sola tratta: l'altra e' su un altro PNR o senza PNR">${p.tratta}</span>` : ''}
           ${p.disallineato ? `<span style="font-size:11px;color:#e65100;background:#fff3e0;border:1px solid #ffb74d;padding:1px 6px;border-radius:4px" title="I voli sulla scheda dell'ospite non coincidono con quelli del PNR">voli propri: ${p.volo_arrivo || '—'} / ${p.volo_partenza || '—'}</span>` : ''}
           ${p.sede_lavoro ? `<span class="sede">${p.sede_lavoro}</span>` : ''}
           <button onclick="unassignFromPnr(${g.id}, ${p.id})" class="btn btn-outline btn-sm" style="padding:1px 4px;font-size:11px;color:var(--error);border-color:var(--error)">
@@ -2101,7 +2103,7 @@ async function savePnrEdit() {
   }
 }
 
-async function openPnrAssign(groupId, pnrCode) {
+async function openPnrAssign(groupId, pnrCode, tratta = 'entrambe') {
   const modal = document.getElementById('pnrAssignModal');
   const content = document.getElementById('pnrAssignContent');
   document.getElementById('pnrAssignTitle').innerHTML =
@@ -2110,10 +2112,22 @@ async function openPnrAssign(groupId, pnrCode) {
   modal.classList.add('active');
 
   try {
-    const r = await fetch('/api/pnr/unassigned');
+    const r = await fetch(`/api/pnr/unassigned?tratta=${tratta}&pnr=${groupId}`);
     const j = await r.json();
 
-    let html = `<div style="margin-bottom:8px">
+    // Solo ritorno: per chi e' andato con un altro PNR e torna con questo.
+    // La lista allora mostra tutti, col PNR che hanno adesso.
+    let html = `<div style="margin-bottom:8px;display:flex;align-items:center;gap:8px;font-size:13px">
+      <span>Assegna per:</span>
+      <select id="pnrAssignTratta" onchange="openPnrAssign(${groupId}, '${pnrCode}', this.value)" style="font-size:13px;padding:4px;border-radius:6px;border:1px solid var(--outline-variant)">
+        <option value="entrambe" ${tratta === 'entrambe' ? 'selected' : ''}>andata e ritorno</option>
+        <option value="ritorno" ${tratta === 'ritorno' ? 'selected' : ''}>solo ritorno</option>
+      </select>
+      <span style="font-size:12px;color:var(--on-surface-variant)">${tratta === 'ritorno'
+        ? "l'andata resta sul PNR che ha"
+        : "ospiti senza PNR per l'andata"}</span>
+    </div>
+    <div style="margin-bottom:8px">
       <input type="text" id="pnrSearchGuest" oninput="filterPnrGuests()" placeholder="Cerca per cognome, nome o sede..."
         style="width:100%;padding:8px;border:1px solid var(--outline-variant);border-radius:8px">
     </div>`;
@@ -2133,6 +2147,7 @@ async function openPnrAssign(groupId, pnrCode) {
         <input type="checkbox" class="pnr-guest-cb" value="${g.id}">
         <span style="flex:1;font-weight:500">${g.cognome} ${g.nome}</span>
         ${voli ? `<span style="font-size:12px;font-family:monospace;color:var(--on-surface-variant)" title="Voli sulla scheda">${voli}</span>` : ''}
+        ${g.pnr_andata || g.pnr_ritorno ? `<span class="pnr-badge" title="PNR attuali: andata / ritorno">${g.pnr_andata || '—'}${g.pnr_ritorno !== g.pnr_andata ? ' / ↩ ' + (g.pnr_ritorno || '—') : ''}</span>` : ''}
         ${g.sede_lavoro ? `<span style="font-size:12px;color:var(--on-surface-variant)">${g.sede_lavoro}</span>` : ''}
         ${g.aeroporto_partenza ? `<span style="font-size:12px;color:var(--on-surface-variant)">${g.aeroporto_partenza}</span>` : ''}
       </label>`;
@@ -2172,9 +2187,11 @@ async function confirmPnrAssign(groupId) {
   if (!ids.length) return;
 
   const copia = document.getElementById('pnrAssignCopiaVoli');
+  const tratta = document.getElementById('pnrAssignTratta');
   const r = await fetch(`/api/pnr/${groupId}/assign`, {
     method: 'POST', headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({guest_ids: ids, copia_voli: copia ? copia.checked : true})
+    body: JSON.stringify({guest_ids: ids, copia_voli: copia ? copia.checked : true,
+                          tratta: tratta ? tratta.value : 'entrambe'})
   });
   const j = await r.json();
   if (j.overbooking) {
@@ -2759,28 +2776,40 @@ async function reloadPnrOptions() {
     }));
   } catch (e) { /* la tendina resta com'era */ }
 }
+function pnrBadgesHtml(codeA, codeR) {
+  return (codeA ? `<span class="pnr-badge">${codeA}</span>` : '') +
+    (codeR ? ` <span class="pnr-badge pnr-badge-ritorno" title="Il ritorno e' su un altro PNR">↩ ${codeR}</span>` : '');
+}
 document.querySelectorAll('td.pnr-editable').forEach(td => {
   td.addEventListener('dblclick', () => {
     if (td.querySelector('select')) return;
     const tr = td.closest('tr');
     const gid = tr.dataset.id;
     const current = td.dataset.pnrId || '';
+    const currentR = td.dataset.pnrRitornoId || '';
     const originalHtml = td.innerHTML;
 
+    const opzioni = cur => PNR_OPTIONS.map(p =>
+      `<option value="${p.id}" ${String(p.id) === cur ? 'selected' : ''} ${p.seats - p.occupati <= 0 && String(p.id) !== cur ? 'style="color:#d32f2f"' : ''}>${pnrOptionLabel(p)}</option>`
+    ).join('');
     const wrap = document.createElement('div');
     wrap.className = 'pnr-picker';
     const sel = document.createElement('select');
-    sel.innerHTML = `<option value="">— nessun PNR —</option>` + PNR_OPTIONS.map(p =>
-      `<option value="${p.id}" ${String(p.id) === current ? 'selected' : ''} ${p.seats - p.occupati <= 0 && String(p.id) !== current ? 'style="color:#d32f2f"' : ''}>${pnrOptionLabel(p)}</option>`
-    ).join('');
+    sel.title = "PNR dell'andata (e del ritorno, se non ne scegli un altro)";
+    sel.innerHTML = `<option value="">— nessun PNR —</option>` + opzioni(current);
+    // Il ritorno su un altro PNR: vuoto vuol dire che torna con lo stesso
+    // dell'andata, che e' il caso di quasi tutti.
+    const selR = document.createElement('select');
+    selR.title = "PNR del ritorno, se e' diverso da quello dell'andata";
+    selR.innerHTML = `<option value="">↩ ritorno: stesso PNR</option>` + opzioni(currentR);
     const lab = document.createElement('label');
-    lab.title = 'Scrive sulla scheda i voli e gli aeroporti del PNR scelto, al posto di quelli attuali';
+    lab.title = 'Scrive sulla scheda i voli e gli aeroporti dei PNR scelti, al posto di quelli attuali';
     lab.innerHTML = `<input type="checkbox" id="pnrCopiaVoli_${gid}"> copia voli`;
     const ok = document.createElement('button');
     ok.className = 'btn btn-sm btn-primary'; ok.style.padding = '2px 8px'; ok.textContent = 'OK';
     const ann = document.createElement('button');
     ann.className = 'btn btn-outline btn-sm'; ann.style.padding = '2px 8px'; ann.textContent = '✕';
-    wrap.append(sel, lab, ok, ann);
+    wrap.append(sel, selR, lab, ok, ann);
     td.innerHTML = '';
     td.appendChild(wrap);
     sel.focus();
@@ -2789,39 +2818,37 @@ document.querySelectorAll('td.pnr-editable').forEach(td => {
     ann.addEventListener('click', e => { e.stopPropagation(); chiudi(); });
     const salva = async () => {
       const pnrId = sel.value ? parseInt(sel.value) : null;
+      const pnrRId = selR.value ? parseInt(selR.value) : null;
       const copia = lab.querySelector('input').checked;
-      if (String(pnrId || '') === current && !copia) { chiudi(); return; }
+      if (String(pnrId || '') === current && String(pnrRId || '') === currentR && !copia) { chiudi(); return; }
       try {
         const r = await fetch(`/api/guest/${gid}/pnr`, {
           method: 'PUT', headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({pnr_id: pnrId, copia_voli: copia}),
+          body: JSON.stringify({pnr_id: pnrId, pnr_ritorno_id: pnrRId, copia_voli: copia}),
         });
         const j = await r.json();
         if (!j.ok) { showSnack('Errore: ' + (j.error || 'sconosciuto'), 5000); chiudi(); return; }
-        td.dataset.pnrId = pnrId || '';
-        td.innerHTML = j.pnr_code ? `<span class="pnr-badge">${j.pnr_code}</span>` : '';
+        td.dataset.pnrId = j.pnr_id || '';
+        td.dataset.pnrRitornoId = j.pnr_ritorno_id || '';
+        td.innerHTML = pnrBadgesHtml(j.pnr_code, j.pnr_ritorno_code);
         if (j.copiati) {
           const cA = tr.querySelector('td[data-field="volo_arrivo"]');
           const cR = tr.querySelector('td[data-field="volo_partenza"]');
           if (cA) cA.textContent = j.volo_arrivo;
           if (cR) cR.textContent = j.volo_partenza;
         }
-        // Aggiorna i conteggi della tendina senza ricaricare
-        PNR_OPTIONS.forEach(p => {
-          if (String(p.id) === current) p.occupati = Math.max(0, p.occupati - 1);
-          if (pnrId && p.id === pnrId && String(p.id) !== current) p.occupati += 1;
-        });
-        showSnack(j.overbooking ? `Salvato — attenzione: ${j.occupati} su ${j.seats} posti` : 'Salvato', j.overbooking ? 5000 : 2000);
+        reloadPnrOptions();   // i posti liberi della tendina
+        showSnack(j.overbooking ? `Salvato — attenzione: ${j.overbooking}` : 'Salvato', j.overbooking ? 5000 : 2000);
       } catch (err) {
         showSnack('Errore: ' + err.message, 5000);
         chiudi();
       }
     };
     ok.addEventListener('click', e => { e.stopPropagation(); salva(); });
-    sel.addEventListener('keydown', e => {
+    [sel, selR].forEach(el => el.addEventListener('keydown', e => {
       if (e.key === 'Enter') salva();
       if (e.key === 'Escape') chiudi();
-    });
+    }));
   });
 });
 
