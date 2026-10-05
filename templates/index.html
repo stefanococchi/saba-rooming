@@ -3514,9 +3514,12 @@ async function inviaLettere() {
     return;
   }
   const conWarn = _lettere.filter(function (l) { return l.warnings && l.warnings.length; }).length;
+  const sosp = _lettere.filter(function (l) { return l.sospesa; });
   let msg = 'Inviare ' + _lettere.length + ' lettere agli ospiti in elenco, da ' +
             _lettCfg.mittente + '?';
   if (conWarn) msg += '\n\n' + conWarn + ' verranno saltate perche hanno dati mancanti.';
+  if (sosp.length) msg += '\n\nSospese, non partono: ' +
+    sosp.map(function (l) { return l.cognome + ' ' + l.nome; }).join(', ') + '.';
   msg += '\n\nPartono 10 lettere ogni 20 secondi: circa ' +
          Math.max(1, Math.ceil(_lettere.length / 30)) +
          ' minuti. Tieni aperta questa finestra fino alla fine.';
@@ -3643,13 +3646,14 @@ async function loadLettere(selectId) {
     const esclusi = j.esclusi || [];
     const inviate = _lettere.filter(l => (_invii[l.id] || {}).esito === 'inviata').length;
     const errori  = _lettere.filter(l => (_invii[l.id] || {}).esito === 'errore').length;
-    const daFare  = _lettere.filter(l => !l.warnings.length
+    const daFare  = _lettere.filter(l => !l.warnings.length && !l.sospesa
                                       && (_invii[l.id] || {}).esito !== 'inviata').length;
     const stats = document.getElementById('lettStats');
     stats.textContent =
       `${j.totale} lettere · ${inviate} inviate · ${daFare} da inviare`
       + (errori ? ` · ${errori} in errore` : '')
       + (j.con_warning ? ` · ${j.con_warning} con dati mancanti` : '')
+      + (j.sospese ? ` · ${j.sospese} sospese` : '')
       + (esclusi.length ? ` · ${esclusi.length} esclusi perche non partecipano` : '');
     // chi e' fuori si deve poter vedere: se sparisce in silenzio, il giorno
     // che uno ci va escluso per sbaglio non se ne accorge nessuno
@@ -3686,7 +3690,26 @@ function renderLettereList() {
       ${l.warnings.length ? `<div style="font-size:11px;color:#c62828;margin-top:3px;display:flex;align-items:center;gap:3px">
         <span class="material-icons-round" style="font-size:13px">warning_amber</span>${l.warnings.join(', ')}</div>` : ''}
       ${statoInvio(l)}
+      <div style="font-size:11px;margin-top:3px">
+        ${l.sospesa ? '<span style="color:#e65100;font-weight:600">⏸ sospesa</span> · ' : ''}
+        <a href="#" onclick="event.stopPropagation(); sospendiLettera(${i}); return false"
+           style="color:#8d6e63">${l.sospesa ? 'riattiva' : 'sospendi invio'}</a>
+      </div>
     </div>`).join('');
+}
+
+// Sospesa: resta in elenco ma il server la salta, anche nei rilanci, finche'
+// non la si riattiva. Serve per chi deve ancora decidere il volo.
+async function sospendiLettera(i) {
+  const l = _lettere[i];
+  if (!l) return;
+  const r = await fetch('/api/rooming/lettere/sospendi', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({id: l.id, tipo: tipoLettera(), sospesa: !l.sospesa})
+  });
+  const j = await r.json();
+  if (!j.ok) { alert(j.error || 'Errore'); return; }
+  await loadLettere(l.id);
 }
 
 function statoInvio(l) {

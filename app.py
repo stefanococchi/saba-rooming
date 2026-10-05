@@ -4843,9 +4843,13 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
         guests = [g for g in guests if not _lettera_non_partecipa(g, tipo)]
 
         lettere = [_lettera_payload(g, tipo, intro) for g in guests]
+        sospese = _lt_sospese(tipo)
+        for l in lettere:
+            l['sospesa'] = l['id'] in sospese
         return jsonify(ok=True,
                        tipo=tipo,
                        totale=len(lettere),
+                       sospese=sum(1 for l in lettere if l['sospesa']),
                        con_warning=sum(1 for l in lettere if l['warnings']),
                        esclusi=esclusi,
                        lettere=lettere)
@@ -4880,6 +4884,13 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
 
     def _lt_invio_attivo():
         return _imp('lettere_invio_attivo') == '1'
+
+    # Lettere sospese: ospiti da non spedire per ora (chi deve ancora
+    # decidere un volo). Una lista di id per tipo di lettera, nelle
+    # impostazioni: vale anche per i rilanci, finche' non la si riattiva.
+    def _lt_sospese(tipo):
+        return {int(i) for i in _imp(f'lettere_sospese_{tipo}').split(',')
+                if i.strip().isdigit()}
 
     def _lt_gia_inviata(gid, tipo='convocazione'):
         righe = LetteraInvio.query.filter_by(
@@ -5005,6 +5016,7 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
         intro = data.get('intro')
         rinvia = bool(data.get('rinvia'))
         tipo = _lt_tipo(data.get('tipo'))
+        sospese = _lt_sospese(tipo)
 
         guests = Guest.query.filter(Guest.id.in_(ids), Guest.deleted == False)\
                             .order_by(Guest.cognome, Guest.nome).all()
@@ -5015,6 +5027,9 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
             if _lettera_non_partecipa(g, tipo):
                 saltate.append({'ospite': nome,
                                 'motivo': 'nessuna notte in programma: non partecipa'})
+                continue
+            if g.id in sospese:
+                saltate.append({'ospite': nome, 'motivo': 'sospesa'})
                 continue
             w = _lt_warnings(g)
             if w:
@@ -5037,6 +5052,26 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
                        totale_inviate=ok_n,
                        totale_errori=len(inviate) - ok_n,
                        totale_saltate=len(saltate))
+
+    @app.post('/api/rooming/lettere/sospendi')
+    def rooming_lettere_sospendi():
+        """Sospende o riattiva la lettera di un ospite.
+        body: id, tipo, sospesa (bool)"""
+        data = request.json or {}
+        tipo = _lt_tipo(data.get('tipo'))
+        g = Guest.query.filter_by(id=int(data.get('id') or 0),
+                                  deleted=False).first_or_404()
+        sospese = _lt_sospese(tipo)
+        if data.get('sospesa'):
+            sospese.add(g.id)
+        else:
+            sospese.discard(g.id)
+        _imp_set(f'lettere_sospese_{tipo}', ','.join(str(i) for i in sorted(sospese)))
+        db.session.commit()
+        stato = 'sospesa' if g.id in sospese else 'riattivata'
+        log_audit('rooming', 'Lettera', g.id, 'config',
+                  summary=f'Lettera {tipo} {stato}: {g.cognome} {g.nome or ""}'.strip())
+        return jsonify(ok=True, id=g.id, sospesa=g.id in sospese)
 
     @app.get('/api/rooming/lettere/config')
     def rooming_lettere_config():
