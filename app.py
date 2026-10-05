@@ -3842,13 +3842,18 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
     # Da Catania si parte in due gruppi, e ognuno ha il suo pullman alla sede:
     # chi arriva l'8 (due notti) e chi arriva il 9 (una notte sola, si parte
     # nel pomeriggio). La chiave e' il primo giorno di presenza.
+    # Il punto di ritrovo e gli orari li ha confermati l'operativo il 5/10:
+    # non si parte piu' dalla sede ma da ESAVE. Il rientro dal resort e' uno
+    # solo, la mattina del 10, per tutti e due i gruppi.
     PULLMAN_CATANIA = {
-        'indirizzo': 'Stradale Primosole Strada 18, n. 38 – 95121 Catania',
+        'punto': 'ESAVE SRL',
+        'indirizzo': 'Via Nicolò Pittari nr. 3, Catania',
         'durata': 'circa 3 ore',
         'partenze': {
-            8: {'ritrovo': '09:00', 'partenza': '', 'arrivo': ''},
-            9: {'ritrovo': '16:25', 'partenza': '16:30', 'arrivo': ''},
+            8: {'ritrovo': '07:45', 'partenza': '08:30', 'arrivo': ''},
+            9: {'ritrovo': '15:45', 'partenza': '16:30', 'arrivo': ''},
         },
+        'rientro': {'giorno': 10, 'partenza': '10:30'},
     }
 
     # A Linate c'e' il banco con le nostre assistenti; negli altri aeroporti
@@ -3929,6 +3934,15 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
             anno = EVENTO['anno']
         return f'{int(giorno)} {mese} {anno}'
 
+    def _lt_data_breve(val):
+        """'08OCT' → '08/10', come la scrive l'operativo. '' se non si legge."""
+        import re
+        m = re.match(r'^(\d{1,2})([A-Z]{3})', (val or '').strip().upper())
+        if not m or m.group(2) not in MESI_IT:
+            return ''
+        mese = list(MESI_IT).index(m.group(2)) + 1
+        return '%02d/%02d' % (int(m.group(1)), mese)
+
     def _lt_orari(val):
         """'0955-1135' → ('09:55', '11:35'). Pezzi mancanti tornano ''."""
         import re
@@ -3971,6 +3985,7 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
             'volo': (volo or '').strip(),
             'compagnia': _lt_compagnia(volo),
             'data': _lt_data(data),
+            'data_breve': _lt_data_breve(data),
             'da': AEROPORTI.get(orig, orig),
             'a': AEROPORTI.get(dest, dest),
             'da_iata': orig,
@@ -4060,9 +4075,17 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
         notti = 'notte' if len(giorni) == 1 else 'notti'
         return f'{elenco} ottobre {EVENTO["anno"]} ({len(giorni)} {notti})'
 
-    def _lt_via_terra(g):
-        """True se l'ospite non vola: sede da cui si arriva in auto o pullman."""
+    def _lt_sede_senza_volo(g):
         return (g.sede_lavoro or '').strip().upper() in SEDI_SENZA_VOLO
+
+    def _lt_via_terra(g):
+        """True se l'ospite non vola: sede da cui si arriva in auto o pullman.
+
+        Ma se un volo di andata ce l'ha, vola: la sede dice da dove viene di
+        solito, il biglietto dice da dove parte questa volta. Polizzi ha sede
+        a Catania e parte da Fiumicino, e la lettera lo mandava all'ESAVE.
+        """
+        return _lt_sede_senza_volo(g) and not _lt_tratta(g, 'andata')
 
     def _lt_rientro_a_catania(g):
         """True se il rientro e' il pullman verso Catania invece di un volo.
@@ -4079,7 +4102,8 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
         l'andata non ha un pullman: ha dei dati mancanti, e quelli restano
         fra gli avvisi.
         """
-        if _lt_via_terra(g) or bool(g.rientro_con_catania):
+        if (_lt_via_terra(g) or _lt_sede_senza_volo(g)
+                or bool(g.rientro_con_catania)):
             return True
         return bool(_lt_tratta(g, 'andata')) and not _lt_tratta(g, 'ritorno')
 
@@ -4139,7 +4163,10 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
                 # chiedessimo, risponderebbe di si' a se stesso e l'avviso
                 # non comparirebbe mai piu'. Lo si salta solo a chi l'ha
                 # dichiarato, e la spunta e' anche il modo di spegnerlo.
-                if tipo == 'ritorno' and g.rientro_con_catania:
+                # Chi ha sede a Catania e vola all'andata torna a casa col
+                # pullman dei catanesi: anche per lui il volo non manca.
+                if tipo == 'ritorno' and (g.rientro_con_catania
+                                          or _lt_sede_senza_volo(g)):
                     continue
                 t = _lt_tratta(g, tipo)
                 if not t:
@@ -4221,7 +4248,7 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
         c = _lt_pullman_di(g) or {'ritrovo': '', 'partenza': '', 'arrivo': ''}
         giorno = _lt_giorno_arrivo(g)
         data = f'{giorno} ottobre {EVENTO["anno"]}' if giorno else ''
-        punto = 'Sede di Catania'
+        punto = PULLMAN_CATANIA['punto']
         if PULLMAN_CATANIA['indirizzo']:
             punto += ' – ' + PULLMAN_CATANIA['indirizzo']
         # Alle cinque 'ore 05:00' da solo si puo' leggere male: si dice che
@@ -4241,8 +4268,9 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
         if c['ritrovo'] and not c['partenza']:
             # Senza l'ora di partenza in tabella, il margine va detto a parole:
             # 'puntuale alle 09:00' da solo non dice quanto si puo' sforare.
-            corpo += _lt_p('Un pullman privato ti attenderà presso la sede di '
-                           'Catania' + (' ' + _lt_esc(quando) if quando else '') + '. Ti chiediamo di '
+            corpo += _lt_p('Un pullman privato ti attenderà presso '
+                           + _lt_esc(PULLMAN_CATANIA['punto']) + ' a Catania'
+                           + (' ' + _lt_esc(quando) if quando else '') + '. Ti chiediamo di '
                            'presentarti al punto di ritrovo puntuale alle ore <b>'
                            + _lt_esc(ritrovo) +
                            '</b>: il pullman partirà pochi minuti dopo.')
@@ -4253,8 +4281,9 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
             margine = _lt_minuti_fra(c['ritrovo'], c['partenza'])
             anticipo = (f', almeno <b>{margine} minuti prima</b> della partenza'
                         if margine else '')
-            corpo += _lt_p('Un pullman privato ti attenderà presso la sede di '
-                           'Catania' + (' ' + _lt_esc(quando) if quando else '') + '. Ti chiediamo di '
+            corpo += _lt_p('Un pullman privato ti attenderà presso '
+                           + _lt_esc(PULLMAN_CATANIA['punto']) + ' a Catania'
+                           + (' ' + _lt_esc(quando) if quando else '') + '. Ti chiediamo di '
                            'presentarti al punto di ritrovo puntuale alle ore <b>'
                            + _lt_esc(ritrovo) + '</b>' + anticipo + '.')
         else:
@@ -4490,6 +4519,243 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
             'non_partecipa': _lt_non_partecipa(g),
         }
 
+    # ── LETTERA OPERATIVA (seconda convocazione, testo dell'operativo) ──────
+    #
+    # La prima lettera ha raccontato l'evento; questa, a pochi giorni dalla
+    # partenza, dice solo dove presentarsi, con quali voli e in che camera.
+    # Il testo e' quello che l'operativo ha scritto per PNR il 5/10, ma i dati
+    # si leggono dalla scheda di ognuno: le sue lettere avevano numeri di volo
+    # e orari sbagliati che rooming aveva giusti.
+
+    OPERATIVA_TITOLO = 'EPS SICILIAN Experience'
+    OPERATIVA_PERIODO = '08-10 ottobre 2026'
+    # L'oggetto e' anche il modo in cui il registro distingue le due lettere:
+    # chi ha gia' ricevuto la prima deve poter ricevere questa.
+    OPERATIVA_OGGETTO = f'Informazioni di viaggio · {OPERATIVA_TITOLO}, {OPERATIVA_PERIODO}'
+
+    # Il banco a Linate c'e' solo la mattina dell'8: chi parte da Linate un
+    # altro giorno ha la convocazione come negli altri aeroporti.
+    LINATE_ASSISTENZA = {
+        'giorno': '08/10',
+        'ora': '07:30',
+        'assistente': 'Enrico',
+        'telefono': '347 109 3310',
+    }
+    # Negli altri aeroporti la convocazione e' 'consigliata entro' due ore
+    # prima del volo: e' il margine che l'operativo ha usato ovunque.
+    CONVOCAZIONE_AEROPORTO_MIN = 120
+
+    BIGLIETTERIA = ('La biglietteria completa sarà inviata nella giornata di '
+                    'domani a questo stesso indirizzo mail.')
+
+    # Come l'operativo scrive gli aeroporti nel piano voli.
+    AEROPORTI_BREVI = {'LIN': 'LINATE', 'FCO': 'FIUMICINO',
+                       'CDG': 'PARIGI CHARLES DE GAULLE'}
+
+    TIPI_LETTERA = ('convocazione', 'operativa')
+
+    def _lt_tipo(val):
+        return val if val in TIPI_LETTERA else 'convocazione'
+
+    def _lo_ora(ora):
+        """'09:35' → '09.35', come negli orari dell'operativo."""
+        return (ora or '').replace(':', '.')
+
+    def _lo_aeroporto(t, lato):
+        iata = t.get(f'{lato}_iata') or ''
+        return AEROPORTI_BREVI.get(iata) or (t.get(lato) or iata).upper()
+
+    def _lo_riga_volo(t):
+        """'08/10 AZ1773 LINATE - PALERMO 09.35 - 11.15'"""
+        orari = ' - '.join(o for o in (_lo_ora(t['partenza']),
+                                       _lo_ora(t['arrivo'])) if o)
+        pezzi = [t.get('data_breve') or '', t['volo'],
+                 f"{_lo_aeroporto(t, 'da')} - {_lo_aeroporto(t, 'a')}", orari]
+        return _lt_esc(' '.join(p for p in pezzi if p))
+
+    def _lo_non_partecipa(g):
+        """Per questa lettera partecipa anche chi va e torna in giornata: non
+        ha notti ma ha un PNR. Il volo scritto a mano non basta - restano
+        sulle schede di chi ha disdetto, e la lettera andrebbe a loro."""
+        return _lt_non_partecipa(g) and not g.pnr_group_id
+
+    def _lo_variante(g):
+        """'pullman', 'linate' (banco con l'assistente) o 'aeroporto'."""
+        if _lt_via_terra(g):
+            return 'pullman'
+        t = _lt_tratta(g, 'andata')
+        if (t and t.get('da_iata') == 'LIN'
+                and t.get('data_breve') == LINATE_ASSISTENZA['giorno']):
+            return 'linate'
+        return 'aeroporto'
+
+    def _lo_camera(g):
+        """'una camera DUS dal 08/10 al 10/10' o la doppia condivisa; '' per
+        chi non dorme al resort."""
+        notti = [d for d in GIORNI_EVENTO if getattr(g, f'presenza_{d}')]
+        if not notti:
+            return ''
+        dal = '%02d/%02d' % (notti[0], MESE_EVENTO)
+        al = '%02d/%02d' % (notti[-1] + 1, MESE_EVENTO)
+        con = (g.divide_stanza_con or '').strip()
+        tipo = (f'una camera doppia, condivisa con {_lt_esc(con)},' if con
+                else 'una camera DUS')
+        return f'{tipo} dal {dal} al {al}'
+
+    def _lo_html(g):
+        P = _lt_p
+        variante = _lo_variante(g)
+        andata = {} if variante == 'pullman' else _lt_tratta(g, 'andata')
+        rientro_bus = _lt_rientro_a_catania(g)
+        ritorno = {} if rientro_bus else _lt_tratta(g, 'ritorno')
+        rb = PULLMAN_CATANIA['rientro']
+        rientro_riga = '%02d/%02d' % (rb['giorno'], MESE_EVENTO)
+
+        corpo = P('Gentile Ospite,')
+        corpo += P('Qui di seguito troverà tutte le informazioni utili relative '
+                   'alla Sua partecipazione alla <b>'
+                   + _lt_esc(OPERATIVA_TITOLO.upper()) + ' '
+                   + _lt_esc(OPERATIVA_PERIODO.upper()) + "</b>, che si terrà "
+                   "presso il Mangia's Pollina Resort di Pollina.")
+
+        # ── convocazione e piano di viaggio ──
+        if variante == 'pullman':
+            giorno = _lt_giorno_arrivo(g)
+            c = _lt_pullman_di(g) or {}
+            data = '%02d/%02d' % (giorno, MESE_EVENTO) if giorno else ''
+            corpo += P('La convocazione è presso <b>'
+                       + _lt_esc(PULLMAN_CATANIA['punto']) + ', '
+                       + _lt_esc(PULLMAN_CATANIA['indirizzo']) + '</b>: il bus '
+                       'partirà alle <b>' + _lo_ora(c.get('partenza')) + '</b> del '
+                       + data + ', Le chiediamo quindi di presentarsi entro le <b>'
+                       + _lo_ora(c.get('ritrovo')) + '</b>.')
+            righe = [f"{data} CATANIA - POLLINA {_lo_ora(c.get('partenza'))}",
+                     f"{rientro_riga} POLLINA - CATANIA {_lo_ora(rb['partenza'])}"]
+            corpo += P('Riepiloghiamo di seguito il Suo piano viaggi:<br><b>'
+                       + '<br>'.join(_lt_esc(r) for r in righe) + '</b>')
+        else:
+            if variante == 'linate':
+                a = LINATE_ASSISTENZA
+                corpo += P("La convocazione presso l'aeroporto di Linate è a "
+                           'partire dalle <b>' + _lo_ora(a['ora']) + '</b>, '
+                           'davanti ai banchi check-in ITA Airways al piano '
+                           'partenze, area check-in, dove troverà il nostro '
+                           'assistente ' + _lt_esc(a['assistente']) + ' con '
+                           'cartello STEPS.<br>Il numero di riferimento è <b>'
+                           + _lt_esc(a['telefono']) + '</b> e sarà attivo solo '
+                           'il giorno della partenza.')
+            elif andata and andata.get('partenza'):
+                corpo += P("La convocazione all'aeroporto di "
+                           + _lt_esc(andata['da']) + ' è consigliata entro le <b>'
+                           + _lo_ora(_lt_ora_meno(andata['partenza'],
+                                                  CONVOCAZIONE_AEROPORTO_MIN))
+                           + '</b> del ' + _lt_esc(andata['data_breve'])
+                           + ' per i controlli di sicurezza.')
+            righe = []
+            if andata and 'libero' not in andata:
+                righe.append(_lo_riga_volo(andata))
+            if rientro_bus:
+                righe.append(f'{rientro_riga} RIENTRO IN BUS PER CATANIA '
+                             f"{_lo_ora(rb['partenza'])}")
+            elif ritorno and 'libero' not in ritorno:
+                righe.append(_lo_riga_volo(ritorno))
+            corpo += P('Riepiloghiamo di seguito il Suo piano voli:<br><b>'
+                       + '<br>'.join(righe) + '</b>')
+            corpo += P(_lt_esc(BIGLIETTERIA))
+            if andata and andata.get('a_iata') == 'PMO':
+                corpo += P("Al Suo arrivo all'aeroporto di Palermo del "
+                           + _lt_esc(andata['data_breve']) + ' troverà un nostro '
+                           "incaricato, con cartello STEPS, che L'attenderà "
+                           "all'uscita degli arrivi e si occuperà di indirizzarLa "
+                           'verso il trasferimento organizzato.')
+
+        # ── camera ──
+        camera = _lo_camera(g)
+        if camera:
+            corpo += P('È stata riservata per Lei ' + camera + ' presso:')
+            corpo += ('<div style="font:14px/1.7 Roboto,Arial,Helvetica,sans-serif;'
+                      'color:#002439;background:#F2F2F2;border-left:3px solid #70BD95;'
+                      'padding:12px 16px;margin-bottom:12px"><b>'
+                      + _lt_esc(RESORT[0]) + '</b><br>'
+                      + '<br>'.join(_lt_esc(r) for r in RESORT[1:3]) + '</div>')
+            if _lt_giorno_arrivo(g) == 8:
+                corpo += P('Il check-in presso la struttura sarà accessibile '
+                           'dalle 16.00; sarà comunque attivo il servizio di '
+                           'deposito bagagli. I lavori inizieranno alle ore 15.00.')
+            else:
+                corpo += P('Il check-in presso la struttura sarà accessibile '
+                           'dalle 16.00.')
+
+        # ── rientro e programma ──
+        if rientro_bus:
+            corpo += P('Il piano trasferimenti per il ritorno sarà disponibile '
+                       "presso l'hospitality desk del Mangia's.")
+        else:
+            corpo += P("Il piano trasferimenti per il ritorno all'aeroporto di "
+                       "Palermo sarà disponibile presso l'hospitality desk del "
+                       "Mangia's.")
+        if variante == 'linate':
+            corpo += P("Il programma Le sarà consegnato dall'assistente alla "
+                       "partenza dall'aeroporto di Linate, insieme all'etichetta "
+                       'bagaglio.')
+        else:
+            corpo += P("Il programma Le sarà consegnato al Suo arrivo al "
+                       "Mangia's dai nostri incaricati.")
+        corpo += P('Grazie e saluti')
+
+        titolo = _lt_esc(OPERATIVA_TITOLO).upper()
+        return (
+            '<!DOCTYPE html>'
+            '<html lang="it"><head><meta charset="utf-8">'
+            '<meta name="viewport" content="width=device-width,initial-scale=1">'
+            f'<title>{titolo}</title></head>'
+            '<body style="margin:0;padding:0;background:#F2F2F2">'
+            '<table role="presentation" cellpadding="0" cellspacing="0" border="0" '
+            'width="100%" style="background:#F2F2F2;padding:24px 0">'
+            '<tr><td align="center">'
+            '<table role="presentation" cellpadding="0" cellspacing="0" border="0" '
+            'width="600" style="width:600px;max-width:100%;background:#ffffff">'
+            '<tr><td style="background:#002439;padding:20px 28px">'
+            '<div style="font:bold 20px Roboto,Arial,Helvetica,sans-serif;color:#ffffff;'
+            'letter-spacing:1px">' + titolo + '</div>'
+            '<div style="font:13px Roboto,Arial,Helvetica,sans-serif;color:#70BD95;'
+            'margin-top:2px">Informazioni di viaggio · '
+            + _lt_esc(OPERATIVA_PERIODO) + '</div>'
+            '</td></tr>'
+            '<tr><td style="padding:24px 28px 18px 28px">' + corpo + '</td></tr>'
+            '<tr><td style="background:#002439;padding:14px 28px;'
+            'font:11px Roboto,Arial,Helvetica,sans-serif;color:#BFBFBF">'
+            'powered by sabae20</td></tr>'
+            '</table></td></tr></table></body></html>'
+        )
+
+    def _lo_payload(g):
+        return {
+            'id': g.id,
+            'cognome': g.cognome,
+            'nome': g.nome or '',
+            'nome_completo': g.nome_completo,
+            'email': (g.email or '').strip(),
+            'subject': OPERATIVA_OGGETTO,
+            'html': _lo_html(g),
+            'warnings': _lt_warnings(g),
+            'non_partecipa': _lo_non_partecipa(g),
+            'variante': _lo_variante(g),
+        }
+
+    def _lettera_payload(g, tipo, intro=None):
+        return _lo_payload(g) if tipo == 'operativa' else _lt_payload(g, intro)
+
+    def _lettera_non_partecipa(g, tipo):
+        return _lo_non_partecipa(g) if tipo == 'operativa' else _lt_non_partecipa(g)
+
+    def _lettera_tipo_da_oggetto(oggetto):
+        """Il registro non ha una colonna per il tipo: lo dice l'oggetto,
+        tolto l'eventuale prefisso delle prove."""
+        import re
+        o = re.sub(r'^\[PROVA[^\]]*\]\s*', '', oggetto or '')
+        return 'operativa' if o.startswith(OPERATIVA_OGGETTO) else 'convocazione'
+
     @app.get('/api/rooming/pullman/<int:giorno>')
     def rooming_pullman(giorno):
         """Chi sale sul pullman da Catania di un certo giorno, con i totali.
@@ -4534,7 +4800,8 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
         """Lettera di convocazione di un singolo ospite.
         ?format=html → HTML grezzo (anteprima/copia); altrimenti JSON."""
         g = Guest.query.filter_by(id=gid, deleted=False).first_or_404()
-        payload = _lt_payload(g, request.args.get('intro'))
+        payload = _lettera_payload(g, _lt_tipo(request.args.get('tipo')),
+                                   request.args.get('intro'))
         if request.args.get('format') == 'html':
             return payload['html'], 200, {'Content-Type': 'text/html; charset=utf-8'}
         return jsonify(ok=True, **payload)
@@ -4545,7 +4812,9 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
         ?ids=1,2,3   limita a un sottoinsieme
         ?presenti=1  solo chi ha almeno un giorno di presenza
         ?con_email=1 solo chi ha un indirizzo email
-        ?intro=…     sostituisce il testo introduttivo di default"""
+        ?intro=…     sostituisce il testo introduttivo di default
+        ?tipo=…      convocazione (default) o operativa"""
+        tipo = _lt_tipo(request.args.get('tipo'))
         q = Guest.query.filter_by(deleted=False)
 
         ids_raw = (request.args.get('ids') or '').strip()
@@ -4556,8 +4825,12 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
             q = q.filter(Guest.id.in_(ids))
 
         if _parse_bool(request.args.get('presenti')):
-            q = q.filter(db.or_(*[getattr(Guest, f'presenza_{d}') == True
-                                  for d in GIORNI_EVENTO]))
+            presenti = [getattr(Guest, f'presenza_{d}') == True
+                        for d in GIORNI_EVENTO]
+            # chi va e torna in giornata non ha notti ma e' presente
+            if tipo == 'operativa':
+                presenti.append(Guest.pnr_group_id.isnot(None))
+            q = q.filter(db.or_(*presenti))
         if _parse_bool(request.args.get('con_email')):
             q = q.filter(Guest.email.isnot(None), Guest.email != '')
 
@@ -4566,11 +4839,12 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
 
         esclusi = [{'id': g.id, 'cognome': g.cognome, 'nome': g.nome,
                     'motivo': 'nessuna notte in programma: non partecipa'}
-                   for g in guests if _lt_non_partecipa(g)]
-        guests = [g for g in guests if not _lt_non_partecipa(g)]
+                   for g in guests if _lettera_non_partecipa(g, tipo)]
+        guests = [g for g in guests if not _lettera_non_partecipa(g, tipo)]
 
-        lettere = [_lt_payload(g, intro) for g in guests]
+        lettere = [_lettera_payload(g, tipo, intro) for g in guests]
         return jsonify(ok=True,
+                       tipo=tipo,
                        totale=len(lettere),
                        con_warning=sum(1 for l in lettere if l['warnings']),
                        esclusi=esclusi,
@@ -4607,11 +4881,13 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
     def _lt_invio_attivo():
         return _imp('lettere_invio_attivo') == '1'
 
-    def _lt_gia_inviata(gid):
-        return LetteraInvio.query.filter_by(
-            guest_id=gid, esito='inviata', prova=False).first()
+    def _lt_gia_inviata(gid, tipo='convocazione'):
+        righe = LetteraInvio.query.filter_by(
+            guest_id=gid, esito='inviata', prova=False).all()
+        return next((r for r in righe
+                     if _lettera_tipo_da_oggetto(r.oggetto) == tipo), None)
 
-    def _lt_spedisci(g, intro=None, prova=False):
+    def _lt_spedisci(g, intro=None, prova=False, tipo='convocazione'):
         """Manda una lettera e registra l'esito. Torna la riga di registro.
 
         In prova il destinatario e' sempre l'indirizzo delle prove e l'oggetto porta
@@ -4619,7 +4895,7 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
         """
         from graph_mailer import send_mail, InvioError
 
-        payload = _lt_payload(g, intro)
+        payload = _lettera_payload(g, tipo, intro)
         oggetto = payload['subject']
         destinatario = payload['email']
         if prova:
@@ -4663,25 +4939,41 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
                            error='Credenziali Graph incomplete: ' +
                                  ', '.join(mancanti)), 400
 
-        intro = (request.json or {}).get('intro')
+        data = request.json or {}
+        intro = data.get('intro')
+        tipo = _lt_tipo(data.get('tipo'))
         guests = Guest.query.filter_by(deleted=False).order_by(
             Guest.cognome, Guest.nome).all()
-        guests = [g for g in guests if not _lt_non_partecipa(g)]
-        vola = next((g for g in guests if g.pnr_group and not _lt_warnings(g)), None)
-        terra = next((g for g in guests if _lt_via_terra(g)), None)
-
-        campioni = [g for g in (vola, terra) if g]
+        guests = [g for g in guests if not _lettera_non_partecipa(g, tipo)]
+        if tipo == 'operativa':
+            # una per variante: Linate col banco, gli altri aeroporti, il
+            # pullman - e chi va e torna in giornata, che non ha la camera
+            campioni = []
+            for var in ('linate', 'aeroporto', 'pullman'):
+                g = next((g for g in guests if _lo_variante(g) == var
+                          and not _lt_warnings(g)), None)
+                if g:
+                    campioni.append((g, var))
+            g = next((g for g in guests if _lt_non_partecipa(g)
+                      and not _lt_warnings(g)), None)
+            if g:
+                campioni.append((g, 'in giornata'))
+        else:
+            vola = next((g for g in guests if g.pnr_group and not _lt_warnings(g)), None)
+            terra = next((g for g in guests if _lt_via_terra(g)), None)
+            campioni = [(g, 'pullman' if _lt_via_terra(g) else 'volo')
+                        for g in (vola, terra) if g]
         if not campioni:
             return jsonify(ok=False, error='Nessun ospite adatto alla prova'), 400
 
         esiti = []
-        for g in campioni:
-            r = _lt_spedisci(g, intro, prova=True)
+        for g, var in campioni:
+            r = _lt_spedisci(g, intro, prova=True, tipo=tipo)
             esiti.append({'ospite': f'{g.cognome} {g.nome or ""}'.strip(),
-                          'tipo': 'pullman' if _lt_via_terra(g) else 'volo',
+                          'tipo': var,
                           'esito': r.esito, 'errore': r.errore})
         log_audit('rooming', 'Lettera', 0, 'prova',
-                  summary=f"{len(esiti)} lettere di prova a {_imp('lettere_prova_a')}")
+                  summary=f"{len(esiti)} lettere di prova ({tipo}) a {_imp('lettere_prova_a')}")
         return jsonify(ok=True, destinatario=_imp('lettere_prova_a'),
                        mittente=_imp('lettere_mittente'), esiti=esiti)
 
@@ -4712,6 +5004,7 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
             return jsonify(ok=False, error='Nessun ospite selezionato'), 400
         intro = data.get('intro')
         rinvia = bool(data.get('rinvia'))
+        tipo = _lt_tipo(data.get('tipo'))
 
         guests = Guest.query.filter(Guest.id.in_(ids), Guest.deleted == False)\
                             .order_by(Guest.cognome, Guest.nome).all()
@@ -4719,7 +5012,7 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
         inviate, saltate = [], []
         for g in guests:
             nome = f'{g.cognome} {g.nome or ""}'.strip()
-            if _lt_non_partecipa(g):
+            if _lettera_non_partecipa(g, tipo):
                 saltate.append({'ospite': nome,
                                 'motivo': 'nessuna notte in programma: non partecipa'})
                 continue
@@ -4727,10 +5020,10 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
             if w:
                 saltate.append({'ospite': nome, 'motivo': ', '.join(w)})
                 continue
-            if not rinvia and _lt_gia_inviata(g.id):
+            if not rinvia and _lt_gia_inviata(g.id, tipo):
                 saltate.append({'ospite': nome, 'motivo': 'gia inviata'})
                 continue
-            riga = _lt_spedisci(g, intro)
+            riga = _lt_spedisci(g, intro, tipo=tipo)
             voce = {'ospite': nome, 'destinatario': riga.destinatario,
                     'esito': riga.esito}
             if riga.errore:
@@ -4739,7 +5032,7 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
 
         ok_n = sum(1 for v in inviate if v['esito'] == 'inviata')
         log_audit('rooming', 'Lettera', 0, 'invio',
-                  summary=f'{ok_n} lettere inviate, {len(saltate)} saltate')
+                  summary=f'{ok_n} lettere {tipo} inviate, {len(saltate)} saltate')
         return jsonify(ok=True, inviate=inviate, saltate=saltate,
                        totale_inviate=ok_n,
                        totale_errori=len(inviate) - ok_n,
@@ -4757,8 +5050,11 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
                        graph_pronto=pronte,
                        graph_mancanti=mancanti,
                        graph_modo=modo,
-                       inviate=LetteraInvio.query.filter_by(
-                           esito='inviata', prova=False).count())
+                       inviate=sum(
+                           1 for r in LetteraInvio.query.filter_by(
+                               esito='inviata', prova=False).all()
+                           if _lettera_tipo_da_oggetto(r.oggetto)
+                           == _lt_tipo(request.args.get('tipo'))))
 
     @app.post('/api/rooming/lettere/config')
     def rooming_lettere_config_salva():
@@ -4804,6 +5100,7 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
                                       if r.guest else ''),
                            'destinatario': r.destinatario,
                            'oggetto': r.oggetto,
+                           'tipo': _lettera_tipo_da_oggetto(r.oggetto),
                            'esito': r.esito,
                            'prova': bool(r.prova),
                            'errore': r.errore,

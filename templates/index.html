@@ -267,7 +267,7 @@ td.presenza-dot .dot-no { background: var(--outline); opacity: .4; }
 .icon-btn.delete:hover { color: var(--error); background: #fef2f2; }
 
 /* ── Forms / Inputs ──────────────────────────────────────────────────── */
-input[type="text"], input[type="file"], textarea, select {
+input[type="text"], input[type="number"], input[type="file"], textarea, select {
   font-family: inherit;
   font-size: 14px;
   padding: 10px 14px;
@@ -1066,13 +1066,20 @@ textarea { resize: vertical; min-height: 120px; }
     </h3>
 
     <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
+      <label style="font-size:13px;display:flex;align-items:center;gap:6px">
+        Lettera
+        <select id="lettTipo" onchange="cambiaTipoLettera()" style="width:auto;padding:5px 10px;font-size:13px">
+          <option value="convocazione">Convocazione (prima lettera)</option>
+          <option value="operativa">Informazioni di viaggio (operativa)</option>
+        </select>
+      </label>
       <label style="font-size:13px;display:flex;align-items:center;gap:4px;cursor:pointer">
         <input type="checkbox" id="lettPresenti" checked onchange="loadLettere()"> Solo presenti
       </label>
       <label style="font-size:13px;display:flex;align-items:center;gap:4px;cursor:pointer">
         <input type="checkbox" id="lettConEmail" onchange="loadLettere()"> Solo con email
       </label>
-      <button class="btn btn-outline btn-sm" onclick="toggleLettIntro()" style="font-size:12px">
+      <button class="btn btn-outline btn-sm" id="lettIntroBtn" onclick="toggleLettIntro()" style="font-size:12px">
         <span class="material-icons-round" style="font-size:16px">edit_note</span> Testo introduttivo
       </button>
       <span style="flex:1"></span>
@@ -1099,7 +1106,7 @@ textarea { resize: vertical; min-height: 120px; }
       <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
         <span id="lettInvioStato" style="font-size:12px"></span>
         <span style="flex:1"></span>
-        <button class="btn btn-outline btn-sm" onclick="inviaProva()" title="Due lettere all'indirizzo di prova: una di chi vola, una di chi arriva in pullman">
+        <button class="btn btn-outline btn-sm" onclick="inviaProva()" title="Alcune lettere all'indirizzo di prova, una per ogni formato">
           <span class="material-icons-round" style="font-size:16px">science</span> Invia prova
         </button>
         <button class="btn btn-sm" id="lettInviaBtn" onclick="inviaLettere()" style="background:#2e7d32;color:white">
@@ -3393,6 +3400,21 @@ function loadTodos() {
 // ── LETTERE DI CONVOCAZIONE ───────────────────────────────────────────────
 let _lettere = [], _lettSel = -1;
 
+function tipoLettera() {
+  return document.getElementById('lettTipo').value;
+}
+
+// L'operativa non ha testo introduttivo da cambiare: e' il testo
+// dell'operativo, uguale per tutti tranne voli e camera.
+async function cambiaTipoLettera() {
+  const op = tipoLettera() === 'operativa';
+  document.getElementById('lettIntroBtn').style.display = op ? 'none' : '';
+  if (op) document.getElementById('lettIntroBox').style.display = 'none';
+  document.getElementById('lettEsito').style.display = 'none';
+  await loadLettere();
+  caricaLettConfig();
+}
+
 async function showLettere(gid) {
   document.getElementById('lettereModal').classList.add('active');
   if (gid) {
@@ -3408,7 +3430,7 @@ let _lettCfg = {};
 
 async function caricaLettConfig() {
   try {
-    const r = await fetch('/api/rooming/lettere/config');
+    const r = await fetch('/api/rooming/lettere/config?tipo=' + tipoLettera());
     _lettCfg = await r.json();
   } catch (e) { _lettCfg = {}; }
   document.getElementById('lettMittente').value = _lettCfg.mittente || '';
@@ -3420,7 +3442,7 @@ async function caricaLettConfig() {
           (_lettCfg.graph_mancanti || []).join(', ') + '</span>';
   } else if (_lettCfg.invio_attivo) {
     msg = '<span style="color:#2e7d32;font-weight:600">Invio ACCESO</span> · da ' +
-          _lettCfg.mittente + ' · ' + _lettCfg.inviate + ' gia inviate';
+          _lettCfg.mittente + ' · ' + _lettCfg.inviate + ' gia inviate di questa lettera';
   } else {
     msg = '<span style="color:#c62828;font-weight:600">Invio spento</span> · ' +
           'da qui parte solo la prova a ' + _lettCfg.prova_a;
@@ -3458,13 +3480,19 @@ function mostraEsitoInvio(html) {
 }
 
 async function inviaProva() {
-  if (!confirm('Inviare 2 lettere di prova a ' + _lettCfg.prova_a +
-               '? Una di chi vola e una di chi arriva in pullman.')) return;
+  const op = tipoLettera() === 'operativa';
+  if (!confirm(op
+      ? 'Inviare le lettere di prova a ' + _lettCfg.prova_a +
+        '? Una per formato: Linate, altri aeroporti, pullman, in giornata.'
+      : 'Inviare 2 lettere di prova a ' + _lettCfg.prova_a +
+        '? Una di chi vola e una di chi arriva in pullman.')) return;
   mostraEsitoInvio('<span class="spinner"></span> invio in corso...');
   const intro = document.getElementById('lettIntro').value.trim();
+  const body = {tipo: tipoLettera()};
+  if (intro && !op) body.intro = intro;
   const r = await fetch('/api/rooming/lettere/prova', {
     method: 'POST', headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify(intro ? {intro: intro} : {})
+    body: JSON.stringify(body)
   });
   const j = await r.json();
   if (!j.ok) { mostraEsitoInvio('<span style="color:var(--error)">' + j.error + '</span>'); return; }
@@ -3490,8 +3518,8 @@ async function inviaLettere() {
   if (!confirm(msg)) return;
   mostraEsitoInvio('<span class="spinner"></span> invio in corso...');
   const intro = document.getElementById('lettIntro').value.trim();
-  const body = {ids: _lettere.map(function (l) { return l.id; })};
-  if (intro) body.intro = intro;
+  const body = {ids: _lettere.map(function (l) { return l.id; }), tipo: tipoLettera()};
+  if (intro && tipoLettera() !== 'operativa') body.intro = intro;
   const r = await fetch('/api/rooming/lettere/invia', {
     method: 'POST', headers: {'Content-Type': 'application/json'},
     body: JSON.stringify(body)
@@ -3535,8 +3563,11 @@ async function caricaInvii() {
     const j = await r.json();
     _invii = {};
     // il registro arriva dal piu' recente: il primo che si incontra per un
-    // ospite e' l'ultimo tentativo, ed e' quello che conta
+    // ospite e' l'ultimo tentativo, ed e' quello che conta. Solo quelli
+    // della lettera che si sta guardando: la prima non vale per la seconda.
+    const tipo = tipoLettera();
     (j.invii || []).forEach(function (v) {
+      if (v.tipo !== tipo) return;
       if (!(v.guest_id in _invii)) _invii[v.guest_id] = v;
     });
   } catch (e) { _invii = {}; }
@@ -3556,8 +3587,9 @@ async function loadLettere(selectId) {
   const p = new URLSearchParams();
   if (document.getElementById('lettPresenti').checked) p.set('presenti', '1');
   if (document.getElementById('lettConEmail').checked) p.set('con_email', '1');
+  p.set('tipo', tipoLettera());
   const intro = document.getElementById('lettIntro').value.trim();
-  if (intro) p.set('intro', intro);
+  if (intro && tipoLettera() !== 'operativa') p.set('intro', intro);
 
   try {
     const r = await fetch('/api/rooming/lettere?' + p.toString());
@@ -3635,7 +3667,7 @@ function selectLettera(i) {
   document.getElementById('lettPreview').srcdoc = l.html;
   document.getElementById('lettSubject').innerHTML =
     `<b>Oggetto:</b> ${l.subject} &nbsp;·&nbsp; <b>A:</b> ${l.email || '—'}`;
-  document.getElementById('lettOpenBtn').href = `/api/rooming/lettera/${l.id}?format=html`;
+  document.getElementById('lettOpenBtn').href = `/api/rooming/lettera/${l.id}?format=html&tipo=${tipoLettera()}`;
   renderLettereList();
 }
 
@@ -3662,7 +3694,7 @@ function scaricaLettereJson() {
   const blob = new Blob([JSON.stringify(payload, null, 2)], {type: 'application/json'});
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = 'lettere_convocazione.json';
+  a.download = 'lettere_' + tipoLettera() + '.json';
   a.click();
   URL.revokeObjectURL(a.href);
 }
