@@ -3505,6 +3505,8 @@ async function inviaProva() {
   caricaLettConfig();
 }
 
+let _invioInterrotto = false;
+
 async function inviaLettere() {
   if (!_lettere.length) { alert('Nessuna lettera in elenco.'); return; }
   if (!_lettCfg.invio_attivo) {
@@ -3515,18 +3517,59 @@ async function inviaLettere() {
   let msg = 'Inviare ' + _lettere.length + ' lettere agli ospiti in elenco, da ' +
             _lettCfg.mittente + '?';
   if (conWarn) msg += '\n\n' + conWarn + ' verranno saltate perche hanno dati mancanti.';
+  msg += '\n\nPartono 10 lettere ogni 20 secondi: circa ' +
+         Math.max(1, Math.ceil(_lettere.length / 30)) +
+         ' minuti. Tieni aperta questa finestra fino alla fine.';
   if (!confirm(msg)) return;
-  mostraEsitoInvio('<span class="spinner"></span> invio in corso...');
   const intro = document.getElementById('lettIntro').value.trim();
-  const body = {ids: _lettere.map(function (l) { return l.id; }), tipo: tipoLettera()};
-  if (intro && tipoLettera() !== 'operativa') body.intro = intro;
-  const r = await fetch('/api/rooming/lettere/invia', {
-    method: 'POST', headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify(body)
-  });
-  const j = await r.json();
-  if (!j.ok) { mostraEsitoInvio('<span style="color:var(--error)">' + j.error + '</span>'); return; }
+  const tipo = tipoLettera();
+  const ids = _lettere.map(function (l) { return l.id; });
+
+  // A blocchi, una richiesta per blocco. Il 12/09 l'invio partiva in una
+  // richiesta sola: il server la chiude dopo 30 secondi, e si e' fermato a
+  // 110 lettere su 175 senza dire a chi era arrivato. La pausa tiene il
+  // ritmo sotto le 30 mail al minuto che Exchange accetta da una casella.
+  // Un blocco che fallisce ferma tutto: rilanciando, chi l'ha gia' ricevuta
+  // viene saltato e si riparte da dove si era rimasti.
+  const BLOCCO = 10, PAUSA_MS = 20000;
+  const j = {inviate: [], saltate: [], totale_inviate: 0, totale_errori: 0, totale_saltate: 0};
+  _invioInterrotto = false;
+  let fermo = '';
+  for (let i = 0; i < ids.length; i += BLOCCO) {
+    mostraEsitoInvio('<span class="spinner"></span> invio in corso: ' +
+      Math.min(i, ids.length) + ' di ' + ids.length + ' elaborate · ' +
+      j.totale_inviate + ' inviate' +
+      ' &nbsp;<button class="btn btn-outline btn-sm" onclick="_invioInterrotto=true">Interrompi</button>');
+    const body = {ids: ids.slice(i, i + BLOCCO), tipo: tipo};
+    if (intro && tipo !== 'operativa') body.intro = intro;
+    let b;
+    try {
+      const r = await fetch('/api/rooming/lettere/invia', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(body)
+      });
+      b = await r.json();
+    } catch (e) {
+      b = {ok: false, error: 'il server non ha risposto (' + e.message + ')'};
+    }
+    if (!b.ok) { fermo = b.error || 'errore'; break; }
+    j.inviate = j.inviate.concat(b.inviate);
+    j.saltate = j.saltate.concat(b.saltate);
+    j.totale_inviate += b.totale_inviate;
+    j.totale_errori += b.totale_errori;
+    j.totale_saltate += b.totale_saltate;
+    if (_invioInterrotto) { fermo = 'interrotto a mano'; break; }
+    // la pausa serve solo se il blocco ha spedito davvero qualcosa
+    if (i + BLOCCO < ids.length && b.inviate.length) {
+      await new Promise(function (ok) { setTimeout(ok, PAUSA_MS); });
+    }
+    if (_invioInterrotto) { fermo = 'interrotto a mano'; break; }
+  }
   let out = '<b>' + j.totale_inviate + ' inviate</b>';
+  if (fermo) {
+    out = '<span style="color:var(--error);font-weight:600">Invio fermato: ' + fermo +
+          '. Rilancia per continuare: chi l\'ha gia ricevuta viene saltato.</span><br>' + out;
+  }
   if (j.totale_errori) out += ' · <span style="color:var(--error)">' + j.totale_errori + ' errori</span>';
   if (j.totale_saltate) out += ' · ' + j.totale_saltate + ' saltate';
   out += '<br>';

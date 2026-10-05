@@ -11,6 +11,7 @@ con consenso dell'amministratore.
 
 import logging
 import os
+import time
 from pathlib import Path
 
 import httpx
@@ -115,13 +116,24 @@ def send_mail(mittente, destinatario, oggetto, html, salva_in_inviati=True,
 
     token = _token()
     url = f'{GRAPH_BASE}/users/{mittente.strip()}/sendMail'
-    try:
-        r = httpx.post(url, json=payload, timeout=timeout, headers={
-            'Authorization': f'Bearer {token}',
-            'Content-Type': 'application/json',
-        })
-    except httpx.HTTPError as e:
-        raise InvioError(f'rete: {e}') from e
+    # Se Graph chiede di rallentare (429, o 503 di passaggio) si riprova una
+    # volta sola e con un'attesa corta: la richiesta che manda il blocco di
+    # lettere deve restare sotto i 30 secondi del server.
+    for tentativo in (1, 2):
+        try:
+            r = httpx.post(url, json=payload, timeout=timeout, headers={
+                'Authorization': f'Bearer {token}',
+                'Content-Type': 'application/json',
+            })
+        except httpx.HTTPError as e:
+            raise InvioError(f'rete: {e}') from e
+        if r.status_code not in (429, 503) or tentativo == 2:
+            break
+        try:
+            attesa = float(r.headers.get('Retry-After') or 2)
+        except ValueError:
+            attesa = 2
+        time.sleep(min(max(attesa, 1), 5))
 
     # sendMail risponde 202 senza corpo: non c'e' un id da leggere
     if r.status_code not in (200, 202):
