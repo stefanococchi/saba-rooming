@@ -1071,6 +1071,7 @@ textarea { resize: vertical; min-height: 120px; }
         <select id="lettTipo" onchange="cambiaTipoLettera()" style="width:auto;padding:5px 10px;font-size:13px">
           <option value="convocazione">Convocazione (prima lettera)</option>
           <option value="operativa">Informazioni di viaggio (operativa)</option>
+          <option value="finale">Lettera finale (sondaggio e video)</option>
         </select>
       </label>
       <label style="font-size:13px;display:flex;align-items:center;gap:4px;cursor:pointer">
@@ -3404,10 +3405,14 @@ function tipoLettera() {
   return document.getElementById('lettTipo').value;
 }
 
-// L'operativa non ha testo introduttivo da cambiare: e' il testo
-// dell'operativo, uguale per tutti tranne voli e camera.
+// Solo la convocazione ha un testo introduttivo da cambiare: l'operativa e'
+// il testo dell'operativo, la finale e' uguale per tutti.
+function conIntro() {
+  return tipoLettera() === 'convocazione';
+}
+
 async function cambiaTipoLettera() {
-  const op = tipoLettera() === 'operativa';
+  const op = !conIntro();
   document.getElementById('lettIntroBtn').style.display = op ? 'none' : '';
   if (op) document.getElementById('lettIntroBox').style.display = 'none';
   document.getElementById('lettEsito').style.display = 'none';
@@ -3480,12 +3485,15 @@ function mostraEsitoInvio(html) {
 }
 
 async function inviaProva() {
-  const op = tipoLettera() === 'operativa';
-  if (!confirm(op
-      ? 'Inviare le lettere di prova a ' + _lettCfg.prova_a +
-        '? Una per formato: Linate, altri aeroporti, pullman, in giornata.'
-      : 'Inviare 2 lettere di prova a ' + _lettCfg.prova_a +
-        '? Una di chi vola e una di chi arriva in pullman.')) return;
+  const op = !conIntro();
+  const domanda = {
+    convocazione: 'Inviare 2 lettere di prova a ' + _lettCfg.prova_a +
+                  '? Una di chi vola e una di chi arriva in pullman.',
+    operativa: 'Inviare le lettere di prova a ' + _lettCfg.prova_a +
+               '? Una per formato: Linate, altri aeroporti, pullman, in giornata.',
+    finale: 'Inviare 1 lettera finale di prova a ' + _lettCfg.prova_a + '?'
+  }[tipoLettera()];
+  if (!confirm(domanda)) return;
   mostraEsitoInvio('<span class="spinner"></span> invio in corso...');
   const intro = document.getElementById('lettIntro').value.trim();
   const body = {tipo: tipoLettera()};
@@ -3544,7 +3552,7 @@ async function inviaLettere() {
       j.totale_inviate + ' inviate' +
       ' &nbsp;<button class="btn btn-outline btn-sm" onclick="_invioInterrotto=true">Interrompi</button>');
     const body = {ids: ids.slice(i, i + BLOCCO), tipo: tipo};
-    if (intro && tipo !== 'operativa') body.intro = intro;
+    if (intro && conIntro()) body.intro = intro;
     let b;
     try {
       const r = await fetch('/api/rooming/lettere/invia', {
@@ -3635,7 +3643,7 @@ async function loadLettere(selectId) {
   if (document.getElementById('lettConEmail').checked) p.set('con_email', '1');
   p.set('tipo', tipoLettera());
   const intro = document.getElementById('lettIntro').value.trim();
-  if (intro && tipoLettera() !== 'operativa') p.set('intro', intro);
+  if (intro && conIntro()) p.set('intro', intro);
 
   try {
     const r = await fetch('/api/rooming/lettere?' + p.toString());

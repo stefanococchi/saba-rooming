@@ -4552,7 +4552,7 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
     AEROPORTI_BREVI = {'LIN': 'LINATE', 'FCO': 'FIUMICINO',
                        'CDG': 'PARIGI CHARLES DE GAULLE'}
 
-    TIPI_LETTERA = ('convocazione', 'operativa')
+    TIPI_LETTERA = ('convocazione', 'operativa', 'finale')
 
     def _lt_tipo(val):
         return val if val in TIPI_LETTERA else 'convocazione'
@@ -4743,17 +4743,151 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
             'variante': _lo_variante(g),
         }
 
+    # ── LETTERA FINALE (ringraziamento, sondaggio e video) ──────────────────
+    #
+    # A evento finito, uguale per tutti: nessun dato della scheda oltre
+    # all'indirizzo. Va a chi ha ricevuto l'operativa, cioe' a chi c'era -
+    # rooming non registra chi si e' presentato davvero.
+
+    FINALE_TITOLO = 'EPS Sicilian Experience 2026'
+    FINALE_OGGETTO = f'Grazie per esserci stati! · {FINALE_TITOLO}'
+    # Finche' uno dei due e' vuoto la lettera ha un avviso e non parte.
+    FINALE_LINK_SONDAGGIO = ('https://docs.google.com/forms/d/e/1FAIpQLSeUiMcJX9p2'
+                             'uJKQlXLOBNWLgo4pbIqm3uobSvvxuLi7XP84Tw/viewform'
+                             '?usp=header')
+    FINALE_LINK_VIDEO = ('https://drive.google.com/file/d/'
+                         '14fqUDdVQabMCAifutjv_oPtlRZXhlVfP/view?usp=sharing')
+
+    def _lf_non_partecipa(g):
+        return _lo_non_partecipa(g)
+
+    def _lf_warnings(g):
+        w = []
+        if not (g.email or '').strip():
+            w.append('email mancante')
+        if not FINALE_LINK_SONDAGGIO:
+            w.append('link al sondaggio da inserire')
+        if not FINALE_LINK_VIDEO:
+            w.append('link al video da inserire')
+        return w
+
+    def _lf_bottone(link, testo):
+        """Pulsante email-safe; senza link resta il segnaposto, ben visibile."""
+        if not link:
+            return _lt_p('<b style="color:#c62828">[' + _lt_esc(testo).upper()
+                         + ': LINK DA INSERIRE]</b>')
+        return ('<table role="presentation" cellpadding="0" cellspacing="0" '
+                'border="0" style="margin:6px 0 16px 0"><tr>'
+                '<td style="background:#70BD95;border-radius:4px">'
+                f'<a href="{_lt_esc(link)}" target="_blank" style="display:inline-block;'
+                'padding:11px 22px;font:bold 14px Roboto,Arial,Helvetica,sans-serif;'
+                'color:#002439;text-decoration:none">' + _lt_esc(testo) + '</a>'
+                '</td></tr></table>')
+
+    def _lf_html(g):
+        P = _lt_p
+        try:
+            logo = url_for('static', filename='img/logo_equans.png', _external=True)
+        except RuntimeError:
+            logo = ''
+        logo_html = ''
+        if logo:
+            logo_html = (
+                '<tr><td style="background:#ffffff;padding:18px 28px">'
+                f'<img src="{_lt_esc(logo)}" alt="Equans" width="109" height="34" '
+                'style="display:block;border:0;width:109px;height:34px"></td></tr>'
+            )
+
+        corpo = (
+            '<div style="font:bold 16px Roboto,Arial,Helvetica,sans-serif;'
+            'color:#002439;margin-bottom:10px">Carissimi tutti,</div>'
+            + P('<b>EPS Sicilian Experience 2026 volge al termine!</b>')
+            + P('Abbiamo condiviso giornate intense, ricche di incontri, emozioni, '
+                'esperienze e momenti che speriamo porterete con voi.')
+            + P('Il nostro prossimo appuntamento sarà probabilmente il prossimo '
+                'anno, ma per noi è già tempo di pensare a come renderlo ancora '
+                'più speciale!')
+            + P('Come ci piace fare, vogliamo continuare a sorprendervi, ascoltare '
+                'i vostri desideri e prepararci per offrirvi sempre il meglio.')
+            + P('E chi meglio di voi può aiutarci a farlo?')
+            + P('Vi chiediamo quindi di dedicarci qualche minuto per rispondere a '
+                'un breve sondaggio. Le vostre opinioni, idee e suggerimenti '
+                'saranno preziosi per costruire insieme le prossime esperienze.')
+            + _lf_bottone(FINALE_LINK_SONDAGGIO, '👉 Rispondi al sondaggio')
+            + P('<b>E abbiamo pensato anche a un piccolo regalo per voi!</b>')
+            + P("Visto il grande interesse e l'entusiasmo dimostrati durante "
+                "l'intervento di Umberto Guidoni, vogliamo ringraziarvi per il "
+                'tempo che dedicherete al sondaggio condividendo un video davvero '
+                'speciale: il racconto della sua missione nello spazio.')
+            + P("Un'occasione per rivivere le emozioni di un'esperienza "
+                'straordinaria e continuare a guardare lontano, proprio come ci '
+                'ha insegnato durante il nostro incontro!')
+            + _lf_bottone(FINALE_LINK_VIDEO, '🚀 Guarda il video della missione')
+            + P("Grazie per esserci stati, per aver condiviso con noi questa "
+                'esperienza e per aiutarci a fare sempre meglio!')
+            + P('<b>Arrivederci alla prossima EPS Experience!</b>')
+        )
+
+        titolo = _lt_esc(FINALE_TITOLO).upper()
+        return (
+            '<!DOCTYPE html>'
+            '<html lang="it"><head><meta charset="utf-8">'
+            '<meta name="viewport" content="width=device-width,initial-scale=1">'
+            f'<title>{titolo}</title></head>'
+            '<body style="margin:0;padding:0;background:#F2F2F2">'
+            '<table role="presentation" cellpadding="0" cellspacing="0" border="0" '
+            'width="100%" style="background:#F2F2F2;padding:24px 0">'
+            '<tr><td align="center">'
+            '<table role="presentation" cellpadding="0" cellspacing="0" border="0" '
+            'width="600" style="width:600px;max-width:100%;background:#ffffff">'
+            + logo_html +
+            '<tr><td style="background:#002439;padding:20px 28px">'
+            '<div style="font:bold 20px Roboto,Arial,Helvetica,sans-serif;color:#ffffff;'
+            'letter-spacing:1px">' + titolo + '</div>'
+            '<div style="font:13px Roboto,Arial,Helvetica,sans-serif;color:#70BD95;'
+            'margin-top:2px">' + _lt_esc(OPERATIVA_PERIODO) + '</div>'
+            '</td></tr>'
+            '<tr><td style="padding:24px 28px 18px 28px">' + corpo + '</td></tr>'
+            '<tr><td style="background:#002439;padding:14px 28px;'
+            'font:11px Roboto,Arial,Helvetica,sans-serif;color:#BFBFBF">'
+            'powered by sabae20</td></tr>'
+            '</table></td></tr></table></body></html>'
+        )
+
+    def _lf_payload(g):
+        return {
+            'id': g.id,
+            'cognome': g.cognome,
+            'nome': g.nome or '',
+            'nome_completo': g.nome_completo,
+            'email': (g.email or '').strip(),
+            'subject': FINALE_OGGETTO,
+            'html': _lf_html(g),
+            'warnings': _lf_warnings(g),
+            'non_partecipa': _lf_non_partecipa(g),
+        }
+
     def _lettera_payload(g, tipo, intro=None):
+        if tipo == 'finale':
+            return _lf_payload(g)
         return _lo_payload(g) if tipo == 'operativa' else _lt_payload(g, intro)
 
     def _lettera_non_partecipa(g, tipo):
+        if tipo == 'finale':
+            return _lf_non_partecipa(g)
         return _lo_non_partecipa(g) if tipo == 'operativa' else _lt_non_partecipa(g)
+
+    def _lettera_warnings(g, tipo):
+        """La finale non racconta viaggi: un volo senza orari non la ferma."""
+        return _lf_warnings(g) if tipo == 'finale' else _lt_warnings(g)
 
     def _lettera_tipo_da_oggetto(oggetto):
         """Il registro non ha una colonna per il tipo: lo dice l'oggetto,
         tolto l'eventuale prefisso delle prove."""
         import re
         o = re.sub(r'^\[PROVA[^\]]*\]\s*', '', oggetto or '')
+        if o.startswith(FINALE_OGGETTO):
+            return 'finale'
         return 'operativa' if o.startswith(OPERATIVA_OGGETTO) else 'convocazione'
 
     @app.get('/api/rooming/pullman/<int:giorno>')
@@ -4828,7 +4962,7 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
             presenti = [getattr(Guest, f'presenza_{d}') == True
                         for d in GIORNI_EVENTO]
             # chi va e torna in giornata non ha notti ma e' presente
-            if tipo == 'operativa':
+            if tipo in ('operativa', 'finale'):
                 presenti.append(Guest.pnr_group_id.isnot(None))
             q = q.filter(db.or_(*presenti))
         if _parse_bool(request.args.get('con_email')):
@@ -4956,7 +5090,10 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
         guests = Guest.query.filter_by(deleted=False).order_by(
             Guest.cognome, Guest.nome).all()
         guests = [g for g in guests if not _lettera_non_partecipa(g, tipo)]
-        if tipo == 'operativa':
+        if tipo == 'finale':
+            # uguale per tutti: ne basta una
+            campioni = [(g, 'finale') for g in guests[:1]]
+        elif tipo == 'operativa':
             # una per variante: Linate col banco, gli altri aeroporti, il
             # pullman - e chi va e torna in giornata, che non ha la camera
             campioni = []
@@ -5031,7 +5168,7 @@ Rispondi SOLO con JSON valido (array di oggetti), niente markdown."""
             if g.id in sospese:
                 saltate.append({'ospite': nome, 'motivo': 'sospesa'})
                 continue
-            w = _lt_warnings(g)
+            w = _lettera_warnings(g, tipo)
             if w:
                 saltate.append({'ospite': nome, 'motivo': ', '.join(w)})
                 continue
